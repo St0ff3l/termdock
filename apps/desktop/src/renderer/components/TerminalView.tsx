@@ -10,7 +10,7 @@ export function TerminalView({
 }: {
   tabId: string
   initialText: string
-  onStatus(message: string | null): void
+  onStatus?(message: string | null): void
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const initialTextRef = useRef(initialText)
@@ -27,7 +27,7 @@ export function TerminalView({
       lineHeight: 1.45,
       cursorBlink: true,
       theme: {
-        background: '#1a1a1a',
+        background: '#151515',
         foreground: '#d8d8d8',
         cursor: '#d8d8d8',
         green: '#39d98a',
@@ -67,7 +67,7 @@ export function TerminalView({
 
     const offState = window.termdock?.onTerminalState(({ tabId: nextTabId, summary, connected }) => {
       if (nextTabId === tabId) {
-        onStatus(summary)
+        onStatus?.(summary)
         if (!connected) {
           terminal.writeln('\r\n[connection closed]')
         }

@@ -110,12 +110,6 @@ export class WorkspaceService {
       throw new Error(`Profile not found: ${profileId}`)
     }
 
-    const existingTab = this.tabs.find((tab) => tab.profileId === profileId)
-    if (existingTab) {
-      this.activeTabId = existingTab.id
-      return this.getSnapshot()
-    }
-
     const tabId = randomUUID()
     const tab: WorkspaceTab = {
       id: tabId,

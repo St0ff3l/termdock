@@ -1,4 +1,4 @@
-import { useEffect, useState, useTransition, type DragEvent, type FormEvent, type MouseEvent } from 'react'
+import { useEffect, useRef, useState, useTransition, type CSSProperties, type DragEvent, type FormEvent, type MouseEvent } from 'react'
 import type {
   ConnectionProfile,
   CreateProfileInput,
@@ -147,7 +147,6 @@ export function App() {
   const [showForm, setShowForm] = useState(false)
   const [showConnectionManager, setShowConnectionManager] = useState(false)
   const [form, setForm] = useState<CreateProfileInput>(defaultForm)
-  const [terminalSummary, setTerminalSummary] = useState<string | null>(null)
   const [localPath, setLocalPath] = useState(previewLocalPath)
   const [localItems, setLocalItems] = useState<LocalFileItem[]>(localPreviewFiles)
   const [homeTabs, setHomeTabs] = useState([{ id: 'home-1' }])
@@ -155,8 +154,16 @@ export function App() {
   const [nextHomeTabNumber, setNextHomeTabNumber] = useState(2)
   const [tabOrder, setTabOrder] = useState<string[]>(['home:home-1'])
   const [draggingTabKey, setDraggingTabKey] = useState<string | null>(null)
+  const [sidebarWidth, setSidebarWidth] = useState(214)
+  const [isResizingSidebar, setIsResizingSidebar] = useState(false)
+  const homeTabsRef = useRef(homeTabs)
+  const pendingHomeReplacementKeyRef = useRef<string | null>(null)
   const desktopApi = window.termdock
   const isDesktopRuntime = Boolean(desktopApi?.isDesktop)
+
+  useEffect(() => {
+    homeTabsRef.current = homeTabs
+  }, [homeTabs])
 
   useEffect(() => {
     if (!desktopApi) {
@@ -204,10 +211,6 @@ export function App() {
     : null
 
   useEffect(() => {
-    setTerminalSummary(activeSession?.summary ?? null)
-  }, [activeSession?.summary])
-
-  useEffect(() => {
     const allKeys = [
       ...homeTabs.map((tab) => homeTabKey(tab.id)),
       ...workspace.tabs.map((tab) => sessionTabKey(tab.id))
@@ -216,9 +219,47 @@ export function App() {
     setTabOrder((prev) => {
       const kept = prev.filter((key) => allKeys.includes(key))
       const missing = allKeys.filter((key) => !kept.includes(key))
+      const replacementKey = pendingHomeReplacementKeyRef.current
+
+      if (replacementKey && missing.length) {
+        const replaceIndex = kept.indexOf(replacementKey)
+        if (replaceIndex !== -1) {
+          const next = [...kept]
+          next.splice(replaceIndex, 1, missing[0])
+          pendingHomeReplacementKeyRef.current = null
+          return [...next, ...missing.slice(1)]
+        }
+      }
+
       return [...kept, ...missing]
     })
   }, [homeTabs, workspace.tabs])
+
+  useEffect(() => {
+    if (!isResizingSidebar) {
+      return
+    }
+
+    const onMouseMove = (event: globalThis.MouseEvent) => {
+      setSidebarWidth(Math.min(360, Math.max(190, event.clientX)))
+    }
+
+    const onMouseUp = () => {
+      setIsResizingSidebar(false)
+    }
+
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+  }, [isResizingSidebar])
 
   const recentProfiles = workspace.profiles.slice(0, 12)
 
@@ -278,11 +319,24 @@ export function App() {
       return
     }
 
+    const activeHomeId = activeHomeTabId
+    const replacementKey = activeHomeId ? homeTabKey(activeHomeId) : null
+    pendingHomeReplacementKeyRef.current = replacementKey
+
     try {
       const snapshot = await desktopApi.openProfile(profileId)
-      applySnapshot(snapshot)
+      setWorkspace(snapshot)
+      setError(null)
+      setFormError(null)
+      if (activeHomeId && snapshot.activeTabId && replacementKey) {
+        const nextSessionKey = sessionTabKey(snapshot.activeTabId)
+        setTabOrder((prev) => prev.map((key) => key === replacementKey ? nextSessionKey : key))
+        setHomeTabs((prev) => prev.filter((tab) => tab.id !== activeHomeId))
+        pendingHomeReplacementKeyRef.current = null
+      }
       setActiveHomeTabId(null)
     } catch (err) {
+      pendingHomeReplacementKeyRef.current = null
       setError((err as Error).message)
     }
   }
@@ -329,7 +383,12 @@ export function App() {
       const snapshot = await desktopApi.closeTab(tabId)
       applySnapshot(snapshot)
       if (snapshot.activeTabId === null) {
-        setActiveHomeTabId((prev) => prev ?? homeTabs.at(-1)?.id ?? 'home-1')
+        setHomeTabs((prev) => prev.length ? prev : [{ id: 'home-1' }])
+        setTabOrder((prev) => {
+          const filtered = prev.filter((key) => key !== sessionTabKey(tabId))
+          return filtered.some((key) => key.startsWith('home:')) ? filtered : ['home:home-1', ...filtered]
+        })
+        setActiveHomeTabId((prev) => prev ?? homeTabsRef.current.at(-1)?.id ?? 'home-1')
       }
     } catch (err) {
       setError((err as Error).message)
@@ -346,14 +405,9 @@ export function App() {
   const handleAddHomeTab = () => {
     const nextId = `home-${nextHomeTabNumber}`
     const nextKey = homeTabKey(nextId)
-    const activeKey = activeHomeTabId
-      ? homeTabKey(activeHomeTabId)
-      : workspace.activeTabId
-        ? sessionTabKey(workspace.activeTabId)
-        : null
 
     setHomeTabs((prev) => [...prev, { id: nextId }])
-    setTabOrder((prev) => insertAfterActive(prev, activeKey, nextKey))
+    setTabOrder((prev) => [...prev, nextKey])
     setNextHomeTabNumber((prev) => prev + 1)
     setActiveHomeTabId(nextId)
     setError(null)
@@ -364,7 +418,8 @@ export function App() {
 
     setHomeTabs((prev) => {
       const remaining = prev.filter((tab) => tab.id !== homeTabId)
-      if (remaining.length === 0) {
+
+      if (remaining.length === 0 && workspace.tabs.length === 0) {
         setActiveHomeTabId('home-1')
         setNextHomeTabNumber(2)
         setTabOrder((prev) => {
@@ -378,6 +433,7 @@ export function App() {
         setActiveHomeTabId(remaining.at(-1)?.id ?? null)
       }
 
+      setTabOrder((prev) => prev.filter((key) => key !== homeTabKey(homeTabId)))
       return remaining
     })
   }
@@ -450,20 +506,26 @@ export function App() {
 
   return (
     <>
-      <div className="fs-shell">
+      <div className="fs-shell" style={{ gridTemplateColumns: `${sidebarWidth}px 6px minmax(0, 1fr)` }}>
         <aside className="fs-sidebar">
           <SystemPanel activeProfile={activeProfile} activeSession={activeSession} />
           <DiskPanel activeSession={activeSession} />
         </aside>
+        <div
+          aria-label="Resize sidebar"
+          className={`sidebar-resizer ${isResizingSidebar ? 'is-active' : ''}`}
+          onMouseDown={() => setIsResizingSidebar(true)}
+          role="separator"
+        />
 
-        <main className="fs-main">
+        <main className={`fs-main ${error ? 'has-status' : 'no-status'}`}>
           <header className="fs-tabbar">
             <div className="fs-tabs">
               {orderedTabs.map((entry, index) => (
                 entry.kind === 'home' ? (
                   <div
                     key={entry.key}
-                    className={`fs-tab ${activeHomeTabId === entry.id ? 'active' : ''}`}
+                    className={`fs-tab home-tab ${activeHomeTabId === entry.id ? 'active' : ''}`}
                     draggable
                     onClick={() => handleActivateHome(entry.id)}
                     onDragStart={() => handleDragStart(entry.key)}
@@ -492,7 +554,7 @@ export function App() {
                 ) : (
                   <div
                     key={entry.key}
-                    className={`fs-tab ${entry.tab.id === workspace.activeTabId ? 'active' : ''}`}
+                    className={`fs-tab session-tab ${entry.tab.id === workspace.activeTabId && !activeHomeTabId ? 'active' : ''}`}
                     draggable
                     onClick={() => handleActivateTab(entry.tab.id)}
                     onDragStart={() => handleDragStart(entry.key)}
@@ -524,45 +586,45 @@ export function App() {
               <button className="add-tab" type="button" onClick={handleAddHomeTab}>+</button>
             </div>
             <div className="window-tools">
-              <span title="Grid">▦</span>
-              <span title="Menu">☰</span>
+              <button title="Grid" type="button"><AppIcon name="grid" /></button>
+              <button title="Menu" type="button" onClick={() => setShowConnectionManager(true)}><AppIcon name="menu" /></button>
             </div>
           </header>
 
           {error ? <div className="status-message">{error}</div> : null}
 
-          {activeTab && activeSession ? (
-            <SessionWorkspace
-              activeTab={activeTab}
-              activeSession={activeSession}
-              terminalSummary={terminalSummary}
-              localItems={localItems}
-              localPath={localPath}
-              onOpenLocalItem={handleOpenLocalItem}
-              onOpenRemoteItem={async (item) => {
-                if (item.type !== 'folder' || !desktopApi) {
-                  return
-                }
+          <div className="workspace-stage">
+            {activeTab && activeSession ? (
+              <SessionWorkspace
+                activeTab={activeTab}
+                activeSession={activeSession}
+                localItems={localItems}
+                localPath={localPath}
+                onOpenLocalItem={handleOpenLocalItem}
+                onOpenRemoteItem={async (item) => {
+                  if (item.type !== 'folder' || !desktopApi) {
+                    return
+                  }
 
-                try {
-                  const snapshot = await desktopApi.openRemotePath(activeTab.id, item.path)
-                  applySnapshot(snapshot)
-                } catch (err) {
-                  setError((err as Error).message)
-                }
-              }}
-              onTerminalSummary={setTerminalSummary}
-              onDropUpload={handleDropUpload}
-            />
-          ) : (
-            <HomeWorkspace
-              profiles={recentProfiles}
-              isDesktopRuntime={isDesktopRuntime}
-              onCreate={() => setShowForm(true)}
-              onOpen={handleOpenProfile}
-              onDelete={handleDeleteProfile}
-            />
-          )}
+                  try {
+                    const snapshot = await desktopApi.openRemotePath(activeTab.id, item.path)
+                    applySnapshot(snapshot)
+                  } catch (err) {
+                    setError((err as Error).message)
+                  }
+                }}
+                onDropUpload={handleDropUpload}
+              />
+            ) : (
+              <HomeWorkspace
+                profiles={recentProfiles}
+                isDesktopRuntime={isDesktopRuntime}
+                onCreate={() => setShowForm(true)}
+                onOpen={handleOpenProfile}
+                onDelete={handleDeleteProfile}
+              />
+            )}
+          </div>
 
           <TransferBar transfers={workspace.transfers} isPending={isPending} />
         </main>
@@ -748,7 +810,7 @@ function HomeWorkspace({
               role="button"
               tabIndex={0}
             >
-              <span className="host-icon">▣</span>
+              <span className="host-icon"><AppIcon name="server" /></span>
               <strong>{profile.name}</strong>
               <span>{profile.remotePath}</span>
               <span>{profile.username}</span>
@@ -815,36 +877,82 @@ function ConnectionManagerModal({
 function SessionWorkspace({
   activeTab,
   activeSession,
-  terminalSummary,
   localItems,
   localPath,
   onOpenLocalItem,
   onOpenRemoteItem,
-  onTerminalSummary,
   onDropUpload
 }: {
   activeTab: WorkspaceTab
   activeSession: SessionSnapshot
-  terminalSummary: string | null
   localItems: LocalFileItem[]
   localPath: string
   onOpenLocalItem(item: LocalFileItem): void
   onOpenRemoteItem(item: RemoteFileItem): void
-  onTerminalSummary(message: string | null): void
   onDropUpload(event: DragEvent<HTMLDivElement>): void
 }) {
   const isFileOnly = activeTab.layout === 'file-only'
+  const [filePanelHeight, setFilePanelHeight] = useState(218)
+  const workspaceRef = useRef<HTMLElement | null>(null)
+  const isResizingFilePanel = useRef(false)
+
+  useEffect(() => {
+    if (isFileOnly) {
+      return
+    }
+
+    const onMouseMove = (event: globalThis.MouseEvent) => {
+      if (!isResizingFilePanel.current || !workspaceRef.current) {
+        return
+      }
+
+      const rect = workspaceRef.current.getBoundingClientRect()
+      const nextHeight = rect.bottom - event.clientY
+      const maxHeight = Math.max(140, rect.height - 160)
+      setFilePanelHeight(Math.min(maxHeight, Math.max(140, nextHeight)))
+    }
+
+    const onMouseUp = () => {
+      isResizingFilePanel.current = false
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+  }, [isFileOnly])
 
   return (
-    <section className={`session-workspace ${isFileOnly ? 'file-only' : ''}`}>
+    <section
+      className={`session-workspace ${isFileOnly ? 'file-only' : ''}`}
+      ref={workspaceRef}
+      style={{ '--file-panel-height': `${filePanelHeight}px` } as CSSProperties}
+    >
       {!isFileOnly ? (
         <div className="terminal-area">
           <TerminalView
             tabId={activeTab.id}
             initialText={activeSession.terminalTranscript ?? ''}
-            onStatus={onTerminalSummary}
           />
         </div>
+      ) : null}
+      {!isFileOnly ? (
+        <div
+          className="session-split-resizer"
+          onMouseDown={() => {
+            isResizingFilePanel.current = true
+            document.body.style.cursor = 'row-resize'
+            document.body.style.userSelect = 'none'
+          }}
+          role="separator"
+        />
       ) : null}
       <FileManager
         activeSession={activeSession}
@@ -873,28 +981,74 @@ function FileManager({
   onOpenRemoteItem(item: RemoteFileItem): void
   onDropUpload(event: DragEvent<HTMLDivElement>): void
 }) {
+  const [localPaneWidth, setLocalPaneWidth] = useState(230)
+  const splitRef = useRef<HTMLDivElement | null>(null)
+  const isResizingFileSplit = useRef(false)
+
+  useEffect(() => {
+    const handleMouseMove = (event: globalThis.MouseEvent) => {
+      if (!isResizingFileSplit.current || !splitRef.current) return
+
+      const rect = splitRef.current.getBoundingClientRect()
+      const minLocalWidth = 180
+      const minRemoteWidth = 320
+      const maxLocalWidth = Math.max(minLocalWidth, rect.width - minRemoteWidth)
+      const nextWidth = Math.min(maxLocalWidth, Math.max(minLocalWidth, event.clientX - rect.left))
+      setLocalPaneWidth(nextWidth)
+    }
+
+    const handleMouseUp = () => {
+      if (!isResizingFileSplit.current) return
+      isResizingFileSplit.current = false
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+  }, [])
+
   return (
     <div className="file-manager" onDragOver={(event) => event.preventDefault()} onDrop={onDropUpload}>
       <div className="file-tabs">
         <button className="active" type="button">{t.file}</button>
         <button type="button">{t.command}</button>
-        <span className="file-current-path">/</span>
+        <span className="file-current-path">{activeSession.remotePath}</span>
       </div>
       <div className="file-toolbar">
         <span>{activeSession.remotePath}</span>
         <div>
-          <button type="button">{t.history}</button>
-          <button type="button">↻</button>
-          <button type="button">⇧</button>
-          <button type="button">⇩</button>
-          <button type="button">{t.upload}</button>
+          <button title={t.history} type="button"><AppIcon name="history" /></button>
+          <button title="刷新" type="button"><AppIcon name="refresh" /></button>
+          <button title="上传到上级目录" type="button"><AppIcon name="arrowUp" /></button>
+          <button title="下载到本地" type="button"><AppIcon name="arrowDown" /></button>
+          <button title={t.upload} type="button"><AppIcon name="upload" /></button>
         </div>
       </div>
-      <div className="file-split">
+      <div
+        className="file-split"
+        ref={splitRef}
+        style={{ '--local-pane-width': `${localPaneWidth}px` } as CSSProperties}
+      >
         <div className="local-pane">
           <div className="pane-title">{t.localComputer}<span>{localPath}</span></div>
           <LocalFileTable rows={localItems} onOpenItem={onOpenLocalItem} />
         </div>
+        <div
+          className="file-split-resizer"
+          onMouseDown={() => {
+            isResizingFileSplit.current = true
+            document.body.style.cursor = 'col-resize'
+            document.body.style.userSelect = 'none'
+          }}
+          role="separator"
+        />
         <div className="remote-pane">
           <div className="pane-title">{t.remoteHost}<span>{t.dragUpload}</span></div>
           <FileTable rows={activeSession.remoteFiles} onOpenItem={onOpenRemoteItem} />
@@ -932,7 +1086,7 @@ function FileTable({
             className={row.type === 'folder' ? 'is-folder' : ''}
             onDoubleClick={() => onOpenItem?.(row)}
           >
-            <td><span className="file-icon">{row.type === 'folder' ? '📁' : '▤'}</span>{row.name}</td>
+            <td><span className="file-icon"><AppIcon name={row.type === 'folder' ? 'folder' : 'file'} /></span>{row.name}</td>
             {!compact ? <td>{row.size}</td> : null}
             {!compact ? <td>{row.type === 'folder' ? t.folder : row.type}</td> : null}
             {!compact ? <td>{row.modified}</td> : null}
@@ -967,7 +1121,7 @@ function LocalFileTable({
             key={`${row.path}:${row.name}`}
             onDoubleClick={() => onOpenItem(row)}
           >
-            <td><span className="file-icon">{row.type === 'folder' ? '📁' : '▤'}</span>{row.name}</td>
+            <td><span className="file-icon"><AppIcon name={row.type === 'folder' ? 'folder' : 'file'} /></span>{row.name}</td>
           </tr>
         ))}
       </tbody>
@@ -981,6 +1135,92 @@ function TransferBar({ transfers, isPending }: { transfers: TransferTask[]; isPe
       <strong>{t.transferTasks}</strong>
       <span>{isPending ? '更新中...' : `${runningTransfers(transfers)} ${t.runningTasks}`}</span>
     </footer>
+  )
+}
+
+function AppIcon({
+  name,
+  size = 14
+}: {
+  name: 'grid' | 'menu' | 'server' | 'folder' | 'file' | 'history' | 'refresh' | 'upload' | 'arrowUp' | 'arrowDown'
+  size?: number
+}) {
+  const commonProps = {
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    strokeWidth: 1.8
+  }
+
+  return (
+    <svg aria-hidden="true" className={`app-icon app-icon-${name}`} height={size} viewBox="0 0 16 16" width={size}>
+      {name === 'grid' ? (
+        <>
+          <rect {...commonProps} x="2.25" y="2.25" width="4.5" height="4.5" />
+          <rect {...commonProps} x="9.25" y="2.25" width="4.5" height="4.5" />
+          <rect {...commonProps} x="2.25" y="9.25" width="4.5" height="4.5" />
+          <rect {...commonProps} x="9.25" y="9.25" width="4.5" height="4.5" />
+        </>
+      ) : null}
+      {name === 'menu' ? (
+        <>
+          <path {...commonProps} d="M3 4.5h10" />
+          <path {...commonProps} d="M3 8h10" />
+          <path {...commonProps} d="M3 11.5h10" />
+        </>
+      ) : null}
+      {name === 'server' ? (
+        <>
+          <rect {...commonProps} x="2.5" y="2.5" width="11" height="4" rx="1.2" />
+          <rect {...commonProps} x="2.5" y="9.5" width="11" height="4" rx="1.2" />
+          <path {...commonProps} d="M4.5 4.5h.01M4.5 11.5h.01" />
+          <path {...commonProps} d="M8 6.5v3" />
+        </>
+      ) : null}
+      {name === 'folder' ? (
+        <path {...commonProps} d="M2.5 4.5h3l1.4 1.6h6.6v5.8a1.1 1.1 0 0 1-1.1 1.1H3.6a1.1 1.1 0 0 1-1.1-1.1V5.6a1.1 1.1 0 0 1 1.1-1.1Z" />
+      ) : null}
+      {name === 'file' ? (
+        <>
+          <path {...commonProps} d="M5 2.5h4.5L13 6v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9.5a1 1 0 0 1 1-1Z" />
+          <path {...commonProps} d="M9.5 2.5V6H13" />
+        </>
+      ) : null}
+      {name === 'history' ? (
+        <>
+          <path {...commonProps} d="M3.2 8a4.8 4.8 0 1 0 1.4-3.4" />
+          <path {...commonProps} d="M3 3.5v2.8h2.8" />
+        </>
+      ) : null}
+      {name === 'refresh' ? (
+        <>
+          <path {...commonProps} d="M12.8 6A4.9 4.9 0 0 0 4.4 4.2" />
+          <path {...commonProps} d="M4.2 2.9v2.8H7" />
+          <path {...commonProps} d="M3.2 10A4.9 4.9 0 0 0 11.6 11.8" />
+          <path {...commonProps} d="M11.8 13.1v-2.8H9" />
+        </>
+      ) : null}
+      {name === 'arrowUp' ? (
+        <>
+          <path {...commonProps} d="M8 12.5V3.5" />
+          <path {...commonProps} d="M4.5 7 8 3.5 11.5 7" />
+        </>
+      ) : null}
+      {name === 'arrowDown' ? (
+        <>
+          <path {...commonProps} d="M8 3.5v9" />
+          <path {...commonProps} d="M4.5 9 8 12.5 11.5 9" />
+        </>
+      ) : null}
+      {name === 'upload' ? (
+        <>
+          <path {...commonProps} d="M8 10.8V3.5" />
+          <path {...commonProps} d="M4.7 6.8 8 3.5l3.3 3.3" />
+          <path {...commonProps} d="M3 12.5h10" />
+        </>
+      ) : null}
+    </svg>
   )
 }
 
@@ -1102,21 +1342,6 @@ function homeTabKey(id: string) {
 
 function sessionTabKey(id: string) {
   return `session:${id}`
-}
-
-function insertAfterActive(keys: string[], activeKey: string | null, nextKey: string) {
-  if (!activeKey) {
-    return [...keys, nextKey]
-  }
-
-  const index = keys.indexOf(activeKey)
-  if (index === -1) {
-    return [...keys, nextKey]
-  }
-
-  const next = [...keys]
-  next.splice(index + 1, 0, nextKey)
-  return next
 }
 
 function reorderTabKeys(keys: string[], draggingKey: string | null, targetKey: string) {
