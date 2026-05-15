@@ -392,12 +392,13 @@ button:disabled {
 
 .fs-tabbar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 80px;
+  grid-template-columns: 42px minmax(0, 1fr) 44px;
   align-items: stretch;
   border-bottom: 1px solid var(--border-light);
   background: var(--bg-sidebar);
 }
 
+.tabbar-folder-button,
 .add-tab,
 .window-tools span,
 .flat-button,
@@ -408,6 +409,22 @@ button:disabled {
 .icon-button {
   border: 1px solid var(--border-light);
   background: var(--bg-card);
+  color: var(--text-main);
+}
+
+.tabbar-folder-button {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 100%;
+  padding: 0;
+  border-width: 0 1px 0 0;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.tabbar-folder-button:hover {
+  background: var(--bg-hover);
   color: var(--text-main);
 }
 
@@ -552,6 +569,7 @@ button:disabled {
   color: inherit;
 }
 
+.tabbar-folder-button:hover,
 .window-tools span:hover,
 .window-tools button:hover {
   background: var(--bg-hover);
@@ -1335,11 +1353,22 @@ textarea:focus-visible,
 }
 
 .fs-tabbar {
-  grid-template-columns: minmax(0, 1fr) 78px;
+  grid-template-columns: 40px minmax(0, 1fr) 40px;
   height: 40px;
   background: linear-gradient(180deg, #3d3f44, #2c2d30);
   border-bottom: 1px solid #171717;
   box-shadow: inset 0 1px rgba(255, 255, 255, 0.1);
+}
+
+.tabbar-folder-button {
+  width: 40px;
+  border-right: 1px solid #1f2022;
+  color: #8fbfff;
+}
+
+.tabbar-folder-button:hover {
+  background: #34363a;
+  color: #b8d4ff;
 }
 
 .fs-tabs {
@@ -1385,6 +1414,7 @@ textarea:focus-visible,
 
 .fs-tab:hover:not(.active),
 .add-tab:hover,
+.tabbar-folder-button:hover,
 .window-tools span:hover,
 .window-tools button:hover {
   background: #34363a;

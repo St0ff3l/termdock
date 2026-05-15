@@ -520,6 +520,15 @@ export function App() {
 
         <main className={`fs-main ${error ? 'has-status' : 'no-status'}`}>
           <header className="fs-tabbar">
+            <button
+              aria-label="Open connection manager"
+              className="tabbar-folder-button"
+              onClick={() => setShowConnectionManager(true)}
+              title="连接管理器"
+              type="button"
+            >
+              <AppIcon name="folder" size={16} />
+            </button>
             <div className="fs-tabs">
               {orderedTabs.map((entry, index) => (
                 entry.kind === 'home' ? (
@@ -587,7 +596,6 @@ export function App() {
             </div>
             <div className="window-tools">
               <button title="Grid" type="button"><AppIcon name="grid" /></button>
-              <button title="Menu" type="button" onClick={() => setShowConnectionManager(true)}><AppIcon name="menu" /></button>
             </div>
           </header>
 
@@ -793,7 +801,6 @@ function HomeWorkspace({
           <strong>{t.quickConnect}</strong>
           <div>
             <button className="flat-button" type="button" disabled={!isDesktopRuntime} onClick={onCreate}>{t.newConnection}</button>
-            <button className="flat-button" type="button">{t.clear}</button>
           </div>
         </div>
         <div className="quick-list">
