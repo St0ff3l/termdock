@@ -1,0 +1,26 @@
+:root {
+  --bg-main: #f5f7fb;
+  --bg-sidebar: #edf1f7;
+  --bg-card: #ffffff;
+  --bg-hover: #dde6f1;
+  --bg-active: #d1dbe7;
+
+  --border-light: #d9e2ec;
+  --border-dark: #c4d0dc;
+
+  --text-main: #1f2937;
+  --text-muted: #708090;
+
+  --primary: #5b8def;
+  --primary-hover: #4b7ad7;
+  --danger: #e25b5b;
+  --success: #2ea66c;
+  --warning: #d79543;
+
+  --meter-track: #e6ecf3;
+
+  --terminal-bg: #153649;
+  --terminal-text: #edf5f9;
+  --terminal-cmd-bg: rgba(9, 22, 31, 0.28);
+  --terminal-cmd-text: #d6e4ec;
+}

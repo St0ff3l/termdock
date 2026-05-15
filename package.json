@@ -1,0 +1,18 @@
+{
+  "name": "termdock",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Modern remote workspace for SSH, SFTP, and FTP.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @termdock/desktop",
+    "build": "npm run build -ws --if-present",
+    "typecheck": "npm run typecheck -ws --if-present"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
