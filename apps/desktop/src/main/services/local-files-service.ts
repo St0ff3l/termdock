@@ -1,4 +1,4 @@
-import { readdir, stat } from 'node:fs/promises'
+import { readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import type { LocalFileItem } from '@termdock/core'
@@ -52,5 +52,13 @@ export class LocalFilesService {
       path: dirPath,
       items: rows
     }
+  }
+
+  async readFile(filePath: string): Promise<string> {
+    return readFile(filePath, 'utf8')
+  }
+
+  async writeFile(filePath: string, content: string): Promise<void> {
+    await writeFile(filePath, content, 'utf8')
   }
 }

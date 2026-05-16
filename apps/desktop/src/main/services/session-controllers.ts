@@ -1,22 +1,19 @@
-import { readFile } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
+import { stat, readFile, unlink, writeFile } from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
+import { Client as BasicFtpClient, FileInfo, FileType } from 'basic-ftp'
 import { Client, type ClientChannel, type FileEntry, type SFTPWrapper } from 'ssh2'
 import type {
   ConnectionProfile,
   FileSessionController,
   FtpSessionController,
+  FtpProfile,
   RemoteFileItem,
   SystemMetrics,
   SshProfile,
   SshSessionController
 } from '@termdock/core'
-
-const ftpFiles: RemoteFileItem[] = [
-  { path: '/incoming/exports', name: 'exports', type: 'folder', modified: '2026-05-15 17:08', size: '-', permission: 'drwxr-xr-x', ownerGroup: '0/0' },
-  { path: '/incoming/images', name: 'images', type: 'folder', modified: '2026-05-15 16:35', size: '-', permission: 'drwxr-xr-x', ownerGroup: '0/0' },
-  { path: '/incoming/inventory.csv', name: 'inventory.csv', type: 'file', modified: '2026-05-15 18:11', size: '92 KB', permission: '-rw-r--r--', ownerGroup: '0/0' },
-  { path: '/incoming/nightly.zip', name: 'nightly.zip', type: 'file', modified: '2026-05-15 18:24', size: '1.2 GB', permission: '-rw-r--r--', ownerGroup: '0/0' }
-]
 
 abstract class BaseSessionController implements FileSessionController {
   readonly id: string
@@ -53,6 +50,10 @@ abstract class BaseSessionController implements FileSessionController {
 
   abstract listRemoteFiles(): Promise<RemoteFileItem[]>
   abstract openRemotePath(path: string): Promise<RemoteFileItem[]>
+  abstract readRemoteFile(path: string): Promise<string>
+  abstract writeRemoteFile(path: string, content: string): Promise<void>
+  abstract uploadFile(localPath: string, remotePath: string, onProgress: (progress: number) => void): Promise<void>
+  abstract downloadFile(remotePath: string, localPath: string, onProgress: (progress: number) => void): Promise<void>
 }
 
 export class LiveSshSessionController extends BaseSessionController implements SshSessionController {
@@ -190,6 +191,76 @@ export class LiveSshSessionController extends BaseSessionController implements S
     return this.readRemoteDirectory(this.currentRemotePath)
   }
 
+  async readRemoteFile(targetPath: string): Promise<string> {
+    const sftp = await this.ensureSftp()
+    return new Promise<string>((resolve, reject) => {
+      sftp.readFile(targetPath, 'utf8', (error, data) => {
+        if (error) {
+          reject(error)
+          return
+        }
+        resolve(typeof data === 'string' ? data : data.toString('utf8'))
+      })
+    })
+  }
+
+  async writeRemoteFile(targetPath: string, content: string): Promise<void> {
+    const sftp = await this.ensureSftp()
+    await new Promise<void>((resolve, reject) => {
+      sftp.writeFile(targetPath, content, 'utf8', (error) => {
+        if (error) {
+          reject(error)
+          return
+        }
+        resolve()
+      })
+    })
+  }
+
+  async uploadFile(localPath: string, remotePath: string, onProgress: (progress: number) => void): Promise<void> {
+    const sftp = await this.ensureSftp()
+    const info = await stat(localPath)
+    const total = Math.max(info.size, 1)
+    await new Promise<void>((resolve, reject) => {
+      sftp.fastPut(localPath, remotePath, {
+        step: (transferred) => onProgress(Math.min(99, Math.round((transferred / total) * 100)))
+      }, (error) => {
+        if (error) {
+          reject(error)
+          return
+        }
+        onProgress(100)
+        resolve()
+      })
+    })
+  }
+
+  async downloadFile(remotePath: string, localPath: string, onProgress: (progress: number) => void): Promise<void> {
+    const sftp = await this.ensureSftp()
+    const attrs = await new Promise<{ size?: number }>((resolve, reject) => {
+      sftp.stat(remotePath, (error, stats) => {
+        if (error || !stats) {
+          reject(error ?? new Error(`Failed to stat remote file: ${remotePath}`))
+          return
+        }
+        resolve(stats)
+      })
+    })
+    const total = Math.max(attrs.size ?? 1, 1)
+    await new Promise<void>((resolve, reject) => {
+      sftp.fastGet(remotePath, localPath, {
+        step: (transferred) => onProgress(Math.min(99, Math.round((transferred / total) * 100)))
+      }, (error) => {
+        if (error) {
+          reject(error)
+          return
+        }
+        onProgress(100)
+        resolve()
+      })
+    })
+  }
+
   async refreshSystemMetrics(): Promise<SystemMetrics | undefined> {
     try {
       const raw = await this.execCommand(buildMetricsCommand())
@@ -288,19 +359,130 @@ export class LiveSshSessionController extends BaseSessionController implements S
   }
 }
 
-export class MockFtpSessionController extends BaseSessionController implements FtpSessionController {
+export class LiveFtpSessionController extends BaseSessionController implements FtpSessionController {
   readonly type = 'ftp'
 
-  constructor(id: string, profile: ConnectionProfile) {
+  private readonly ftp = new BasicFtpClient(20000)
+  private currentRemotePath: string
+
+  constructor(id: string, profile: FtpProfile) {
     super(id, 'ftp', profile)
+    this.currentRemotePath = profile.remotePath || '/'
+  }
+
+  override async connect(): Promise<void> {
+    const profile = this.profile as FtpProfile
+    await this.ftp.access({
+      host: profile.host,
+      port: profile.port,
+      user: profile.username,
+      password: profile.password,
+      secure: profile.secure
+    })
+    this.connected = true
+    try {
+      await this.ftp.cd(this.currentRemotePath)
+      this.currentRemotePath = await this.ftp.pwd()
+    } catch {
+      this.currentRemotePath = profile.remotePath || '/'
+    }
+  }
+
+  override async disconnect(): Promise<void> {
+    this.ftp.close()
+    this.connected = false
+  }
+
+  override getRemotePath(): string {
+    return this.currentRemotePath
   }
 
   async listRemoteFiles(): Promise<RemoteFileItem[]> {
-    return ftpFiles
+    return this.readRemoteDirectory(this.currentRemotePath)
   }
 
   async openRemotePath(nextPath: string): Promise<RemoteFileItem[]> {
-    return ftpFiles.map((row) => ({ ...row, path: path.posix.join(nextPath, row.name) }))
+    await this.ftp.cd(nextPath)
+    this.currentRemotePath = await this.ftp.pwd()
+    return this.readRemoteDirectory(this.currentRemotePath)
+  }
+
+  async readRemoteFile(targetPath: string): Promise<string> {
+    const localPath = this.tempFilePath(targetPath)
+    try {
+      await this.ftp.downloadTo(localPath, targetPath)
+      return await readFile(localPath, 'utf8')
+    } finally {
+      void unlink(localPath).catch(() => undefined)
+    }
+  }
+
+  async writeRemoteFile(targetPath: string, content: string): Promise<void> {
+    const localPath = this.tempFilePath(targetPath)
+    try {
+      await writeFile(localPath, content, 'utf8')
+      await this.ftp.uploadFrom(localPath, targetPath)
+    } finally {
+      void unlink(localPath).catch(() => undefined)
+    }
+  }
+
+  async uploadFile(localPath: string, remotePath: string, onProgress: (progress: number) => void): Promise<void> {
+    const info = await stat(localPath)
+    const total = Math.max(info.size, 1)
+    this.ftp.trackProgress((progress) => {
+      onProgress(Math.min(99, Math.round((progress.bytes / total) * 100)))
+    })
+    try {
+      await this.ftp.uploadFrom(localPath, remotePath)
+      onProgress(100)
+    } finally {
+      this.ftp.trackProgress()
+    }
+  }
+
+  async downloadFile(remotePath: string, localPath: string, onProgress: (progress: number) => void): Promise<void> {
+    const total = Math.max(await this.ftp.size(remotePath), 1)
+    this.ftp.trackProgress((progress) => {
+      onProgress(Math.min(99, Math.round((progress.bytes / total) * 100)))
+    })
+    try {
+      await this.ftp.downloadTo(localPath, remotePath)
+      onProgress(100)
+    } finally {
+      this.ftp.trackProgress()
+    }
+  }
+
+  private async readRemoteDirectory(targetPath: string): Promise<RemoteFileItem[]> {
+    const entries = await this.ftp.list(targetPath)
+    const rows = entries
+      .filter((entry) => entry.name !== '.' && entry.name !== '..')
+      .map((entry) => toFtpRemoteFileItem(targetPath, entry))
+      .sort((left, right) => {
+        if (left.type !== right.type) {
+          return left.type === 'folder' ? -1 : 1
+        }
+        return left.name.localeCompare(right.name)
+      })
+
+    if (targetPath !== '/') {
+      rows.unshift({
+        path: parentRemotePath(targetPath),
+        name: '..',
+        type: 'folder',
+        modified: '',
+        size: '-',
+        permission: '',
+        ownerGroup: ''
+      })
+    }
+
+    return rows
+  }
+
+  private tempFilePath(remotePath: string) {
+    return path.join(os.tmpdir(), `termdock-${randomUUID()}-${path.posix.basename(remotePath) || 'remote-file'}`)
   }
 }
 
@@ -318,6 +500,32 @@ function toRemoteFileItem(basePath: string, entry: FileEntry): RemoteFileItem {
   }
 }
 
+function toFtpRemoteFileItem(basePath: string, entry: FileInfo): RemoteFileItem {
+  const fullPath = path.posix.join(basePath, entry.name)
+  const isDirectory = entry.type === FileType.Directory || entry.isDirectory
+  return {
+    path: fullPath,
+    name: entry.name,
+    type: isDirectory ? 'folder' : 'file',
+    modified: entry.modifiedAt ? formatDate(entry.modifiedAt) : entry.rawModifiedAt,
+    size: isDirectory ? '-' : formatBytes(entry.size),
+    permission: formatFtpPermissions(entry.type, entry.permissions),
+    ownerGroup: [entry.user, entry.group].filter(Boolean).join('/') || ''
+  }
+}
+
+function formatFtpPermissions(type: FileType, permissions?: FileInfo['permissions']) {
+  if (!permissions) {
+    return type === FileType.Directory ? 'd---------' : '----------'
+  }
+
+  return `${type === FileType.Directory ? 'd' : '-'}${formatPermissionGroup(permissions.user)}${formatPermissionGroup(permissions.group)}${formatPermissionGroup(permissions.world)}`
+}
+
+function formatPermissionGroup(value = 0) {
+  return `${value & FileInfo.UnixPermission.Read ? 'r' : '-'}${value & FileInfo.UnixPermission.Write ? 'w' : '-'}${value & FileInfo.UnixPermission.Execute ? 'x' : '-'}`
+}
+
 function parentRemotePath(currentPath: string) {
   const normalized = currentPath.endsWith('/') && currentPath !== '/' ? currentPath.slice(0, -1) : currentPath
   const parent = path.posix.dirname(normalized)
@@ -329,6 +537,11 @@ function formatTimestamp(timestamp?: number) {
     return ''
   }
   const date = new Date(timestamp * 1000)
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+function formatDate(date: Date) {
   const pad = (value: number) => String(value).padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }

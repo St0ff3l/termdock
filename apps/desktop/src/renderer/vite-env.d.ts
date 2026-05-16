@@ -15,10 +15,18 @@ declare global {
       activateTab(tabId: string): Promise<WorkspaceSnapshot>
       closeTab(tabId: string): Promise<WorkspaceSnapshot>
       listLocalDirectory(dirPath?: string): Promise<{ path: string, items: LocalFileItem[] }>
+      readLocalFile(filePath: string): Promise<string>
+      writeLocalFile(filePath: string, content: string): Promise<void>
+      selectLocalFiles(defaultPath?: string): Promise<string[]>
+      selectLocalDirectory(defaultPath?: string): Promise<string | null>
       queueUpload(fileNames: string[]): Promise<WorkspaceSnapshot>
+      uploadFile(tabId: string, localPath: string, remoteDirectory: string): Promise<WorkspaceSnapshot>
+      downloadFile(tabId: string, remotePath: string, localDirectory: string): Promise<WorkspaceSnapshot>
       writeTerminal(tabId: string, data: string): Promise<void>
       resizeTerminal(tabId: string, cols: number, rows: number): Promise<void>
       openRemotePath(tabId: string, targetPath: string): Promise<WorkspaceSnapshot>
+      readRemoteFile(tabId: string, targetPath: string): Promise<string>
+      writeRemoteFile(tabId: string, targetPath: string, content: string): Promise<WorkspaceSnapshot>
       onTerminalData(listener: (payload: { tabId: string, chunk: string }) => void): () => void
       onTerminalState(listener: (payload: { tabId: string, summary: string, transcript: string, connected: boolean }) => void): () => void
       onWorkspaceSnapshot(listener: (snapshot: WorkspaceSnapshot) => void): () => void

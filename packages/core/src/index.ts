@@ -69,6 +69,14 @@ export interface TransferTask {
   name: string
   progress: number
   status: 'queued' | 'running' | 'done' | 'failed'
+  message?: string
+}
+
+export interface FileContentSnapshot {
+  path: string
+  name: string
+  content: string
+  source: 'local' | 'remote'
 }
 
 export interface SidebarProcessItem {
@@ -160,6 +168,10 @@ export interface FileSessionController extends SessionController {
   getRemotePath(): string
   listRemoteFiles(): Promise<RemoteFileItem[]>
   openRemotePath(path: string): Promise<RemoteFileItem[]>
+  readRemoteFile(path: string): Promise<string>
+  writeRemoteFile(path: string, content: string): Promise<void>
+  uploadFile(localPath: string, remotePath: string, onProgress: (progress: number) => void): Promise<void>
+  downloadFile(remotePath: string, localPath: string, onProgress: (progress: number) => void): Promise<void>
 }
 
 export interface SshSessionController extends ShellSessionController, FileSessionController {

@@ -56,7 +56,7 @@ export const zhCN = {
   fillRequired: '请填写名称、主机、端口、用户名、分组和远程路径。',
   desktopOnlyCreate: '新建连接只在 Electron 桌面窗口中可用。',
   desktopOnlyDelete: '删除连接只在 Electron 桌面窗口中可用。',
-  desktopOnlyUpload: '拖拽上传会在接入真实 SFTP/FTP 后启用。',
+  desktopOnlyUpload: '请拖拽有效本机文件，或先打开一个已连接的远程目录。',
   emptyTerminal: '打开 SSH 连接后将在这里显示终端。',
   emptyFiles: '打开连接后将在这里显示远程文件。',
   transferTasks: '传输任务',

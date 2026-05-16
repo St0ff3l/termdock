@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import path from 'node:path'
 import type { WebContents } from 'electron'
 import {
   createTabLayout,
@@ -11,8 +12,8 @@ import {
 } from '@termdock/core'
 import type { ProfileRepository } from '@termdock/storage'
 import {
+  LiveFtpSessionController,
   LiveSshSessionController,
-  MockFtpSessionController,
 } from './session-controllers.js'
 
 const seedProfiles: ConnectionProfile[] = [
@@ -54,10 +55,7 @@ const seedProfiles: ConnectionProfile[] = [
   }
 ]
 
-const seedTransfers: TransferTask[] = [
-  { id: 'transfer-1', direction: 'upload', name: 'release.tar.gz', progress: 72, status: 'running' },
-  { id: 'transfer-2', direction: 'download', name: 'backup.sql.gz', progress: 31, status: 'running' }
-]
+const seedTransfers: TransferTask[] = []
 
 export class WorkspaceService {
   private static readonly METRICS_POLL_INTERVAL_MS = 1000
@@ -66,7 +64,7 @@ export class WorkspaceService {
   private tabs: WorkspaceTab[] = []
   private activeTabId: string | null = null
   private readonly sessions = new Map<string, SessionSnapshot>()
-  private readonly liveControllers = new Map<string, LiveSshSessionController | MockFtpSessionController>()
+  private readonly liveControllers = new Map<string, LiveSshSessionController | LiveFtpSessionController>()
   private readonly metricsPollers = new Map<string, ReturnType<typeof setInterval>>()
   private readonly metricsRefreshInFlight = new Set<string>()
   private readonly tabSenders = new Map<string, WebContents>()
@@ -156,7 +154,7 @@ export class WorkspaceService {
               void this.emitSnapshotForTab(tabId)
             }
           )
-        : new MockFtpSessionController(tabId, profile)
+        : new LiveFtpSessionController(tabId, profile)
 
     const snapshot: SessionSnapshot = {
       profileId: profile.id,
@@ -214,6 +212,60 @@ export class WorkspaceService {
     return this.getSnapshot()
   }
 
+  async uploadFile(tabId: string, localPath: string, remoteDirectory: string, sender: WebContents): Promise<WorkspaceSnapshot> {
+    const controller = this.requireFileController(tabId)
+    const remotePath = path.posix.join(remoteDirectory, path.basename(localPath))
+    const transferId = this.addTransfer('upload', path.basename(localPath), sender)
+
+    try {
+      await controller.uploadFile(localPath, remotePath, (progress) => {
+        void this.updateTransfer(transferId, { progress, status: 'running' }, sender)
+      })
+      await this.updateTransfer(transferId, { progress: 100, status: 'done' }, sender)
+      await this.refreshRemoteFiles(tabId)
+    } catch (error) {
+      await this.updateTransfer(transferId, {
+        status: 'failed',
+        message: error instanceof Error ? error.message : '上传失败'
+      }, sender)
+      throw error
+    }
+
+    return this.getSnapshot()
+  }
+
+  async downloadFile(tabId: string, remotePath: string, localDirectory: string, sender: WebContents): Promise<WorkspaceSnapshot> {
+    const controller = this.requireFileController(tabId)
+    const localPath = path.join(localDirectory, path.posix.basename(remotePath))
+    const transferId = this.addTransfer('download', path.posix.basename(remotePath), sender)
+
+    try {
+      await controller.downloadFile(remotePath, localPath, (progress) => {
+        void this.updateTransfer(transferId, { progress, status: 'running' }, sender)
+      })
+      await this.updateTransfer(transferId, { progress: 100, status: 'done' }, sender)
+    } catch (error) {
+      await this.updateTransfer(transferId, {
+        status: 'failed',
+        message: error instanceof Error ? error.message : '下载失败'
+      }, sender)
+      throw error
+    }
+
+    return this.getSnapshot()
+  }
+
+  async readRemoteFile(tabId: string, targetPath: string): Promise<string> {
+    return this.requireFileController(tabId).readRemoteFile(targetPath)
+  }
+
+  async writeRemoteFile(tabId: string, targetPath: string, content: string): Promise<WorkspaceSnapshot> {
+    const controller = this.requireFileController(tabId)
+    await controller.writeRemoteFile(targetPath, content)
+    await this.refreshRemoteFiles(tabId)
+    return this.getSnapshot()
+  }
+
   async writeToTerminal(tabId: string, data: string): Promise<void> {
     const controller = this.liveControllers.get(tabId)
     if (!controller || controller.type !== 'ssh') {
@@ -247,9 +299,60 @@ export class WorkspaceService {
     return this.getSnapshot()
   }
 
+  private requireFileController(tabId: string) {
+    const controller = this.liveControllers.get(tabId)
+    if (!controller) {
+      throw new Error(`Session not found: ${tabId}`)
+    }
+    return controller
+  }
+
+  private async refreshRemoteFiles(tabId: string) {
+    const controller = this.requireFileController(tabId)
+    const current = this.sessions.get(tabId)
+    if (!current) {
+      return
+    }
+    const remoteFiles = await controller.listRemoteFiles()
+    this.sessions.set(tabId, {
+      ...current,
+      remotePath: controller.getRemotePath(),
+      remoteFiles
+    })
+  }
+
+  private addTransfer(direction: TransferTask['direction'], name: string, sender: WebContents) {
+    const transferId = randomUUID()
+    this.transfers.unshift({
+      id: transferId,
+      direction,
+      name,
+      progress: 0,
+      status: 'running'
+    })
+    void this.emitSnapshot(sender)
+    return transferId
+  }
+
+  private async updateTransfer(
+    transferId: string,
+    patch: Partial<Pick<TransferTask, 'progress' | 'status' | 'message'>>,
+    sender: WebContents
+  ) {
+    const index = this.transfers.findIndex((transfer) => transfer.id === transferId)
+    if (index === -1) {
+      return
+    }
+    this.transfers[index] = {
+      ...this.transfers[index],
+      ...patch
+    }
+    await this.emitSnapshot(sender)
+  }
+
   private async connectSession(
     tabId: string,
-    controller: LiveSshSessionController | MockFtpSessionController
+    controller: LiveSshSessionController | LiveFtpSessionController
   ) {
     try {
       await controller.connect()

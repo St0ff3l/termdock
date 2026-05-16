@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useTransition, type CSSProperties, type Dr
 import type {
   ConnectionProfile,
   CreateProfileInput,
+  FileContentSnapshot,
   LocalFileItem,
   RemoteFileItem,
   SessionSnapshot,
@@ -20,6 +21,9 @@ const emptyState: WorkspaceSnapshot = {
   transfers: [],
   sessions: {}
 }
+
+const localFileDragType = 'application/x-termdock-local-file'
+const remoteFileDragType = 'application/x-termdock-remote-file'
 
 const localPreviewFiles: LocalFileItem[] = [
   { path: '/Users/stoffel', name: '..', type: 'folder', modified: '2026/05/15 18:44', size: '-' },
@@ -180,7 +184,11 @@ export function App() {
   const [draggingTabKey, setDraggingTabKey] = useState<string | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(214)
   const [isResizingSidebar, setIsResizingSidebar] = useState(false)
+  const [fileEditor, setFileEditor] = useState<FileContentSnapshot | null>(null)
+  const [fileEditorError, setFileEditorError] = useState<string | null>(null)
+  const [showTransfers, setShowTransfers] = useState(false)
   const homeTabsRef = useRef(homeTabs)
+  const previousActiveTransferCountRef = useRef(0)
   const pendingHomeReplacementKeyRef = useRef<string | null>(null)
   const desktopApi = window.termdock
   const isDesktopRuntime = Boolean(desktopApi?.isDesktop)
@@ -233,6 +241,14 @@ export function App() {
   const activeProfile = !activeHomeTabId && activeTab
     ? workspace.profiles.find((profile) => profile.id === activeTab.profileId) ?? null
     : null
+  const activeTransferCount = workspace.transfers.filter((transfer) => transfer.status === 'running' || transfer.status === 'queued').length
+
+  useEffect(() => {
+    if (activeTransferCount > previousActiveTransferCountRef.current) {
+      setShowTransfers(true)
+    }
+    previousActiveTransferCountRef.current = activeTransferCount
+  }, [activeTransferCount])
 
   useEffect(() => {
     const allKeys = [
@@ -523,21 +539,21 @@ export function App() {
 
   const handleDropUpload = async (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault()
-    const fileNames = Array.from(event.dataTransfer.files).map((file) => file.name).filter(Boolean)
-    if (!fileNames.length) {
-      setError(t.desktopOnlyUpload)
-      return
-    }
+    const localPaths = Array.from(event.dataTransfer.files)
+      .map((file) => (file as File & { path?: string }).path)
+      .filter((filePath): filePath is string => Boolean(filePath))
 
-    if (!desktopApi) {
+    if (!localPaths.length || !desktopApi || !activeTab || !activeSession) {
       setError(t.desktopOnlyUpload)
       return
     }
 
     try {
       setIsBusy(true)
-      const snapshot = await desktopApi.queueUpload(fileNames)
-      applySnapshot(snapshot)
+      for (const localFilePath of localPaths) {
+        const snapshot = await desktopApi.uploadFile(activeTab.id, localFilePath, activeSession.remotePath)
+        applySnapshot(snapshot)
+      }
     } catch (err) {
       setError((err as Error).message)
     } finally {
@@ -545,22 +561,74 @@ export function App() {
     }
   }
 
-  const handleOpenLocalItem = async (item: LocalFileItem) => {
-    if (item.type !== 'folder') {
+  const openLocalDirectory = async (targetPath: string) => {
+    if (!desktopApi) {
+      setLocalPath(targetPath)
       return
     }
 
+    const { path, items } = await desktopApi.listLocalDirectory(targetPath)
+    setLocalPath(path)
+    setLocalItems(withParentRow(path, items))
+  }
+
+  const handleOpenLocalItem = async (item: LocalFileItem) => {
     if (!desktopApi) {
       setLocalPath(item.path)
       return
     }
 
     try {
-      const { path, items } = await desktopApi.listLocalDirectory(item.path)
-      setLocalPath(path)
-      setLocalItems(withParentRow(path, items))
-    } catch {
-      setError(t.localLoadFailed)
+      if (item.type === 'folder') {
+        await openLocalDirectory(item.path)
+        return
+      }
+      const content = await desktopApi.readLocalFile(item.path)
+      setFileEditor({ path: item.path, name: item.name, source: 'local', content })
+      setFileEditorError(null)
+    } catch (err) {
+      setError(item.type === 'folder' ? t.localLoadFailed : (err as Error).message)
+    }
+  }
+
+  const openRemoteDirectory = async (tabId: string, targetPath: string) => {
+    if (!desktopApi) {
+      return
+    }
+
+    const snapshot = await desktopApi.openRemotePath(tabId, targetPath)
+    applySnapshot(snapshot)
+  }
+
+  const openRemoteFileForEdit = async (tabId: string, item: RemoteFileItem) => {
+    if (!desktopApi) {
+      return
+    }
+    const content = await desktopApi.readRemoteFile(tabId, item.path)
+    setFileEditor({ path: item.path, name: item.name, source: 'remote', content })
+    setFileEditorError(null)
+  }
+
+  const handleSaveFileEditor = async (content: string) => {
+    if (!desktopApi || !fileEditor) {
+      return
+    }
+
+    try {
+      setIsBusy(true)
+      if (fileEditor.source === 'local') {
+        await desktopApi.writeLocalFile(fileEditor.path, content)
+        await openLocalDirectory(localPath)
+      } else if (activeTab) {
+        const snapshot = await desktopApi.writeRemoteFile(activeTab.id, fileEditor.path, content)
+        applySnapshot(snapshot)
+      }
+      setFileEditor(null)
+      setFileEditorError(null)
+    } catch (err) {
+      setFileEditorError((err as Error).message)
+    } finally {
+      setIsBusy(false)
     }
   }
 
@@ -674,15 +742,122 @@ export function App() {
                 localItems={localItems}
                 localPath={localPath}
                 onOpenLocalItem={handleOpenLocalItem}
+                onOpenLocalPath={async (targetPath) => {
+                  try {
+                    await openLocalDirectory(targetPath)
+                  } catch (err) {
+                    setError((err as Error).message)
+                  }
+                }}
                 onOpenRemoteItem={async (item) => {
-                  if (item.type !== 'folder' || !desktopApi) {
+                  if (!desktopApi) {
                     return
                   }
 
                   try {
                     setIsBusy(true)
-                    const snapshot = await desktopApi.openRemotePath(activeTab.id, item.path)
+                    if (item.type === 'folder') {
+                      await openRemoteDirectory(activeTab.id, item.path)
+                    } else {
+                      await openRemoteFileForEdit(activeTab.id, item)
+                    }
+                  } catch (err) {
+                    setError((err as Error).message)
+                  } finally {
+                    setIsBusy(false)
+                  }
+                }}
+                onOpenRemotePath={async (targetPath) => {
+                  try {
+                    setIsBusy(true)
+                    await openRemoteDirectory(activeTab.id, targetPath)
+                  } catch (err) {
+                    setError((err as Error).message)
+                  } finally {
+                    setIsBusy(false)
+                  }
+                }}
+                onRefresh={async () => {
+                  try {
+                    setIsBusy(true)
+                    await openLocalDirectory(localPath)
+                    await openRemoteDirectory(activeTab.id, activeSession.remotePath)
+                  } catch (err) {
+                    setError((err as Error).message)
+                  } finally {
+                    setIsBusy(false)
+                  }
+                }}
+                onUploadFile={async (item) => {
+                  if (!desktopApi) return
+                  try {
+                    setIsBusy(true)
+                    const snapshot = await desktopApi.uploadFile(activeTab.id, item.path, activeSession.remotePath)
                     applySnapshot(snapshot)
+                  } catch (err) {
+                    setError((err as Error).message)
+                  } finally {
+                    setIsBusy(false)
+                  }
+                }}
+                onUploadFiles={async (items) => {
+                  if (!desktopApi) return
+                  try {
+                    setIsBusy(true)
+                    for (const item of items.filter((row) => row.type === 'file')) {
+                      const snapshot = await desktopApi.uploadFile(activeTab.id, item.path, activeSession.remotePath)
+                      applySnapshot(snapshot)
+                    }
+                  } catch (err) {
+                    setError((err as Error).message)
+                  } finally {
+                    setIsBusy(false)
+                  }
+                }}
+                onChooseUploadFiles={async () => {
+                  if (!desktopApi) return
+                  const filePaths = await desktopApi.selectLocalFiles(localPath)
+                  if (!filePaths.length) return
+                  try {
+                    setIsBusy(true)
+                    for (const filePath of filePaths) {
+                      const snapshot = await desktopApi.uploadFile(activeTab.id, filePath, activeSession.remotePath)
+                      applySnapshot(snapshot)
+                    }
+                  } catch (err) {
+                    setError((err as Error).message)
+                  } finally {
+                    setIsBusy(false)
+                  }
+                }}
+                onDownloadFiles={async (items, targetDirectory) => {
+                  if (!desktopApi) return
+                  const files = items.filter((row) => row.type === 'file')
+                  if (!files.length) return
+                  const downloadDirectory = targetDirectory ?? await desktopApi.selectLocalDirectory()
+                  if (!downloadDirectory) return
+                  try {
+                    setIsBusy(true)
+                    for (const item of files) {
+                      const snapshot = await desktopApi.downloadFile(activeTab.id, item.path, downloadDirectory)
+                      applySnapshot(snapshot)
+                    }
+                    await openLocalDirectory(downloadDirectory)
+                  } catch (err) {
+                    setError((err as Error).message)
+                  } finally {
+                    setIsBusy(false)
+                  }
+                }}
+                onDownloadFile={async (item, targetDirectory) => {
+                  if (!desktopApi) return
+                  const downloadDirectory = targetDirectory ?? await desktopApi.selectLocalDirectory()
+                  if (!downloadDirectory) return
+                  try {
+                    setIsBusy(true)
+                    const snapshot = await desktopApi.downloadFile(activeTab.id, item.path, downloadDirectory)
+                    applySnapshot(snapshot)
+                    await openLocalDirectory(downloadDirectory)
                   } catch (err) {
                     setError((err as Error).message)
                   } finally {
@@ -701,7 +876,18 @@ export function App() {
             )}
           </div>
         </main>
-        <TransferBar transfers={workspace.transfers} isPending={isBusy} />
+        <TransferBar
+          activeCount={activeTransferCount}
+          isPending={isBusy}
+          onOpen={() => setShowTransfers((prev) => !prev)}
+          transfers={workspace.transfers}
+        />
+        {showTransfers ? (
+          <TransferPopover
+            transfers={workspace.transfers}
+            onClose={() => setShowTransfers(false)}
+          />
+        ) : null}
       </div>
 
       {showConnectionManager ? (
@@ -738,6 +924,17 @@ export function App() {
           }}
         />
       ) : null}
+      {fileEditor ? (
+        <FileEditorModal
+          file={fileEditor}
+          errorMessage={fileEditorError}
+          onClose={() => {
+            setFileEditor(null)
+            setFileEditorError(null)
+          }}
+          onSave={handleSaveFileEditor}
+        />
+      ) : null}
     </>
   )
 }
@@ -752,15 +949,10 @@ function SystemPanel({
   const metrics = activeSession?.systemMetrics
   const internalIp = metrics?.ip || '-'
   const accessAddress = activeProfile?.host || activeSession?.accessHost || '-'
-  const isConnected = Boolean(activeSession?.connected)
 
   return (
     <section className="sys-card">
       <div className="connection-summary">
-        <div className="sync-row connection-status">
-          <span>{t.syncStatus}</span>
-          <i className={`sync-dot ${isConnected ? 'online' : 'offline'}`} />
-        </div>
         <AddressLine label={t.privateIp} value={internalIp} />
         <AddressLine label={t.accessAddress} value={accessAddress} />
       </div>
@@ -1032,7 +1224,15 @@ function SessionWorkspace({
   localItems,
   localPath,
   onOpenLocalItem,
+  onOpenLocalPath,
   onOpenRemoteItem,
+  onOpenRemotePath,
+  onRefresh,
+  onUploadFile,
+  onUploadFiles,
+  onChooseUploadFiles,
+  onDownloadFiles,
+  onDownloadFile,
   onDropUpload
 }: {
   activeTab: WorkspaceTab
@@ -1040,7 +1240,15 @@ function SessionWorkspace({
   localItems: LocalFileItem[]
   localPath: string
   onOpenLocalItem(item: LocalFileItem): void
+  onOpenLocalPath(path: string): void
   onOpenRemoteItem(item: RemoteFileItem): void
+  onOpenRemotePath(path: string): void
+  onRefresh(): void
+  onUploadFile(item: LocalFileItem): void
+  onUploadFiles(items: LocalFileItem[]): void
+  onChooseUploadFiles(): void
+  onDownloadFiles(items: RemoteFileItem[], targetDirectory?: string): void
+  onDownloadFile(item: RemoteFileItem, targetDirectory?: string): void
   onDropUpload(event: DragEvent<HTMLDivElement>): void
 }) {
   const isFileOnly = activeTab.layout === 'file-only'
@@ -1141,7 +1349,15 @@ function SessionWorkspace({
         localItems={localItems}
         localPath={localPath}
         onOpenLocalItem={onOpenLocalItem}
+        onOpenLocalPath={onOpenLocalPath}
         onOpenRemoteItem={onOpenRemoteItem}
+        onOpenRemotePath={onOpenRemotePath}
+        onRefresh={onRefresh}
+        onUploadFile={onUploadFile}
+        onUploadFiles={onUploadFiles}
+        onChooseUploadFiles={onChooseUploadFiles}
+        onDownloadFiles={onDownloadFiles}
+        onDownloadFile={onDownloadFile}
         onDropUpload={onDropUpload}
       />
     </section>
@@ -1153,19 +1369,188 @@ function FileManager({
   localItems,
   localPath,
   onOpenLocalItem,
+  onOpenLocalPath,
   onOpenRemoteItem,
+  onOpenRemotePath,
+  onRefresh,
+  onUploadFile,
+  onUploadFiles,
+  onChooseUploadFiles,
+  onDownloadFiles,
+  onDownloadFile,
   onDropUpload
 }: {
   activeSession: SessionSnapshot
   localItems: LocalFileItem[]
   localPath: string
   onOpenLocalItem(item: LocalFileItem): void
+  onOpenLocalPath(path: string): void
   onOpenRemoteItem(item: RemoteFileItem): void
+  onOpenRemotePath(path: string): void
+  onRefresh(): void
+  onUploadFile(item: LocalFileItem): void
+  onUploadFiles(items: LocalFileItem[]): void
+  onChooseUploadFiles(): void
+  onDownloadFiles(items: RemoteFileItem[], targetDirectory?: string): void
+  onDownloadFile(item: RemoteFileItem, targetDirectory?: string): void
   onDropUpload(event: DragEvent<HTMLDivElement>): void
 }) {
   const [localPaneWidth, setLocalPaneWidth] = useState(230)
+  const [localPathInput, setLocalPathInput] = useState(localPath)
+  const [remotePathInput, setRemotePathInput] = useState(activeSession.remotePath)
+  const [selectedLocalPaths, setSelectedLocalPaths] = useState<string[]>([])
+  const [selectedRemotePaths, setSelectedRemotePaths] = useState<string[]>([])
+  const [localAnchorPath, setLocalAnchorPath] = useState<string | null>(null)
+  const [remoteAnchorPath, setRemoteAnchorPath] = useState<string | null>(null)
+  const [contextMenu, setContextMenu] = useState<{
+    pane: 'local' | 'remote'
+    x: number
+    y: number
+    path: string
+  } | null>(null)
   const splitRef = useRef<HTMLDivElement | null>(null)
   const isResizingFileSplit = useRef(false)
+  const isSelectingLocal = useRef(false)
+  const isSelectingRemote = useRef(false)
+  const didDragSelect = useRef(false)
+  const suppressNextSelectionClick = useRef(false)
+  const suppressNextClearClick = useRef(false)
+  const localDragSelection = useRef<{ basePaths: string[]; startPath: string } | null>(null)
+  const remoteDragSelection = useRef<{ basePaths: string[]; startPath: string } | null>(null)
+
+  useEffect(() => {
+    setLocalPathInput(localPath)
+    setSelectedLocalPaths((prev) => prev.filter((selectedPath) => localItems.some((item) => item.path === selectedPath)))
+  }, [localPath])
+
+  useEffect(() => {
+    setRemotePathInput(activeSession.remotePath)
+    setSelectedRemotePaths((prev) => prev.filter((selectedPath) => activeSession.remoteFiles.some((item) => item.path === selectedPath)))
+  }, [activeSession.remotePath])
+
+  const selectedLocalItems = localItems.filter((item) => selectedLocalPaths.includes(item.path))
+  const selectedRemoteItems = activeSession.remoteFiles.filter((item) => selectedRemotePaths.includes(item.path))
+  const selectedRemoteFileItems = selectedRemoteItems.filter((item) => item.type === 'file')
+  const contextLocalItem = contextMenu?.pane === 'local'
+    ? localItems.find((item) => item.path === contextMenu.path) ?? null
+    : null
+  const contextRemoteItem = contextMenu?.pane === 'remote'
+    ? activeSession.remoteFiles.find((item) => item.path === contextMenu.path) ?? null
+    : null
+
+  const submitLocalPath = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    onOpenLocalPath(localPathInput.trim() || localPath)
+  }
+
+  const submitRemotePath = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const targetPath = remotePathInput.trim() || activeSession.remotePath
+    onOpenRemotePath(targetPath)
+  }
+
+  const handleRemotePaneDrop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+
+    const draggedLocalPath = event.dataTransfer.getData(localFileDragType)
+    if (draggedLocalPath) {
+      const draggedPaths = parseDraggedPaths(draggedLocalPath)
+      const items = localItems.filter((row) => draggedPaths.includes(row.path) && row.type === 'file')
+      if (items.length) {
+        onUploadFiles(items)
+      }
+      return
+    }
+
+    onDropUpload(event)
+  }
+
+  const handleLocalPaneDrop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+
+    const draggedRemotePayload = event.dataTransfer.getData(remoteFileDragType)
+    if (!draggedRemotePayload) {
+      return
+    }
+
+    const draggedPaths = parseDraggedPaths(draggedRemotePayload)
+    const items = activeSession.remoteFiles.filter((row) => draggedPaths.includes(row.path) && row.type === 'file')
+    if (items.length) {
+      onDownloadFiles(items, localPath)
+    }
+  }
+
+  const selectLocalItem = (event: MouseEvent<HTMLTableRowElement>, item: LocalFileItem) => {
+    if (suppressNextSelectionClick.current) {
+      suppressNextSelectionClick.current = false
+      return
+    }
+    const selected = nextSelection({
+      anchorPath: localAnchorPath,
+      currentSelection: selectedLocalPaths,
+      event,
+      itemPath: item.path,
+      rows: localItems
+    })
+    setSelectedLocalPaths(selected)
+    setLocalAnchorPath(item.path)
+  }
+
+  const selectRemoteItem = (event: MouseEvent<HTMLTableRowElement>, item: RemoteFileItem) => {
+    if (suppressNextSelectionClick.current) {
+      suppressNextSelectionClick.current = false
+      return
+    }
+    const selected = nextSelection({
+      anchorPath: remoteAnchorPath,
+      currentSelection: selectedRemotePaths,
+      event,
+      itemPath: item.path,
+      rows: activeSession.remoteFiles
+    })
+    setSelectedRemotePaths(selected)
+    setRemoteAnchorPath(item.path)
+  }
+
+  const extendLocalDragSelection = (item: LocalFileItem) => {
+    const session = localDragSelection.current
+    if (!isSelectingLocal.current || !session) return
+    didDragSelect.current = true
+    setSelectedLocalPaths(mergeUnique([
+      ...session.basePaths,
+      ...rangePaths(localItems, session.startPath, item.path)
+    ]))
+  }
+
+  const extendRemoteDragSelection = (item: RemoteFileItem) => {
+    const session = remoteDragSelection.current
+    if (!isSelectingRemote.current || !session) return
+    didDragSelect.current = true
+    setSelectedRemotePaths(mergeUnique([
+      ...session.basePaths,
+      ...rangePaths(activeSession.remoteFiles, session.startPath, item.path)
+    ]))
+  }
+
+  const openContextTarget = () => {
+    if (contextLocalItem) {
+      onOpenLocalItem(contextLocalItem)
+    }
+    if (contextRemoteItem) {
+      onOpenRemoteItem(contextRemoteItem)
+    }
+    setContextMenu(null)
+  }
+
+  const copyContextPath = () => {
+    const targetPath = contextLocalItem?.path ?? contextRemoteItem?.path
+    if (targetPath) {
+      copyText(targetPath)
+    }
+    setContextMenu(null)
+  }
 
   useEffect(() => {
     const handleMouseMove = (event: globalThis.MouseEvent) => {
@@ -1180,6 +1565,14 @@ function FileManager({
     }
 
     const handleMouseUp = () => {
+      if (didDragSelect.current) {
+        suppressNextClearClick.current = true
+      }
+      didDragSelect.current = false
+      isSelectingLocal.current = false
+      isSelectingRemote.current = false
+      localDragSelection.current = null
+      remoteDragSelection.current = null
       if (!isResizingFileSplit.current) return
       isResizingFileSplit.current = false
       document.body.style.cursor = ''
@@ -1197,17 +1590,28 @@ function FileManager({
   }, [])
 
   return (
-    <div className="file-manager" onDragOver={(event) => event.preventDefault()} onDrop={onDropUpload}>
+    <div className="file-manager" onClick={() => setContextMenu(null)}>
       <div className="file-tabs">
         <button className="active" type="button">{t.file}</button>
         <button type="button">{t.command}</button>
         <span className="file-current-path">{activeSession.remotePath}</span>
         <div className="file-tab-actions">
-          <button title={t.history} type="button"><AppIcon name="history" /></button>
-          <button title="刷新" type="button"><AppIcon name="refresh" /></button>
-          <button title="上传到上级目录" type="button"><AppIcon name="arrowUp" /></button>
-          <button title="下载到本地" type="button"><AppIcon name="arrowDown" /></button>
-          <button title={t.upload} type="button"><AppIcon name="upload" /></button>
+          <button title="刷新" type="button" onClick={onRefresh}><AppIcon name="refresh" /></button>
+          <button
+            title="下载到..."
+            type="button"
+            disabled={!selectedRemoteFileItems.length}
+            onClick={() => onDownloadFiles(selectedRemoteFileItems)}
+          >
+            <AppIcon name="download" />
+          </button>
+          <button
+            title={t.upload}
+            type="button"
+            onClick={onChooseUploadFiles}
+          >
+            <AppIcon name="upload" />
+          </button>
         </div>
       </div>
       <div
@@ -1215,9 +1619,81 @@ function FileManager({
         ref={splitRef}
         style={{ '--local-pane-width': `${localPaneWidth}px` } as CSSProperties}
       >
-        <div className="local-pane">
-          <div className="pane-title">{t.localComputer}<span>{localPath}</span></div>
-          <LocalFileTable rows={localItems} onOpenItem={onOpenLocalItem} />
+        <div
+          className="local-pane"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setSelectedLocalPaths([])
+              setLocalAnchorPath(null)
+            }
+          }}
+          onDragOver={(event) => {
+            event.preventDefault()
+            event.dataTransfer.dropEffect = 'copy'
+          }}
+          onDrop={handleLocalPaneDrop}
+        >
+          <PanePathBar label={t.localComputer} value={localPathInput} onChange={setLocalPathInput} onSubmit={submitLocalPath} />
+          <div
+            className="file-table-shell"
+            onClick={(event) => {
+              if (event.target !== event.currentTarget) return
+              if (suppressNextClearClick.current) {
+                suppressNextClearClick.current = false
+                return
+              }
+              setSelectedLocalPaths([])
+              setLocalAnchorPath(null)
+            }}
+          >
+            <LocalFileTable
+              rows={localItems}
+              selectedPaths={selectedLocalPaths}
+              onDragItem={(event, item) => {
+                event.dataTransfer.effectAllowed = 'copy'
+                const payload = selectedLocalPaths.includes(item.path) ? selectedLocalPaths : [item.path]
+                const previewItems = localItems.filter((row) => payload.includes(row.path))
+                event.dataTransfer.setData(localFileDragType, JSON.stringify(payload))
+                setFileDragPreview(event, previewItems.map((row) => row.name))
+              }}
+              onOpenItem={onOpenLocalItem}
+              onContextItem={(event, item) => {
+                event.preventDefault()
+                event.stopPropagation()
+                if (!selectedLocalPaths.includes(item.path)) {
+                  setSelectedLocalPaths([item.path])
+                  setLocalAnchorPath(item.path)
+                }
+                setContextMenu({ pane: 'local', x: event.clientX, y: event.clientY, path: item.path })
+              }}
+              onClearSelection={() => {
+                if (suppressNextClearClick.current) {
+                  suppressNextClearClick.current = false
+                  return
+                }
+                setSelectedLocalPaths([])
+                setLocalAnchorPath(null)
+              }}
+              onSelectItem={selectLocalItem}
+              onSelectionDragStart={(event, item) => {
+                isSelectingLocal.current = true
+                didDragSelect.current = false
+                const startPath = event.shiftKey && localAnchorPath ? localAnchorPath : item.path
+                const basePaths = event.metaKey || event.ctrlKey ? selectedLocalPaths : []
+                localDragSelection.current = { basePaths, startPath }
+                suppressNextSelectionClick.current = true
+                setSelectedLocalPaths(nextSelection({
+                  anchorPath: localAnchorPath,
+                  currentSelection: selectedLocalPaths,
+                  event,
+                  itemPath: item.path,
+                  rows: localItems
+                }))
+                setLocalAnchorPath(startPath)
+              }}
+              onSelectionDragEnter={extendLocalDragSelection}
+            />
+          </div>
         </div>
         <div
           className="file-split-resizer"
@@ -1228,26 +1704,176 @@ function FileManager({
           }}
           role="separator"
         />
-        <div className="remote-pane">
-          <div className="pane-title">{t.remoteHost}<span>{t.dragUpload}</span></div>
-          <FileTable rows={activeSession.remoteFiles} onOpenItem={onOpenRemoteItem} />
+        <div
+          className="remote-pane"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setSelectedRemotePaths([])
+              setRemoteAnchorPath(null)
+            }
+          }}
+          onDragOver={(event) => {
+            event.preventDefault()
+            event.dataTransfer.dropEffect = 'copy'
+          }}
+          onDrop={handleRemotePaneDrop}
+        >
+          <PanePathBar
+            hint={t.dragUpload}
+            label={t.remoteHost}
+            value={remotePathInput}
+            onChange={setRemotePathInput}
+            onSubmit={submitRemotePath}
+          />
+          <div
+            className="file-table-shell"
+            onClick={(event) => {
+              if (event.target !== event.currentTarget) return
+              if (suppressNextClearClick.current) {
+                suppressNextClearClick.current = false
+                return
+              }
+              setSelectedRemotePaths([])
+              setRemoteAnchorPath(null)
+            }}
+          >
+            <FileTable
+              rows={activeSession.remoteFiles}
+              selectedPaths={selectedRemotePaths}
+              onDragItem={(event, item) => {
+                event.dataTransfer.effectAllowed = 'copy'
+                const payload = selectedRemotePaths.includes(item.path) ? selectedRemotePaths : [item.path]
+                const previewItems = activeSession.remoteFiles.filter((row) => payload.includes(row.path))
+                event.dataTransfer.setData(remoteFileDragType, JSON.stringify(payload))
+                setFileDragPreview(event, previewItems.map((row) => row.name))
+              }}
+              onOpenItem={onOpenRemoteItem}
+              onContextItem={(event, item) => {
+                event.preventDefault()
+                event.stopPropagation()
+                if (!selectedRemotePaths.includes(item.path)) {
+                  setSelectedRemotePaths([item.path])
+                  setRemoteAnchorPath(item.path)
+                }
+                setContextMenu({ pane: 'remote', x: event.clientX, y: event.clientY, path: item.path })
+              }}
+              onClearSelection={() => {
+                if (suppressNextClearClick.current) {
+                  suppressNextClearClick.current = false
+                  return
+                }
+                setSelectedRemotePaths([])
+                setRemoteAnchorPath(null)
+              }}
+              onSelectItem={selectRemoteItem}
+              onSelectionDragStart={(event, item) => {
+                isSelectingRemote.current = true
+                didDragSelect.current = false
+                const startPath = event.shiftKey && remoteAnchorPath ? remoteAnchorPath : item.path
+                const basePaths = event.metaKey || event.ctrlKey ? selectedRemotePaths : []
+                remoteDragSelection.current = { basePaths, startPath }
+                suppressNextSelectionClick.current = true
+                setSelectedRemotePaths(nextSelection({
+                  anchorPath: remoteAnchorPath,
+                  currentSelection: selectedRemotePaths,
+                  event,
+                  itemPath: item.path,
+                  rows: activeSession.remoteFiles
+                }))
+                setRemoteAnchorPath(startPath)
+              }}
+              onSelectionDragEnter={extendRemoteDragSelection}
+            />
+          </div>
         </div>
       </div>
+      {contextMenu ? (
+        <FileContextMenu
+          item={contextLocalItem ?? contextRemoteItem}
+          pane={contextMenu.pane}
+          position={{ x: contextMenu.x, y: contextMenu.y }}
+          onClose={() => setContextMenu(null)}
+          onCopyPath={copyContextPath}
+          onDownload={() => {
+            const items = contextRemoteItem && selectedRemotePaths.includes(contextRemoteItem.path)
+              ? selectedRemoteItems
+              : contextRemoteItem ? [contextRemoteItem] : []
+            onDownloadFiles(items)
+            setContextMenu(null)
+          }}
+          onOpen={openContextTarget}
+          onRefresh={() => {
+            onRefresh()
+            setContextMenu(null)
+          }}
+          onUpload={() => {
+            onChooseUploadFiles()
+            setContextMenu(null)
+          }}
+        />
+      ) : null}
     </div>
+  )
+}
+
+function PanePathBar({
+  hint,
+  label,
+  value,
+  onChange,
+  onSubmit
+}: {
+  hint?: string
+  label: string
+  value: string
+  onChange(value: string): void
+  onSubmit(event: FormEvent<HTMLFormElement>): void
+}) {
+  return (
+    <form className="pane-path-bar" onSubmit={onSubmit}>
+      <strong>{label}</strong>
+      <input
+        aria-label={`${label}路径`}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      {hint ? <span>{hint}</span> : null}
+    </form>
   )
 }
 
 function FileTable({
   rows,
   compact = false,
-  onOpenItem
+  selectedPaths,
+  onClearSelection,
+  onContextItem,
+  onDragItem,
+  onOpenItem,
+  onSelectItem,
+  onSelectionDragEnter,
+  onSelectionDragStart
 }: {
   rows: RemoteFileItem[]
   compact?: boolean
+  selectedPaths?: string[]
+  onClearSelection?(): void
+  onContextItem?(event: MouseEvent<HTMLTableRowElement>, item: RemoteFileItem): void
+  onDragItem?(event: DragEvent<HTMLElement>, item: RemoteFileItem): void
   onOpenItem?(item: RemoteFileItem): void
+  onSelectItem?(event: MouseEvent<HTMLTableRowElement>, item: RemoteFileItem): void
+  onSelectionDragEnter?(item: RemoteFileItem): void
+  onSelectionDragStart?(event: MouseEvent<HTMLTableRowElement>, item: RemoteFileItem): void
 }) {
   return (
-    <table className={`fs-file-table ${compact ? 'compact' : ''}`}>
+    <table
+      className={`fs-file-table ${compact ? 'compact' : ''}`}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) {
+          onClearSelection?.()
+        }
+      }}
+    >
       <thead>
         <tr>
           <th>{t.fileName}</th>
@@ -1258,14 +1884,37 @@ function FileTable({
           {!compact ? <th>{t.ownerGroup}</th> : null}
         </tr>
       </thead>
-      <tbody>
+      <tbody onClick={(event) => {
+        if (event.target === event.currentTarget) {
+          onClearSelection?.()
+        }
+      }}>
         {rows.length ? rows.map((row) => (
           <tr
             key={row.path}
-            className={row.type === 'folder' ? 'is-folder' : ''}
+            className={`${row.type === 'folder' ? 'is-folder' : 'is-file'} ${selectedPaths?.includes(row.path) ? 'is-selected' : ''}`}
+            onClick={(event) => onSelectItem?.(event, row)}
+            onContextMenu={(event) => onContextItem?.(event, row)}
             onDoubleClick={() => onOpenItem?.(row)}
+            onMouseDown={(event) => {
+              if (event.button === 0) {
+                onSelectionDragStart?.(event, row)
+              }
+            }}
+            onMouseEnter={() => onSelectionDragEnter?.(row)}
           >
-            <td><span className="file-icon"><AppIcon name={row.type === 'folder' ? 'folder' : 'file'} /></span>{row.name}</td>
+            <td>
+              <span
+                className={`file-icon ${row.type === 'file' ? 'is-draggable' : ''}`}
+                draggable={row.type === 'file'}
+                onDragStart={(event) => onDragItem?.(event, row)}
+                onMouseDown={(event) => event.stopPropagation()}
+                title={row.type === 'file' ? '拖动传输' : undefined}
+              >
+                <AppIcon name={row.type === 'folder' ? 'folder' : 'file'} />
+              </span>
+              {row.name}
+            </td>
             {!compact ? <td>{row.size}</td> : null}
             {!compact ? <td>{row.type === 'folder' ? t.folder : row.type}</td> : null}
             {!compact ? <td>{row.modified}</td> : null}
@@ -1282,25 +1931,70 @@ function FileTable({
 
 function LocalFileTable({
   rows,
-  onOpenItem
+  selectedPaths,
+  onClearSelection,
+  onContextItem,
+  onDragItem,
+  onOpenItem,
+  onSelectItem,
+  onSelectionDragEnter,
+  onSelectionDragStart
 }: {
   rows: LocalFileItem[]
+  selectedPaths: string[]
+  onClearSelection(): void
+  onContextItem(event: MouseEvent<HTMLTableRowElement>, item: LocalFileItem): void
+  onDragItem(event: DragEvent<HTMLElement>, item: LocalFileItem): void
   onOpenItem(item: LocalFileItem): void
+  onSelectItem(event: MouseEvent<HTMLTableRowElement>, item: LocalFileItem): void
+  onSelectionDragEnter(item: LocalFileItem): void
+  onSelectionDragStart(event: MouseEvent<HTMLTableRowElement>, item: LocalFileItem): void
 }) {
   return (
-    <table className="fs-file-table compact">
+    <table
+      className="fs-file-table compact"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) {
+          onClearSelection()
+        }
+      }}
+    >
       <thead>
         <tr>
           <th>{t.fileName}</th>
         </tr>
       </thead>
-      <tbody>
+      <tbody onClick={(event) => {
+        if (event.target === event.currentTarget) {
+          onClearSelection()
+        }
+      }}>
         {rows.map((row) => (
           <tr
             key={`${row.path}:${row.name}`}
+            className={`${row.type === 'folder' ? 'is-folder' : 'is-file'} ${selectedPaths.includes(row.path) ? 'is-selected' : ''}`}
+            onClick={(event) => onSelectItem(event, row)}
+            onContextMenu={(event) => onContextItem(event, row)}
             onDoubleClick={() => onOpenItem(row)}
+            onMouseDown={(event) => {
+              if (event.button === 0) {
+                onSelectionDragStart(event, row)
+              }
+            }}
+            onMouseEnter={() => onSelectionDragEnter(row)}
           >
-            <td><span className="file-icon"><AppIcon name={row.type === 'folder' ? 'folder' : 'file'} /></span>{row.name}</td>
+            <td>
+              <span
+                className={`file-icon ${row.type === 'file' ? 'is-draggable' : ''}`}
+                draggable={row.type === 'file'}
+                onDragStart={(event) => onDragItem(event, row)}
+                onMouseDown={(event) => event.stopPropagation()}
+                title={row.type === 'file' ? '拖动传输' : undefined}
+              >
+                <AppIcon name={row.type === 'folder' ? 'folder' : 'file'} />
+              </span>
+              {row.name}
+            </td>
           </tr>
         ))}
       </tbody>
@@ -1308,12 +2002,218 @@ function LocalFileTable({
   )
 }
 
-function TransferBar({ transfers, isPending }: { transfers: TransferTask[]; isPending: boolean }) {
+function FileContextMenu({
+  item,
+  onClose,
+  onCopyPath,
+  onDownload,
+  onOpen,
+  onRefresh,
+  onUpload,
+  pane,
+  position
+}: {
+  item: LocalFileItem | RemoteFileItem | null
+  onClose(): void
+  onCopyPath(): void
+  onDownload(): void
+  onOpen(): void
+  onRefresh(): void
+  onUpload(): void
+  pane: 'local' | 'remote'
+  position: { x: number; y: number }
+}) {
+  const canDownload = pane === 'remote' && item?.type === 'file'
+  const canUpload = pane === 'remote'
+
+  return (
+    <div
+      className="file-context-menu"
+      onClick={(event) => event.stopPropagation()}
+      style={{ left: position.x, top: position.y } as CSSProperties}
+    >
+      <button type="button" onClick={onRefresh}>刷新</button>
+      <span />
+      <button type="button" disabled={!item} onClick={onOpen}>打开</button>
+      <button type="button" disabled>打开方式</button>
+      <button type="button" disabled>选择文本编辑器</button>
+      <span />
+      <button type="button" disabled={!item} onClick={onCopyPath}>复制路径</button>
+      <span />
+      <button type="button" disabled={!canDownload} onClick={onDownload}>下载</button>
+      <button type="button" disabled={!canUpload} onClick={onUpload}>上传...</button>
+      <span />
+      <button type="button" disabled>打包传输</button>
+      <span />
+      <button type="button" disabled>新建</button>
+      <span />
+      <button type="button" disabled>重命名</button>
+      <button type="button" disabled>删除</button>
+      <button type="button" disabled>快速删除 (rm命令)</button>
+      <span />
+      <button type="button" disabled>文件权限...</button>
+      <button className="context-close" type="button" onClick={onClose}>关闭</button>
+    </div>
+  )
+}
+
+function FileEditorModal({
+  errorMessage,
+  file,
+  onClose,
+  onSave
+}: {
+  errorMessage: string | null
+  file: FileContentSnapshot
+  onClose(): void
+  onSave(content: string): void
+}) {
+  const [content, setContent] = useState(file.content)
+
+  useEffect(() => {
+    setContent(file.content)
+  }, [file.content, file.path])
+
+  return (
+    <div className="modal-backdrop">
+      <div className="modal-card file-editor-modal">
+        <div className="modal-header">
+          <span>{file.source === 'remote' ? '编辑远程文件' : '编辑本地文件'} · {file.name}</span>
+          <button className="icon-button" onClick={onClose} type="button">×</button>
+        </div>
+        <div className="file-editor-path" title={file.path}>{file.path}</div>
+        <textarea
+          className="file-editor-textarea"
+          spellCheck={false}
+          value={content}
+          onChange={(event) => setContent(event.target.value)}
+        />
+        {errorMessage ? <div className="modal-error">{errorMessage}</div> : null}
+        <div className="form-actions">
+          <button className="flat-button" onClick={onClose} type="button">{t.cancel}</button>
+          <button className="primary-button" onClick={() => onSave(content)} type="button">保存</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TransferBar({
+  activeCount,
+  isPending,
+  onOpen,
+  transfers
+}: {
+  activeCount: number
+  isPending: boolean
+  onOpen(): void
+  transfers: TransferTask[]
+}) {
   return (
     <footer className="transfer-strip">
       <strong>{t.transferTasks}</strong>
-      <span>{isPending ? '更新中...' : `${runningTransfers(transfers)} ${t.runningTasks}`}</span>
+      <button className="transfer-summary-button" onClick={onOpen} type="button">
+        {isPending ? '更新中...' : `${activeCount || runningTransfers(transfers)} ${t.runningTasks}`}
+      </button>
     </footer>
+  )
+}
+
+function TransferPopover({
+  onClose,
+  transfers
+}: {
+  onClose(): void
+  transfers: TransferTask[]
+}) {
+  const [statusFilter, setStatusFilter] = useState<'running' | 'completed' | 'all'>('running')
+  const [directionFilter, setDirectionFilter] = useState<'all' | 'download' | 'upload'>('all')
+  const visibleTransfers = transfers
+    .filter((transfer) => {
+      if (statusFilter === 'running') {
+        return transfer.status === 'running' || transfer.status === 'queued'
+      }
+      if (statusFilter === 'completed') {
+        return transfer.status === 'done' || transfer.status === 'failed'
+      }
+      return true
+    })
+    .filter((transfer) => directionFilter === 'all' || transfer.direction === directionFilter)
+    .slice(0, 24)
+
+  return (
+    <section className="transfer-popover">
+      <div className="transfer-popover-head">
+        <strong>传输详情</strong>
+        <button className="icon-button" onClick={onClose} type="button">×</button>
+      </div>
+      <div className="transfer-filters">
+        <div className="transfer-segments">
+          <button
+            className={statusFilter === 'running' ? 'active' : ''}
+            onClick={() => setStatusFilter('running')}
+            type="button"
+          >
+            进行中
+          </button>
+          <button
+            className={statusFilter === 'completed' ? 'active' : ''}
+            onClick={() => setStatusFilter('completed')}
+            type="button"
+          >
+            已完成
+          </button>
+          <button
+            className={statusFilter === 'all' ? 'active' : ''}
+            onClick={() => setStatusFilter('all')}
+            type="button"
+          >
+            全部
+          </button>
+        </div>
+        <div className="transfer-segments transfer-segments-sub">
+          <button
+            className={directionFilter === 'all' ? 'active' : ''}
+            onClick={() => setDirectionFilter('all')}
+            type="button"
+          >
+            全部
+          </button>
+          <button
+            className={directionFilter === 'download' ? 'active' : ''}
+            onClick={() => setDirectionFilter('download')}
+            type="button"
+          >
+            下载
+          </button>
+          <button
+            className={directionFilter === 'upload' ? 'active' : ''}
+            onClick={() => setDirectionFilter('upload')}
+            type="button"
+          >
+            上传
+          </button>
+        </div>
+      </div>
+      <div className="transfer-popover-list">
+        {visibleTransfers.length ? visibleTransfers.map((transfer) => (
+          <div className={`transfer-row transfer-${transfer.status}`} key={transfer.id}>
+            <div className="transfer-row-main">
+              <strong title={transfer.name}>{transfer.name}</strong>
+              <span>{transferStatusText(transfer)}</span>
+            </div>
+            <div className="transfer-row-meta">
+              <span>{transfer.direction === 'upload' ? '上传' : '下载'}</span>
+              <b>{transfer.progress}%</b>
+            </div>
+            <i className="transfer-progress"><b style={{ width: `${transfer.progress}%` }} /></i>
+            {transfer.message ? <small title={transfer.message}>{transfer.message}</small> : null}
+          </div>
+        )) : (
+          <div className="transfer-empty">暂无传输任务</div>
+        )}
+      </div>
+    </section>
   )
 }
 
@@ -1321,7 +2221,7 @@ function AppIcon({
   name,
   size = 14
 }: {
-  name: 'grid' | 'menu' | 'server' | 'connections' | 'folder' | 'file' | 'history' | 'refresh' | 'upload' | 'arrowUp' | 'arrowDown'
+  name: 'grid' | 'menu' | 'server' | 'connections' | 'folder' | 'file' | 'history' | 'refresh' | 'upload' | 'download'
   size?: number
 }) {
   const commonProps = {
@@ -1390,16 +2290,11 @@ function AppIcon({
           <path {...commonProps} d="M11.8 13.1v-2.8H9" />
         </>
       ) : null}
-      {name === 'arrowUp' ? (
+      {name === 'download' ? (
         <>
-          <path {...commonProps} d="M8 12.5V3.5" />
-          <path {...commonProps} d="M4.5 7 8 3.5 11.5 7" />
-        </>
-      ) : null}
-      {name === 'arrowDown' ? (
-        <>
-          <path {...commonProps} d="M8 3.5v9" />
-          <path {...commonProps} d="M4.5 9 8 12.5 11.5 9" />
+          <path {...commonProps} d="M8 3.5v7.3" />
+          <path {...commonProps} d="M4.7 7.5 8 10.8l3.3-3.3" />
+          <path {...commonProps} d="M3 12.5h10" />
         </>
       ) : null}
       {name === 'upload' ? (
@@ -1450,33 +2345,61 @@ function ConnectionModal({
                 <fieldset className="ssh-fieldset">
                   <legend>常规</legend>
                   <div className="ssh-grid ssh-grid-general">
+                    <label>类型:
+                      <select
+                        value={form.type}
+                        onChange={(event) => {
+                          const nextType = event.target.value as 'ssh' | 'ftp'
+                          setForm((prev) => ({
+                            ...prev,
+                            type: nextType,
+                            port: nextType === 'ftp' && prev.port === 22 ? 21 : nextType === 'ssh' && prev.port === 21 ? 22 : prev.port,
+                            authType: nextType === 'ssh' ? prev.authType ?? 'password' : 'password'
+                          }))
+                        }}
+                      >
+                        <option value="ssh">SSH / SFTP</option>
+                        <option value="ftp">FTP / FTPS</option>
+                      </select>
+                    </label>
+                    <label>分组:<input value={form.group} onChange={(event) => setForm((prev) => ({ ...prev, group: event.target.value }))} /></label>
                     <label className="span-2">名称:<input value={form.name} onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))} /></label>
                     <label className="span-2">主机:<input value={form.host} onChange={(event) => setForm((prev) => ({ ...prev, host: event.target.value }))} /></label>
                     <label className="narrow">端口:<input inputMode="numeric" value={form.port || ''} onChange={(event) => setForm((prev) => ({ ...prev, port: Number(event.target.value.replace(/\D/g, '')) }))} /></label>
+                    <label>远程路径:<input value={form.remotePath} onChange={(event) => setForm((prev) => ({ ...prev, remotePath: event.target.value }))} /></label>
                     <label className="full">备注:<textarea value={form.note ?? ''} onChange={(event) => setForm((prev) => ({ ...prev, note: event.target.value }))} /></label>
                   </div>
                 </fieldset>
                 <fieldset className="ssh-fieldset">
                   <legend>认证</legend>
                   <div className="ssh-grid ssh-grid-auth">
-                    <label>方法:
-                      <select value={form.authType} onChange={(event) => setForm((prev) => ({ ...prev, authType: event.target.value as 'password' | 'privateKey' }))}>
-                        <option value="password">密码</option>
-                        <option value="privateKey">私钥</option>
-                      </select>
-                    </label>
+                    {form.type === 'ssh' ? (
+                      <label>方法:
+                        <select value={form.authType} onChange={(event) => setForm((prev) => ({ ...prev, authType: event.target.value as 'password' | 'privateKey' }))}>
+                          <option value="password">密码</option>
+                          <option value="privateKey">私钥</option>
+                        </select>
+                      </label>
+                    ) : null}
                     <label>用户名:<input value={form.username} onChange={(event) => setForm((prev) => ({ ...prev, username: event.target.value }))} /></label>
                     <label className="span-2">密码:<input type="password" value={form.password ?? ''} onChange={(event) => setForm((prev) => ({ ...prev, password: event.target.value }))} /></label>
-                    <label className="full">私钥:<input value={form.privateKeyPath ?? ''} onChange={(event) => setForm((prev) => ({ ...prev, privateKeyPath: event.target.value }))} /></label>
+                    {form.type === 'ssh' ? (
+                      <label className="full">私钥:<input value={form.privateKeyPath ?? ''} onChange={(event) => setForm((prev) => ({ ...prev, privateKeyPath: event.target.value }))} /></label>
+                    ) : (
+                      <label className="ssh-checkbox span-2">
+                        <input checked={Boolean(form.secure)} type="checkbox" onChange={(event) => setForm((prev) => ({ ...prev, secure: event.target.checked }))} />
+                        <span>使用 FTPS</span>
+                      </label>
+                    )}
                   </div>
                 </fieldset>
-                <fieldset className="ssh-fieldset">
+                {form.type === 'ssh' ? <fieldset className="ssh-fieldset">
                   <legend>高级</legend>
                   <label className="ssh-checkbox">
                     <input checked={Boolean(form.enableExecChannel)} type="checkbox" onChange={(event) => setForm((prev) => ({ ...prev, enableExecChannel: event.target.checked }))} />
                     <span>启用Exec Channel(若连接上就被断开,请关闭该项,比如跳板机)</span>
                   </label>
-                </fieldset>
+                </fieldset> : null}
               </div>
             ) : null}
             {section === 'terminal' ? (
@@ -1577,4 +2500,100 @@ function withParentRow(dirPath: string, items: LocalFileItem[]) {
     },
     ...items
   ]
+}
+
+function nextSelection<T extends { path: string }>({
+  anchorPath,
+  currentSelection,
+  event,
+  itemPath,
+  rows
+}: {
+  anchorPath: string | null
+  currentSelection: string[]
+  event: MouseEvent<HTMLTableRowElement>
+  itemPath: string
+  rows: T[]
+}) {
+  if (event.shiftKey && anchorPath) {
+    const anchorIndex = rows.findIndex((row) => row.path === anchorPath)
+    const itemIndex = rows.findIndex((row) => row.path === itemPath)
+    if (anchorIndex !== -1 && itemIndex !== -1) {
+      const start = Math.min(anchorIndex, itemIndex)
+      const end = Math.max(anchorIndex, itemIndex)
+      return rows.slice(start, end + 1).map((row) => row.path)
+    }
+  }
+
+  if (event.metaKey || event.ctrlKey) {
+    return currentSelection.includes(itemPath)
+      ? currentSelection.filter((selectedPath) => selectedPath !== itemPath)
+      : [...currentSelection, itemPath]
+  }
+
+  return [itemPath]
+}
+
+function rangePaths<T extends { path: string }>(rows: T[], startPath: string, endPath: string) {
+  const startIndex = rows.findIndex((row) => row.path === startPath)
+  const endIndex = rows.findIndex((row) => row.path === endPath)
+  if (startIndex === -1 || endIndex === -1) {
+    return endPath ? [endPath] : []
+  }
+  const start = Math.min(startIndex, endIndex)
+  const end = Math.max(startIndex, endIndex)
+  return rows.slice(start, end + 1).map((row) => row.path)
+}
+
+function mergeUnique(values: string[]) {
+  return Array.from(new Set(values))
+}
+
+function parseDraggedPaths(payload: string) {
+  try {
+    const parsed = JSON.parse(payload)
+    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === 'string') : [payload]
+  } catch {
+    return [payload]
+  }
+}
+
+function setFileDragPreview(event: DragEvent<HTMLElement>, names: string[]) {
+  if (!names.length) {
+    return
+  }
+
+  const preview = document.createElement('div')
+  preview.className = 'file-drag-preview'
+  const visibleNames = names.slice(0, 2)
+  preview.innerHTML = `
+    <span class="file-drag-preview-icon">□</span>
+    <span>${escapeHtml(visibleNames.join(names.length > 1 ? ', ' : ''))}${names.length > 2 ? ` 等 ${names.length} 项` : ''}</span>
+  `
+  document.body.appendChild(preview)
+  event.dataTransfer.setDragImage(preview, 10, 10)
+  window.setTimeout(() => preview.remove(), 0)
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+}
+
+function transferStatusText(transfer: TransferTask) {
+  const direction = transfer.direction === 'upload' ? '上传' : '下载'
+  if (transfer.status === 'failed') {
+    return `${direction}失败: ${transfer.name}`
+  }
+  if (transfer.status === 'done') {
+    return `${direction}完成: ${transfer.name}`
+  }
+  if (transfer.status === 'queued') {
+    return `等待${direction}: ${transfer.name}`
+  }
+  return `${direction}中 ${transfer.progress}%: ${transfer.name}`
 }
