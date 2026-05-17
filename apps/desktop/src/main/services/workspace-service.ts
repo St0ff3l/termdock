@@ -33,6 +33,7 @@ export class WorkspaceService {
   async getSnapshot(): Promise<WorkspaceSnapshot> {
     return {
       profiles: await this.profileRepository.list(),
+      folders: await this.profileRepository.listFolders?.() ?? [],
       tabs: this.tabs.list(),
       activeTabId: this.tabs.getActiveTabId(),
       transfers: this.transfers.list(),
@@ -52,6 +53,26 @@ export class WorkspaceService {
 
   async deleteProfile(profileId: string): Promise<WorkspaceSnapshot> {
     await this.profileRepository.delete(profileId)
+    return this.getSnapshot()
+  }
+
+  async createFolder(name: string, parentId?: string): Promise<WorkspaceSnapshot> {
+    await this.profileRepository.createFolder?.(name, parentId)
+    return this.getSnapshot()
+  }
+
+  async updateFolder(folderId: string, updates: any): Promise<WorkspaceSnapshot> {
+    await this.profileRepository.updateFolder?.(folderId, updates)
+    return this.getSnapshot()
+  }
+
+  async deleteFolder(folderId: string): Promise<WorkspaceSnapshot> {
+    await this.profileRepository.deleteFolder?.(folderId)
+    return this.getSnapshot()
+  }
+
+  async updateEntityOrder(id: string, newParentId: string | undefined, newOrder: number): Promise<WorkspaceSnapshot> {
+    await this.profileRepository.updateOrder?.(id, newParentId, newOrder)
     return this.getSnapshot()
   }
 

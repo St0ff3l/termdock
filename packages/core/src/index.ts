@@ -4,10 +4,20 @@ export type TabLayout = 'terminal-file' | 'file-only'
 
 export type TabStatus = 'idle' | 'connecting' | 'connected' | 'error' | 'closed'
 
-export interface BaseProfile {
+export interface BaseEntity {
   id: string
-  type: SessionType
   name: string
+  parentId?: string
+  order?: number
+}
+
+export interface ConnectionFolder extends BaseEntity {
+  type: 'folder'
+  isExpanded?: boolean
+}
+
+export interface BaseProfile extends BaseEntity {
+  type: SessionType
   host: string
   port: number
   group: string
@@ -128,6 +138,7 @@ export interface SessionSnapshot {
 
 export interface WorkspaceSnapshot {
   profiles: ConnectionProfile[]
+  folders: ConnectionFolder[]
   tabs: WorkspaceTab[]
   activeTabId: string | null
   transfers: TransferTask[]
@@ -178,6 +189,10 @@ export interface TermdockDesktopApi {
   openConnectionFormWindow(mode: ConnectionFormMode, profileId?: string): Promise<void>
   closeCurrentWindow(): Promise<void>
   getSnapshot(): Promise<WorkspaceSnapshot>
+  createFolder(name: string, parentId?: string): Promise<WorkspaceSnapshot>
+  updateFolder(folderId: string, updates: Partial<ConnectionFolder>): Promise<WorkspaceSnapshot>
+  deleteFolder(folderId: string): Promise<WorkspaceSnapshot>
+  updateEntityOrder(id: string, newParentId: string | undefined, newOrder: number): Promise<WorkspaceSnapshot>
   createProfile(input: CreateProfileInput): Promise<WorkspaceSnapshot>
   updateProfile(profileId: string, input: CreateProfileInput): Promise<WorkspaceSnapshot>
   deleteProfile(profileId: string): Promise<WorkspaceSnapshot>

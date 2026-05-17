@@ -1483,9 +1483,9 @@ button:disabled {
 .manager-head,
 .manager-row {
   display: grid;
-  grid-template-columns: minmax(110px, 1fr) minmax(160px, 1.2fr) 68px minmax(96px, 1fr) 68px minmax(100px, 1fr) 110px;
+  grid-template-columns: minmax(60px, 1fr) minmax(80px, 1.5fr) 48px minmax(60px, 1fr) 60px minmax(60px, 1fr) 100px;
   align-items: center;
-  column-gap: 10px;
+  column-gap: 6px;
   padding: 0 14px;
 }
 
@@ -1518,6 +1518,34 @@ button:disabled {
 
 .manager-row:hover {
   background: var(--bg-hover);
+}
+
+.manager-row.dragging {
+  opacity: 0.5;
+  background: var(--bg-hover);
+}
+
+.manager-row.drop-top {
+  border-top: 2px solid var(--primary);
+}
+
+.manager-row.drop-bottom {
+  border-bottom: 2px solid var(--primary);
+}
+
+.manager-row.drop-inside {
+  background: rgba(77, 163, 255, 0.2);
+}
+
+.folder-children {
+  display: flex;
+  flex-direction: column;
+}
+
+.folder-row {
+  font-weight: 500;
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .manager-row span {

@@ -25,6 +25,30 @@ export function registerWorkspaceHandlers(services: IpcServices, options: IpcWin
     return snapshot
   })
 
+  ipcMain.handle('workspace:createFolder', async (_, name: string, parentId?: string) => {
+    const snapshot = await workspaceService.createFolder(name, parentId)
+    broadcastSnapshot(snapshot)
+    return snapshot
+  })
+
+  ipcMain.handle('workspace:updateFolder', async (_, folderId: string, updates: any) => {
+    const snapshot = await workspaceService.updateFolder(folderId, updates)
+    broadcastSnapshot(snapshot)
+    return snapshot
+  })
+
+  ipcMain.handle('workspace:deleteFolder', async (_, folderId: string) => {
+    const snapshot = await workspaceService.deleteFolder(folderId)
+    broadcastSnapshot(snapshot)
+    return snapshot
+  })
+
+  ipcMain.handle('workspace:updateEntityOrder', async (_, id: string, newParentId: string | undefined, newOrder: number) => {
+    const snapshot = await workspaceService.updateEntityOrder(id, newParentId, newOrder)
+    broadcastSnapshot(snapshot)
+    return snapshot
+  })
+
   ipcMain.handle('workspace:openProfile', async (event, profileId: string) => {
     const snapshot = await workspaceService.openProfile(profileId, event.sender)
     broadcastSnapshot(snapshot)

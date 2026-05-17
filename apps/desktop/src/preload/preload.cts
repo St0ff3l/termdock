@@ -28,6 +28,14 @@ const api: TermdockDesktopApi = {
     ipcRenderer.invoke('workspace:updateProfile', profileId, input),
   deleteProfile: (profileId: string): Promise<WorkspaceSnapshot> =>
     ipcRenderer.invoke('workspace:deleteProfile', profileId),
+  createFolder: (name: string, parentId?: string): Promise<WorkspaceSnapshot> =>
+    ipcRenderer.invoke('workspace:createFolder', name, parentId),
+  updateFolder: (folderId: string, updates: any): Promise<WorkspaceSnapshot> =>
+    ipcRenderer.invoke('workspace:updateFolder', folderId, updates),
+  deleteFolder: (folderId: string): Promise<WorkspaceSnapshot> =>
+    ipcRenderer.invoke('workspace:deleteFolder', folderId),
+  updateEntityOrder: (id: string, newParentId: string | undefined, newOrder: number): Promise<WorkspaceSnapshot> =>
+    ipcRenderer.invoke('workspace:updateEntityOrder', id, newParentId, newOrder),
   openProfile: (profileId: string): Promise<WorkspaceSnapshot> =>
     ipcRenderer.invoke('workspace:openProfile', profileId),
   openProfileFromManager: (profileId: string): Promise<WorkspaceSnapshot> =>

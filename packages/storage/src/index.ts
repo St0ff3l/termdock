@@ -1,15 +1,23 @@
-import type { ConnectionProfile, CreateProfileInput } from '@termdock/core'
+import type { ConnectionProfile, ConnectionFolder, CreateProfileInput } from '@termdock/core'
 
 export interface ProfileRepository {
   list(): Promise<ConnectionProfile[]>
+  listFolders(): Promise<ConnectionFolder[]>
   create(input: CreateProfileInput): Promise<ConnectionProfile>
   update(id: string, input: CreateProfileInput): Promise<ConnectionProfile>
   getById(id: string): Promise<ConnectionProfile | null>
   delete(id: string): Promise<void>
+  
+  createFolder(name: string, parentId?: string): Promise<ConnectionFolder>
+  updateFolder(id: string, updates: Partial<ConnectionFolder>): Promise<ConnectionFolder>
+  deleteFolder(id: string): Promise<void>
+  
+  updateOrder(id: string, newParentId: string | undefined, newOrder: number): Promise<void>
 }
 
 export class MemoryProfileRepository implements ProfileRepository {
   private profiles: ConnectionProfile[]
+  private folders: ConnectionFolder[] = []
 
   constructor(seed: ConnectionProfile[]) {
     this.profiles = seed
@@ -39,6 +47,42 @@ export class MemoryProfileRepository implements ProfileRepository {
 
   async delete(id: string): Promise<void> {
     this.profiles = this.profiles.filter((profile) => profile.id !== id)
+  }
+
+  async listFolders(): Promise<ConnectionFolder[]> {
+    return [...this.folders]
+  }
+
+  async createFolder(name: string, parentId?: string): Promise<ConnectionFolder> {
+    const id = globalThis.crypto?.randomUUID?.() ?? `folder-${Date.now()}`
+    const folder: ConnectionFolder = { id, type: 'folder', name, parentId }
+    this.folders.push(folder)
+    return folder
+  }
+
+  async updateFolder(id: string, updates: Partial<ConnectionFolder>): Promise<ConnectionFolder> {
+    const folder = this.folders.find((f) => f.id === id)
+    if (!folder) throw new Error('Folder not found')
+    Object.assign(folder, updates)
+    return folder
+  }
+
+  async deleteFolder(id: string): Promise<void> {
+    this.folders = this.folders.filter((f) => f.id !== id)
+  }
+
+  async updateOrder(id: string, newParentId: string | undefined, newOrder: number): Promise<void> {
+    const profile = this.profiles.find((p) => p.id === id)
+    if (profile) {
+      profile.parentId = newParentId
+      profile.order = newOrder
+      return
+    }
+    const folder = this.folders.find((f) => f.id === id)
+    if (folder) {
+      folder.parentId = newParentId
+      folder.order = newOrder
+    }
   }
 }
 

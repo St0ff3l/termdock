@@ -199,7 +199,6 @@ export function App() {
     ? workspace.profiles.find((profile) => profile.id === activeTab.profileId) ?? null
     : null
   const activeTransferCount = workspace.transfers.filter((transfer) => transfer.status === 'running' || transfer.status === 'queued').length
-  const recentProfiles = workspace.profiles.slice(0, 12)
 
   const applySnapshot = (snapshot: WorkspaceSnapshot) => {
     startTransition(() => {
@@ -706,12 +705,13 @@ export function App() {
       <>
         <ConnectionManagerModal
           profiles={workspace.profiles}
+          folders={workspace.folders || []}
           standalone
           onClose={closeCurrentWindow}
           onCreate={openCreateConnection}
-          onDelete={handleDeleteProfile}
-          onEdit={openEditConnection}
-          onOpen={(profileId) => {
+          onDeleteProfile={handleDeleteProfile}
+          onEditProfile={openEditConnection}
+          onOpenProfile={(profileId) => {
             if (desktopApi) {
               void desktopApi.openProfileFromManager(profileId).then(() => {
                 closeCurrentWindow()
@@ -722,6 +722,10 @@ export function App() {
             }
             void handleOpenProfile(profileId)
           }}
+          onCreateFolder={(name) => desktopApi?.createFolder(name)}
+          onDeleteFolder={(id) => desktopApi?.deleteFolder(id)}
+          onUpdateFolder={(id, updates) => desktopApi?.updateFolder(id, updates)}
+          onUpdateOrder={(id, parentId, order) => desktopApi?.updateEntityOrder(id, parentId, order)}
         />
         {showForm ? (
           <ConnectionModal
@@ -915,7 +919,8 @@ export function App() {
               />
             ) : (
               <HomeWorkspace
-                profiles={recentProfiles}
+                profiles={workspace.profiles}
+                folders={workspace.folders || []}
                 isDesktopRuntime={isDesktopRuntime}
                 onCreate={openCreateConnection}
                 onOpen={handleOpenProfile}
@@ -955,21 +960,27 @@ export function App() {
       {showConnectionManager ? (
         <ConnectionManagerModal
           profiles={workspace.profiles}
+          folders={workspace.folders || []}
           onClose={() => setShowConnectionManager(false)}
           onCreate={() => {
             setShowConnectionManager(false)
             openCreateConnection()
           }}
-          onDelete={handleDeleteProfile}
-          onEdit={(profile) => {
+          onDeleteProfile={handleDeleteProfile}
+          onEditProfile={(profile) => {
             setShowConnectionManager(false)
             openEditConnection(profile)
           }}
-          onOpen={(profileId) => {
+          onOpenProfile={(profileId) => {
             setShowConnectionManager(false)
             void handleOpenProfile(profileId)
           }}
+          onCreateFolder={(name) => desktopApi?.createFolder(name)}
+          onDeleteFolder={(id) => desktopApi?.deleteFolder(id)}
+          onUpdateFolder={(id, updates) => desktopApi?.updateFolder(id, updates)}
+          onUpdateOrder={(id, parentId, order) => desktopApi?.updateEntityOrder(id, parentId, order)}
         />
+
       ) : null}
 
       {showForm ? (

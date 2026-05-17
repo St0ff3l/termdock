@@ -1,16 +1,18 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
-import type { ConnectionProfile, CreateProfileInput } from '@termdock/core'
+import type { ConnectionProfile, ConnectionFolder, CreateProfileInput } from '@termdock/core'
 import type { ProfileRepository } from '@termdock/storage'
 
 export class FileProfileRepository implements ProfileRepository {
   private readonly filePath: string
+  private readonly foldersPath: string
   private readonly seedProfiles: ConnectionProfile[]
   private ready: Promise<void>
 
   constructor(baseDir: string, seedProfiles: ConnectionProfile[]) {
     this.filePath = path.join(baseDir, 'profiles.json')
+    this.foldersPath = path.join(baseDir, 'folders.json')
     this.seedProfiles = seedProfiles
     this.ready = this.ensureFile()
   }
@@ -48,12 +50,80 @@ export class FileProfileRepository implements ProfileRepository {
     await this.writeProfiles(nextProfiles)
   }
 
+  async listFolders(): Promise<ConnectionFolder[]> {
+    const folders = await this.readFolders()
+    return [...folders]
+  }
+
+  async createFolder(name: string, parentId?: string): Promise<ConnectionFolder> {
+    const folders = await this.readFolders()
+    const folder: ConnectionFolder = {
+      id: randomUUID(),
+      type: 'folder',
+      name,
+      parentId,
+      order: Date.now()
+    }
+    await this.writeFolders([folder, ...folders])
+    return folder
+  }
+
+  async updateFolder(id: string, updates: Partial<ConnectionFolder>): Promise<ConnectionFolder> {
+    const folders = await this.readFolders()
+    let updatedFolder: ConnectionFolder | undefined
+    const nextFolders = folders.map((f) => {
+      if (f.id === id) {
+        updatedFolder = { ...f, ...updates }
+        return updatedFolder
+      }
+      return f
+    })
+    if (!updatedFolder) throw new Error('Folder not found')
+    await this.writeFolders(nextFolders)
+    return updatedFolder
+  }
+
+  async deleteFolder(id: string): Promise<void> {
+    const folders = await this.readFolders()
+    await this.writeFolders(folders.filter((f) => f.id !== id))
+  }
+
+  async updateOrder(id: string, newParentId: string | undefined, newOrder: number): Promise<void> {
+    const profiles = await this.readProfiles()
+    let found = false
+    const nextProfiles = profiles.map((p) => {
+      if (p.id === id) {
+        found = true
+        return { ...p, parentId: newParentId, order: newOrder }
+      }
+      return p
+    })
+    if (found) {
+      await this.writeProfiles(nextProfiles)
+      return
+    }
+
+    const folders = await this.readFolders()
+    const nextFolders = folders.map((f) => {
+      if (f.id === id) {
+        return { ...f, parentId: newParentId, order: newOrder }
+      }
+      return f
+    })
+    await this.writeFolders(nextFolders)
+  }
+
   private async ensureFile() {
     await mkdir(path.dirname(this.filePath), { recursive: true })
     try {
       await readFile(this.filePath, 'utf8')
     } catch {
       await this.writeProfiles(this.seedProfiles)
+    }
+    try {
+      await readFile(this.foldersPath, 'utf8')
+    } catch {
+      await this.writeFolders([])
     }
   }
 
@@ -66,6 +136,17 @@ export class FileProfileRepository implements ProfileRepository {
   private async writeProfiles(profiles: ConnectionProfile[]) {
     await mkdir(path.dirname(this.filePath), { recursive: true })
     await writeFile(this.filePath, JSON.stringify(profiles, null, 2), 'utf8')
+  }
+
+  private async readFolders(): Promise<ConnectionFolder[]> {
+    await this.ready
+    const content = await readFile(this.foldersPath, 'utf8')
+    return JSON.parse(content) as ConnectionFolder[]
+  }
+
+  private async writeFolders(folders: ConnectionFolder[]) {
+    await mkdir(path.dirname(this.foldersPath), { recursive: true })
+    await writeFile(this.foldersPath, JSON.stringify(folders, null, 2), 'utf8')
   }
 }
 
