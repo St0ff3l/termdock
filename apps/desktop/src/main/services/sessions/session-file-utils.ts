@@ -79,34 +79,66 @@ export function formatBytes(size = 0) {
 }
 
 export function buildMetricsCommand() {
-  return `bash -lc '
-read cpu user nice system idle iowait irq softirq steal guest guest_nice < /proc/stat
+  return `sh -lc '
+read cpu user nice system idle iowait irq softirq steal guest guest_nice < /proc/stat 2>/dev/null
 total1=$((user+nice+system+idle+iowait+irq+softirq+steal))
 idle1=$((idle+iowait))
 sleep 0.15
-read cpu user2 nice2 system2 idle2 iowait2 irq2 softirq2 steal2 guest2 guest_nice2 < /proc/stat
+read cpu user2 nice2 system2 idle2 iowait2 irq2 softirq2 steal2 guest2 guest_nice2 < /proc/stat 2>/dev/null
 total2=$((user2+nice2+system2+idle2+iowait2+irq2+softirq2+steal2))
 idle2sum=$((idle2+iowait2))
 diff_total=$((total2-total1))
 diff_idle=$((idle2sum-idle1))
 if [ "$diff_total" -gt 0 ]; then cpu_pct=$((100*(diff_total-diff_idle)/diff_total)); else cpu_pct=0; fi
 ip=$(hostname -I 2>/dev/null | awk "{print \\$1}")
+[ -z "$ip" ] && ip=$(ip route get 1 2>/dev/null | awk "NR==1 {for (i=1; i<=NF; i++) if (\\$i == \\"src\\") {print \\$(i+1); exit}}")
 uptime_days=$(awk "{print int(\\$1/86400) \\" 天\\"}" /proc/uptime 2>/dev/null)
 load=$(awk "{printf \\"%s, %s, %s\\", \\$1, \\$2, \\$3}" /proc/loadavg 2>/dev/null)
-mem=$(free -m 2>/dev/null | awk "/Mem:/ {printf \\"%d|%d|%d\\", \\$3, \\$2, (\\$2>0 ? int(\\$3*100/\\$2) : 0)}")
-swap=$(free -m 2>/dev/null | awk "/Swap:/ {printf \\"%d|%d|%d\\", \\$3, \\$2, (\\$2>0 ? int(\\$3*100/\\$2) : 0)}")
-ifaces=$(awk -F: "NR>2 {gsub(/ /,\\"\\",\\$1); if (\\$1 != \\"lo\\") print \\$1}" /proc/net/dev | paste -sd, -)
-active_iface=$(awk "\\$2 == 00000000 {print \\$1; exit}" /proc/net/route)
+mem=$(awk "
+  /MemTotal:/ {total=int(\\$2/1024)}
+  /MemAvailable:/ {available=int(\\$2/1024)}
+  /Buffers:/ {buffers=int(\\$2/1024)}
+  /^Cached:/ {cached=int(\\$2/1024)}
+  /^Shmem:/ {shmem=int(\\$2/1024)}
+  /^SReclaimable:/ {sreclaimable=int(\\$2/1024)}
+  /^Slab:/ {slab=int(\\$2/1024)}
+  /^KernelStack:/ {kernelstack=int(\\$2/1024)}
+  /^PageTables:/ {pagetables=int(\\$2/1024)}
+  /^Active\\(anon\\):/ {active_anon=int(\\$2/1024)}
+  /^Inactive\\(anon\\):/ {inactive_anon=int(\\$2/1024)}
+  /^Unevictable:/ {unevictable=int(\\$2/1024)}
+  END {
+    used=total-available
+    percent=(total>0 ? int(used*100/total) : 0)
+    app=active_anon+inactive_anon+unevictable
+    cache=buffers+cached+sreclaimable-shmem
+    if (cache < 0) cache=0
+    kernel=slab-sreclaimable+kernelstack+pagetables
+    if (kernel < 0) kernel=0
+    printf \\"%d|%d|%d|%d|%d|%d\\", used, total, percent, app, cache, kernel
+  }
+" /proc/meminfo 2>/dev/null)
+swap=$(awk "
+  /SwapTotal:/ {total=int(\\$2/1024)}
+  /SwapFree:/ {free=int(\\$2/1024)}
+  END {
+    used=total-free
+    percent=(total>0 ? int(used*100/total) : 0)
+    printf \\"%d|%d|%d\\", used, total, percent
+  }
+" /proc/meminfo 2>/dev/null)
+ifaces=$(awk -F: "NR>2 {gsub(/ /,\\"\\",\\$1); if (\\$1 != \\"lo\\") print \\$1}" /proc/net/dev 2>/dev/null | paste -sd, -)
+active_iface=$(awk "\\$2 == 00000000 {print \\$1; exit}" /proc/net/route 2>/dev/null)
 [ -z "$active_iface" ] && active_iface=$(echo "$ifaces" | awk -F, "{print \\$1}")
-rx1=$(awk -F"[: ]+" -v iface="$active_iface" "\\$1 == iface {print \\$3}" /proc/net/dev)
-tx1=$(awk -F"[: ]+" -v iface="$active_iface" "\\$1 == iface {print \\$11}" /proc/net/dev)
+rx1=$(awk -F"[: ]+" -v iface="$active_iface" "\\$1 == iface {print \\$3}" /proc/net/dev 2>/dev/null)
+tx1=$(awk -F"[: ]+" -v iface="$active_iface" "\\$1 == iface {print \\$11}" /proc/net/dev 2>/dev/null)
 sleep 0.15
-rx2=$(awk -F"[: ]+" -v iface="$active_iface" "\\$1 == iface {print \\$3}" /proc/net/dev)
-tx2=$(awk -F"[: ]+" -v iface="$active_iface" "\\$1 == iface {print \\$11}" /proc/net/dev)
-rx_rate=$(( (rx2-rx1) * 1000 / 150 ))
-tx_rate=$(( (tx2-tx1) * 1000 / 150 ))
-disk=$(df -hP | awk "NR>1 {printf \\"%s|%s/%s\\\\n\\", \\$6, \\$4, \\$2}" | head -n 12)
-procs=$(ps -eo rss=,pcpu=,etimes=,comm= | awk "NF >= 4 {printf \\"%.1fM|%s|%s|%s\\\\n\\", \\$1/1024, \\$2, \\$3, \\$4}")
+rx2=$(awk -F"[: ]+" -v iface="$active_iface" "\\$1 == iface {print \\$3}" /proc/net/dev 2>/dev/null)
+tx2=$(awk -F"[: ]+" -v iface="$active_iface" "\\$1 == iface {print \\$11}" /proc/net/dev 2>/dev/null)
+rx_rate=$(( (\${rx2:-0}-\${rx1:-0}) * 1000 / 150 ))
+tx_rate=$(( (\${tx2:-0}-\${tx1:-0}) * 1000 / 150 ))
+disk=$(df -hP 2>/dev/null | awk "NR>1 {printf \\"%s|%s/%s\\\\n\\", \\$6, \\$4, \\$2}" | head -n 12)
+procs=$(ps -eo rss=,pcpu=,etimes=,comm= 2>/dev/null | awk "NF >= 4 {printf \\"%.1fM|%s|%s|%s\\\\n\\", \\$1/1024, \\$2, \\$3, \\$4}")
 echo "__IP__\${ip}"
 echo "__UPTIME__\${uptime_days}"
 echo "__LOAD__\${load}"
@@ -140,7 +172,7 @@ export function parseSystemMetrics(raw: string): SystemMetrics {
       .filter(Boolean)
   }
 
-  const [memUsed, memTotal, memPercent] = readLine('__MEM__').split('|')
+  const [memUsed, memTotal, memPercent, memApp, memCache, memKernel] = readLine('__MEM__').split('|')
   const [swapUsed, swapTotal, swapPercent] = readLine('__SWAP__').split('|')
   const [rxRate, txRate] = readLine('__RATES__').split('|')
   const interfaces = readLine('__IFACES__').split(',').filter(Boolean)
@@ -168,6 +200,9 @@ export function parseSystemMetrics(raw: string): SystemMetrics {
     cpuPercent: Number(readLine('__CPU__')) || 0,
     memoryPercent: Number(memPercent) || 0,
     memoryUsage: memTotal ? `${formatMegabytes(memUsed)}/${formatMegabytes(memTotal)}` : '0/0',
+    memoryAppUsage: Number(memApp) > 0 ? formatMegabytes(memApp) : undefined,
+    memoryCacheUsage: Number(memCache) > 0 ? formatMegabytes(memCache) : undefined,
+    memoryKernelUsage: Number(memKernel) > 0 ? formatMegabytes(memKernel) : undefined,
     swapPercent: Number(swapPercent) || 0,
     swapUsage: swapTotal ? `${formatMegabytes(swapUsed)}/${formatMegabytes(swapTotal)}` : '0/0',
     diskRows,

@@ -113,6 +113,9 @@ export interface SystemMetrics {
   cpuPercent: number
   memoryPercent: number
   memoryUsage: string
+  memoryAppUsage?: string
+  memoryCacheUsage?: string
+  memoryKernelUsage?: string
   swapPercent: number
   swapUsage: string
   diskRows: Array<{ path: string; usage: string }>

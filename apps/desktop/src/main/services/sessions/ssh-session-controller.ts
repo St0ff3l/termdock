@@ -1,5 +1,5 @@
-import { readFile, stat } from 'node:fs/promises'
-import type { ClientChannel, FileEntry, SFTPWrapper } from 'ssh2'
+import { readFile, stat, writeFile } from 'node:fs/promises'
+import type { ClientChannel, ConnectConfig, FileEntry, SFTPWrapper } from 'ssh2'
 import { Client } from 'ssh2'
 import type { FileSessionController, RemoteFileItem, SystemMetrics, SshProfile, SshSessionController } from '@termdock/core'
 import { BaseFileSessionController } from './base-file-session-controller.js'
@@ -9,7 +9,10 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
   readonly type = 'ssh'
 
   private readonly ssh = new Client()
+  private readonly sftpSsh = new Client()
   private sftp?: SFTPWrapper
+  private sftpUnavailableReason: string | null = null
+  private sshConfig?: ConnectConfig
   private shellStream?: {
     write(data: string): void
     setWindow(rows: number, cols: number, height: number, width: number): void
@@ -35,6 +38,17 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
     const privateKey = profile.authType === 'privateKey' && profile.privateKeyPath
       ? await readFile(profile.privateKeyPath, 'utf8')
       : undefined
+    const sshConfig: ConnectConfig = {
+      host: profile.host,
+      port: profile.port,
+      username: profile.username,
+      password: profile.authType === 'password' ? profile.password : undefined,
+      privateKey,
+      passphrase: profile.passphrase,
+      readyTimeout: 15000,
+      tryKeyboard: profile.authType === 'password'
+    }
+    this.sshConfig = sshConfig
 
     await new Promise<void>((resolve, reject) => {
       let settled = false
@@ -92,22 +106,16 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
           this.appendSystemMessage('连接已断开\r\n')
           this.onStateChange('Disconnected', this.transcript, false)
         })
-        .connect({
-          host: profile.host,
-          port: profile.port,
-          username: profile.username,
-          password: profile.authType === 'password' ? profile.password : undefined,
-          privateKey,
-          passphrase: profile.passphrase,
-          readyTimeout: 15000,
-          tryKeyboard: profile.authType === 'password'
-        })
+        .connect(sshConfig)
     })
   }
 
   override async disconnect(): Promise<void> {
     this.shellStream?.end()
+    this.sftp?.end?.()
+    this.sftp = undefined
     this.ssh.end()
+    this.sftpSsh.end()
     this.connected = false
   }
 
@@ -132,85 +140,128 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
   }
 
   async listRemoteFiles(): Promise<RemoteFileItem[]> {
-    return this.readRemoteDirectory(this.currentRemotePath)
+    try {
+      return await this.readRemoteDirectory(this.currentRemotePath)
+    } catch (error) {
+      try {
+        const fallbackPath = await this.resolveHomeRemotePath()
+        if (fallbackPath && fallbackPath !== this.currentRemotePath) {
+          this.currentRemotePath = fallbackPath
+        }
+        return await this.readRemoteDirectoryViaShell(this.currentRemotePath, error)
+      } catch {
+        const fallbackPath = await this.resolveHomeRemotePath()
+        if (!fallbackPath || fallbackPath === this.currentRemotePath) {
+          throw error
+        }
+
+        this.currentRemotePath = fallbackPath
+        return this.readRemoteDirectoryViaShell(this.currentRemotePath, error)
+      }
+    }
   }
 
   async openRemotePath(nextPath: string): Promise<RemoteFileItem[]> {
     this.currentRemotePath = nextPath
-    return this.readRemoteDirectory(this.currentRemotePath)
+    try {
+      return await this.readRemoteDirectory(this.currentRemotePath)
+    } catch (error) {
+      return this.readRemoteDirectoryViaShell(this.currentRemotePath, error)
+    }
   }
 
   async readRemoteFile(targetPath: string): Promise<string> {
-    const sftp = await this.ensureSftp()
-    return new Promise<string>((resolve, reject) => {
-      sftp.readFile(targetPath, 'utf8', (error, data) => {
-        if (error) {
-          reject(error)
-          return
-        }
-        resolve(typeof data === 'string' ? data : data.toString('utf8'))
+    try {
+      const sftp = await this.ensureSftp()
+      return await new Promise<string>((resolve, reject) => {
+        sftp.readFile(targetPath, 'utf8', (error, data) => {
+          if (error) {
+            reject(error)
+            return
+          }
+          resolve(typeof data === 'string' ? data : data.toString('utf8'))
+        })
       })
-    })
+    } catch (error) {
+      return this.readRemoteFileViaShell(targetPath, error)
+    }
   }
 
   async writeRemoteFile(targetPath: string, content: string): Promise<void> {
-    const sftp = await this.ensureSftp()
-    await new Promise<void>((resolve, reject) => {
-      sftp.writeFile(targetPath, content, 'utf8', (error) => {
-        if (error) {
-          reject(error)
-          return
-        }
-        resolve()
+    try {
+      const sftp = await this.ensureSftp()
+      await new Promise<void>((resolve, reject) => {
+        sftp.writeFile(targetPath, content, 'utf8', (error) => {
+          if (error) {
+            reject(error)
+            return
+          }
+          resolve()
+        })
       })
-    })
+    } catch (error) {
+      await this.writeRemoteFileViaShell(targetPath, content, error)
+    }
   }
 
   async uploadFile(localPath: string, remotePath: string, onProgress: (progress: number) => void): Promise<void> {
-    const sftp = await this.ensureSftp()
-    const info = await stat(localPath)
-    const total = Math.max(info.size, 1)
-    await new Promise<void>((resolve, reject) => {
-      sftp.fastPut(localPath, remotePath, {
-        step: (transferred) => onProgress(Math.min(99, Math.round((transferred / total) * 100)))
-      }, (error) => {
-        if (error) {
-          reject(error)
-          return
-        }
-        onProgress(100)
-        resolve()
+    try {
+      const sftp = await this.ensureSftp()
+      const info = await stat(localPath)
+      const total = Math.max(info.size, 1)
+      await new Promise<void>((resolve, reject) => {
+        sftp.fastPut(localPath, remotePath, {
+          step: (transferred) => onProgress(Math.min(99, Math.round((transferred / total) * 100)))
+        }, (error) => {
+          if (error) {
+            reject(error)
+            return
+          }
+          onProgress(100)
+          resolve()
+        })
       })
-    })
+    } catch (error) {
+      await this.uploadFileViaShell(localPath, remotePath, onProgress, error)
+    }
   }
 
   async downloadFile(remotePath: string, localPath: string, onProgress: (progress: number) => void): Promise<void> {
-    const sftp = await this.ensureSftp()
-    const attrs = await new Promise<{ size?: number }>((resolve, reject) => {
-      sftp.stat(remotePath, (error, stats) => {
-        if (error || !stats) {
-          reject(error ?? new Error(`Failed to stat remote file: ${remotePath}`))
-          return
-        }
-        resolve(stats)
+    try {
+      const sftp = await this.ensureSftp()
+      const attrs = await new Promise<{ size?: number }>((resolve, reject) => {
+        sftp.stat(remotePath, (error, stats) => {
+          if (error || !stats) {
+            reject(error ?? new Error(`Failed to stat remote file: ${remotePath}`))
+            return
+          }
+          resolve(stats)
+        })
       })
-    })
-    const total = Math.max(attrs.size ?? 1, 1)
-    await new Promise<void>((resolve, reject) => {
-      sftp.fastGet(remotePath, localPath, {
-        step: (transferred) => onProgress(Math.min(99, Math.round((transferred / total) * 100)))
-      }, (error) => {
-        if (error) {
-          reject(error)
-          return
-        }
-        onProgress(100)
-        resolve()
+      const total = Math.max(attrs.size ?? 1, 1)
+      await new Promise<void>((resolve, reject) => {
+        sftp.fastGet(remotePath, localPath, {
+          step: (transferred) => onProgress(Math.min(99, Math.round((transferred / total) * 100)))
+        }, (error) => {
+          if (error) {
+            reject(error)
+            return
+          }
+          onProgress(100)
+          resolve()
+        })
       })
-    })
+    } catch (error) {
+      await this.downloadFileViaShell(remotePath, localPath, onProgress, error)
+    }
   }
 
   async refreshSystemMetrics(): Promise<SystemMetrics | undefined> {
+    const profile = this.profile as SshProfile
+    if (profile.enableExecChannel === false) {
+      return this.metrics
+    }
+
     try {
       const raw = await this.execCommand(buildMetricsCommand())
       this.metrics = parseSystemMetrics(raw)
@@ -220,17 +271,65 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
     }
   }
 
+  pushClientNotice(message: string) {
+    this.appendSystemMessage(`[TermDock] ${message}\r\n`)
+    this.onStateChange(this.getSummary(), this.transcript, this.connected)
+  }
+
   private async ensureSftp(): Promise<SFTPWrapper> {
     if (this.sftp) {
       return this.sftp
     }
 
+    if (!this.sshConfig) {
+      throw new Error('SFTP connection not initialized')
+    }
+
+    const sshConfig = this.sshConfig
+    await new Promise<void>((resolve, reject) => {
+      let settled = false
+      const onReady = () => {
+        cleanup()
+        settled = true
+        resolve()
+      }
+      const onError = (error: Error) => {
+        cleanup()
+        if (!settled) {
+          settled = true
+          this.sftpUnavailableReason = error.message
+          reject(error)
+        }
+      }
+      const onClose = () => {
+        cleanup()
+        if (!settled) {
+          settled = true
+          this.sftpUnavailableReason = 'SFTP SSH connection closed'
+          reject(new Error('SFTP SSH connection closed'))
+        }
+      }
+      const cleanup = () => {
+        this.sftpSsh.off('ready', onReady)
+        this.sftpSsh.off('error', onError)
+        this.sftpSsh.off('close', onClose)
+      }
+
+      this.sftpSsh
+        .once('ready', onReady)
+        .once('error', onError)
+        .once('close', onClose)
+        .connect(sshConfig)
+    })
+
     return new Promise<SFTPWrapper>((resolve, reject) => {
-      this.ssh.sftp((error, sftp) => {
+      this.sftpSsh.sftp((error, sftp) => {
         if (error || !sftp) {
+          this.sftpUnavailableReason = error?.message ?? 'Failed to open SFTP session'
           reject(error ?? new Error('Failed to open SFTP session'))
           return
         }
+        this.sftpUnavailableReason = null
         this.sftp = sftp
         resolve(sftp)
       })
@@ -274,6 +373,131 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
     return rows
   }
 
+  private async resolveHomeRemotePath(): Promise<string | null> {
+    try {
+      const sftp = await this.ensureSftp()
+      return await new Promise<string | null>((resolve) => {
+        sftp.realpath('.', (error, resolvedPath) => {
+          if (error || !resolvedPath) {
+            resolve(null)
+            return
+          }
+          resolve(resolvedPath)
+        })
+      })
+    } catch {
+      const output = await this.execCommand("sh -lc 'pwd'")
+      return output.trim() || null
+    }
+  }
+
+  private async readRemoteFileViaShell(targetPath: string, cause: unknown): Promise<string> {
+    this.ensureShellFileFallback(cause)
+    return this.execCommand(`sh -lc 'cat ${shellQuote(targetPath)}'`)
+  }
+
+  private async writeRemoteFileViaShell(targetPath: string, content: string, cause: unknown): Promise<void> {
+    this.ensureShellFileFallback(cause)
+    const payload = Buffer.from(content, 'utf8').toString('base64')
+    await this.execCommand(`sh -lc 'base64 -d > ${shellQuote(targetPath)} <<'"'"'__TERMDOCK__'"'"'
+${payload}
+__TERMDOCK__'`)
+  }
+
+  private async uploadFileViaShell(
+    localPath: string,
+    remotePath: string,
+    onProgress: (progress: number) => void,
+    cause: unknown
+  ): Promise<void> {
+    this.ensureShellFileFallback(cause)
+    const payload = await readFile(localPath)
+    onProgress(20)
+    await this.execCommand(`sh -lc 'base64 -d > ${shellQuote(remotePath)} <<'"'"'__TERMDOCK__'"'"'
+${payload.toString('base64')}
+__TERMDOCK__'`)
+    onProgress(100)
+  }
+
+  private async downloadFileViaShell(
+    remotePath: string,
+    localPath: string,
+    onProgress: (progress: number) => void,
+    cause: unknown
+  ): Promise<void> {
+    this.ensureShellFileFallback(cause)
+    const output = await this.execCommand(`sh -lc 'base64 ${shellQuote(remotePath)}'`)
+    onProgress(80)
+    await writeFile(localPath, Buffer.from(output.replace(/\s+/g, ''), 'base64'))
+    onProgress(100)
+  }
+
+  private async readRemoteDirectoryViaShell(targetPath: string, cause: unknown): Promise<RemoteFileItem[]> {
+    this.ensureShellFileFallback(cause)
+    const output = await this.execCommand(`sh -lc '
+target=${shellQuote(targetPath)}
+if [ ! -d "$target" ]; then
+  echo "__NOT_DIR__"
+  exit 1
+fi
+cd "$target" || exit 1
+for name in .* *; do
+  [ "$name" = "." ] && continue
+  [ "$name" = ".." ] && continue
+  [ ! -e "$name" ] && continue
+  kind=file
+  [ -d "$name" ] && kind=folder
+  stat_line=$(stat -c "%Y|%s|%a|%u|%g" -- "$name" 2>/dev/null || echo "0|0|||")
+  printf "%s\t%s\t%s\n" "$name" "$kind" "$stat_line"
+done
+'`)
+
+    const rows = output
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const [name, type, mtime, size, permission, uid, gid] = line.split('\t').join('|').split('|')
+        const fullPath = joinRemotePath(targetPath, name)
+        return {
+          path: fullPath,
+          name,
+          type: type === 'folder' ? 'folder' as const : 'file' as const,
+          modified: formatShellTimestamp(Number(mtime) || 0),
+          size: type === 'folder' ? '-' : formatShellBytes(Number(size) || 0),
+          permission: permission || '',
+          ownerGroup: uid || gid ? `${uid || ''}/${gid || ''}` : ''
+        }
+      })
+      .sort((left, right) => {
+        if (left.type !== right.type) {
+          return left.type === 'folder' ? -1 : 1
+        }
+        return left.name.localeCompare(right.name)
+      })
+
+    if (targetPath !== '/') {
+      rows.unshift({
+        path: parentRemotePath(targetPath),
+        name: '..',
+        type: 'folder',
+        modified: '',
+        size: '-',
+        permission: '',
+        ownerGroup: ''
+      })
+    }
+
+    return rows
+  }
+
+  private ensureShellFileFallback(cause: unknown) {
+    const profile = this.profile as SshProfile
+    if (profile.enableExecChannel === false) {
+      throw cause instanceof Error ? cause : new Error('SFTP unavailable and exec fallback disabled')
+    }
+  }
+
   private async execCommand(command: string): Promise<string> {
     return new Promise<string>((resolve, reject) => {
       this.ssh.exec(command, (error, stream) => {
@@ -306,4 +530,42 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
     this.transcript += message
     this.onData(message)
   }
+}
+
+function shellQuote(value: string) {
+  return `'${value.replace(/'/g, `'\"'\"'`)}'`
+}
+
+function joinRemotePath(basePath: string, name: string) {
+  if (basePath === '/') {
+    return `/${name}`
+  }
+  return `${basePath.replace(/\/$/, '')}/${name}`
+}
+
+function formatShellTimestamp(timestamp: number) {
+  if (!timestamp) {
+    return ''
+  }
+
+  const date = new Date(timestamp * 1000)
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+function formatShellBytes(size: number) {
+  if (!size) {
+    return '0 B'
+  }
+
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let value = size
+  let unitIndex = 0
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024
+    unitIndex += 1
+  }
+
+  const digits = value >= 10 || unitIndex === 0 ? 0 : 1
+  return `${value.toFixed(digits)} ${units[unitIndex]}`
 }

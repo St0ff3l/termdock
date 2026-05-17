@@ -55,6 +55,13 @@ export function SystemSidebar({
         <div className="metric-line"><span>{t.load}</span><strong>{metrics?.load ?? '-'}</strong></div>
         <Meter label={t.cpu} value={metrics?.cpuPercent ?? 0} tone="green" caption={metrics ? `${metrics.cpuPercent}%` : '0%'} />
         <Meter label={t.memory} value={metrics?.memoryPercent ?? 0} tone="orange" caption={metrics?.memoryUsage ?? '0/0'} />
+        {metrics?.memoryAppUsage || metrics?.memoryCacheUsage || metrics?.memoryKernelUsage ? (
+          <div className="metric-subline">
+            <span>应用 {metrics?.memoryAppUsage ?? '-'}</span>
+            <span>缓存 {metrics?.memoryCacheUsage ?? '-'}</span>
+            <span>内核 {metrics?.memoryKernelUsage ?? '-'}</span>
+          </div>
+        ) : null}
         <Meter label={t.swap} value={metrics?.swapPercent ?? 0} tone="yellow" caption={metrics?.swapUsage ?? '0/0'} />
         <div className="mini-tabs">
           <span className={sortMode === 'memory' ? 'active' : ''} onClick={() => setSortMode('memory')}>{t.memory}</span>

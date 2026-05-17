@@ -111,9 +111,22 @@ export class WorkspaceSessionRuntime {
       await controller.connect()
       this.liveControllers.set(tabId, controller)
 
-      const files = await controller.listRemoteFiles()
-      const systemMetrics =
-        controller.type === 'ssh' ? await controller.refreshSystemMetrics() : undefined
+      let files = [] as Awaited<ReturnType<LiveSessionController['listRemoteFiles']>>
+      let remoteFilesError: string | null = null
+      try {
+        files = await controller.listRemoteFiles()
+      } catch (error) {
+        remoteFilesError = error instanceof Error ? error.message : '远程目录读取失败'
+      }
+
+      let systemMetrics
+      if (controller.type === 'ssh') {
+        systemMetrics = await controller.refreshSystemMetrics()
+        if (remoteFilesError) {
+          controller.pushClientNotice(`SFTP 初始化失败: ${remoteFilesError}`)
+        }
+      }
+
       const current = this.sessions.get(tabId)
       if (!current) {
         return
@@ -131,7 +144,10 @@ export class WorkspaceSessionRuntime {
       })
       this.options.updateTabStatus(tabId, 'connected')
       if (controller.type === 'ssh') {
-        this.startMetricsPolling(tabId, controller)
+        const profile = controller['profile']
+        if (profile.type !== 'ssh' || profile.enableExecChannel !== false) {
+          this.startMetricsPolling(tabId, controller)
+        }
       }
     } catch (error) {
       const current = this.sessions.get(tabId)

@@ -148,6 +148,16 @@ button:disabled {
   color: var(--text-main);
 }
 
+.metric-subline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin: -1px 0 4px 40px;
+  color: var(--text-soft);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .meter-row {
   display: grid;
   grid-template-columns: 40px 1fr 84px;
