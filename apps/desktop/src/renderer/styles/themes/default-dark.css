@@ -40,6 +40,16 @@
   --terminal-frame-shadow: inset 0 0 14px rgba(0, 0, 0, 0.3);
   --button-primary-bg: #1687e8;
   --button-primary-hover: #1179d4;
+
+  --metric-app: #f6bf26;
+  --metric-cache: #54c772;
+  --metric-kernel: #5aa7ff;
+  --metric-status-green: #39d98a;
+  --metric-status-yellow: #f6bf26;
+  --metric-status-red: #ff5f57;
+  --popover-bg: #2a2a2a;
+  --popover-border: var(--border-light);
+  --popover-shadow: var(--shadow-lg);
 }
 
 :root[data-theme='default'] {
@@ -83,6 +93,16 @@
   --terminal-frame-shadow: inset 0 0 14px rgba(0, 0, 0, 0.3);
   --button-primary-bg: #1687e8;
   --button-primary-hover: #1179d4;
+
+  --metric-app: #f6bf26;
+  --metric-cache: #54c772;
+  --metric-kernel: #5aa7ff;
+  --metric-status-green: #39d98a;
+  --metric-status-yellow: #f6bf26;
+  --metric-status-red: #ff5f57;
+  --popover-bg: #2a2a2a;
+  --popover-border: var(--border-light);
+  --popover-shadow: var(--shadow-lg);
 }
 
 /* Extracted dark theme overrides */
@@ -164,27 +184,27 @@
 }
 
 .metric-dot.app {
-  background: #f6bf26;
+  background: var(--metric-app);
 }
 
 .metric-dot.cache {
-  background: #54c772;
+  background: var(--metric-cache);
 }
 
 .metric-dot.kernel {
-  background: var(--kernel-accent);
+  background: var(--metric-kernel);
 }
 
 .metric-dot.status-green {
-  background: #54c772;
+  background: var(--metric-status-green);
 }
 
 .metric-dot.status-yellow {
-  background: #f6bf26;
+  background: var(--metric-status-yellow);
 }
 
 .metric-dot.status-red {
-  background: #ea5b5b;
+  background: var(--metric-status-red);
 }
 
 .meter-row {
@@ -212,15 +232,15 @@
 }
 
 .meter-fill.app {
-  background: #f6bf26;
+  background: var(--metric-app);
 }
 
 .meter-fill.cache {
-  background: #54c772;
+  background: var(--metric-cache);
 }
 
 .meter-fill.kernel {
-  background: var(--kernel-accent);
+  background: var(--metric-kernel);
 }
 
 .mini-tabs {

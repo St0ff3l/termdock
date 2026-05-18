@@ -339,10 +339,10 @@ textarea:focus-visible,
   gap: 6px;
   min-width: 140px;
   padding: 10px 12px;
-  background: #2a2a2a;
-  border: 1px solid var(--border-light);
+  background: var(--popover-bg);
+  border: 1px solid var(--popover-border);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--popover-shadow);
 }
 
 .memory-meter-group .meter-track:hover .memory-hover-popover {

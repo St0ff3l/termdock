@@ -23,6 +23,16 @@
 
   --meter-track: rgba(15, 23, 42, 0.12);
 
+  --metric-app: #f2b000;
+  --metric-cache: #168a53;
+  --metric-kernel: #1e88e5;
+  --metric-status-green: #168a53;
+  --metric-status-yellow: #f2b000;
+  --metric-status-red: #d94e4e;
+  --popover-bg: #ffffff;
+  --popover-border: var(--border-light);
+  --popover-shadow: 0 12px 32px rgba(15, 23, 42, 0.12);
+
   --terminal-bg: #ffffff;
   --terminal-text: #17202a;
   --terminal-cmd-bg: rgba(15, 23, 42, 0.08);
@@ -134,4 +144,49 @@
 
 :root[data-theme='default-light'] .meter-track {
   background: rgba(15, 23, 42, 0.12);
+}
+
+:root[data-theme='default-light'] .metric-dot.app {
+  background: var(--metric-app);
+}
+
+:root[data-theme='default-light'] .metric-dot.cache {
+  background: var(--metric-cache);
+}
+
+:root[data-theme='default-light'] .metric-dot.kernel {
+  background: var(--metric-kernel);
+}
+
+:root[data-theme='default-light'] .metric-dot.status-green {
+  background: var(--metric-status-green);
+}
+
+:root[data-theme='default-light'] .metric-dot.status-yellow {
+  background: var(--metric-status-yellow);
+}
+
+:root[data-theme='default-light'] .metric-dot.status-red {
+  background: var(--metric-status-red);
+}
+
+:root[data-theme='default-light'] .meter-fill.app {
+  background: var(--metric-app);
+}
+
+:root[data-theme='default-light'] .meter-fill.cache {
+  background: var(--metric-cache);
+}
+
+:root[data-theme='default-light'] .meter-fill.kernel {
+  background: var(--metric-kernel);
+}
+
+:root[data-theme='default-light'] .meter-fill.green {
+  background: var(--success);
+}
+
+:root[data-theme='default-light'] .meter-fill.yellow,
+:root[data-theme='default-light'] .meter-fill.orange {
+  background: var(--warning);
 }
