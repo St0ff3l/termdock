@@ -1,4 +1,11 @@
-import type { ConnectionProfile, ConnectionFolder, CreateProfileInput } from '@termdock/core'
+import type {
+  CommandFolder,
+  CommandTemplate,
+  CommandTemplateInput,
+  ConnectionFolder,
+  ConnectionProfile,
+  CreateProfileInput
+} from '@termdock/core'
 
 export interface ProfileRepository {
   list(): Promise<ConnectionProfile[]>
@@ -13,11 +20,24 @@ export interface ProfileRepository {
   deleteFolder(id: string): Promise<void>
   
   updateOrder(id: string, newParentId: string | undefined, newOrder: number): Promise<void>
+
+  listCommandFolders(): Promise<CommandFolder[]>
+  createCommandFolder(name: string, parentId?: string): Promise<CommandFolder>
+  updateCommandFolder(id: string, updates: Partial<CommandFolder>): Promise<CommandFolder>
+  deleteCommandFolder(id: string): Promise<void>
+  listCommandTemplates(): Promise<CommandTemplate[]>
+  createCommandTemplate(input: CommandTemplateInput): Promise<CommandTemplate>
+  updateCommandTemplate(id: string, input: CommandTemplateInput): Promise<CommandTemplate>
+  getCommandTemplateById(id: string): Promise<CommandTemplate | null>
+  deleteCommandTemplate(id: string): Promise<void>
+  updateCommandOrder(id: string, newParentId: string | undefined, newOrder: number): Promise<void>
 }
 
 export class MemoryProfileRepository implements ProfileRepository {
   private profiles: ConnectionProfile[]
   private folders: ConnectionFolder[] = []
+  private commandFolders: CommandFolder[] = []
+  private commandTemplates: CommandTemplate[] = []
 
   constructor(seed: ConnectionProfile[]) {
     this.profiles = seed
@@ -84,6 +104,64 @@ export class MemoryProfileRepository implements ProfileRepository {
       folder.order = newOrder
     }
   }
+
+  async listCommandFolders(): Promise<CommandFolder[]> {
+    return [...this.commandFolders]
+  }
+
+  async createCommandFolder(name: string, parentId?: string): Promise<CommandFolder> {
+    const id = globalThis.crypto?.randomUUID?.() ?? `command-folder-${Date.now()}`
+    const folder: CommandFolder = { id, type: 'command-folder', name, parentId }
+    this.commandFolders.push(folder)
+    return folder
+  }
+
+  async updateCommandFolder(id: string, updates: Partial<CommandFolder>): Promise<CommandFolder> {
+    const folder = this.commandFolders.find((item) => item.id === id)
+    if (!folder) throw new Error('Command folder not found')
+    Object.assign(folder, updates)
+    return folder
+  }
+
+  async deleteCommandFolder(id: string): Promise<void> {
+    this.commandFolders = this.commandFolders.filter((item) => item.id !== id)
+    this.commandTemplates = this.commandTemplates.map((item) => (
+      item.parentId === id ? { ...item, parentId: undefined } : item
+    ))
+  }
+
+  async listCommandTemplates(): Promise<CommandTemplate[]> {
+    return [...this.commandTemplates]
+  }
+
+  async createCommandTemplate(input: CommandTemplateInput): Promise<CommandTemplate> {
+    const id = globalThis.crypto?.randomUUID?.() ?? `command-${Date.now()}`
+    const command = toCommandTemplate(id, input)
+    this.commandTemplates = [command, ...this.commandTemplates]
+    return command
+  }
+
+  async updateCommandTemplate(id: string, input: CommandTemplateInput): Promise<CommandTemplate> {
+    const command = toCommandTemplate(id, input)
+    this.commandTemplates = this.commandTemplates.map((item) => (item.id === id ? command : item))
+    return command
+  }
+
+  async getCommandTemplateById(id: string): Promise<CommandTemplate | null> {
+    return this.commandTemplates.find((item) => item.id === id) ?? null
+  }
+
+  async deleteCommandTemplate(id: string): Promise<void> {
+    this.commandTemplates = this.commandTemplates.filter((item) => item.id !== id)
+  }
+
+  async updateCommandOrder(id: string, newParentId: string | undefined, newOrder: number): Promise<void> {
+    const command = this.commandTemplates.find((item) => item.id === id)
+    if (command) {
+      command.parentId = newParentId
+      command.order = newOrder
+    }
+  }
 }
 
 function toProfile(id: string, input: CreateProfileInput): ConnectionProfile {
@@ -121,4 +199,17 @@ function toProfile(id: string, input: CreateProfileInput): ConnectionProfile {
         group: input.group,
         remotePath: input.remotePath
       }
+}
+
+function toCommandTemplate(id: string, input: CommandTemplateInput): CommandTemplate {
+  return {
+    id,
+    type: 'command-template',
+    name: input.name,
+    command: input.command,
+    description: input.description,
+    parentId: input.parentId,
+    order: input.order,
+    appendCarriageReturn: input.appendCarriageReturn ?? true
+  }
 }

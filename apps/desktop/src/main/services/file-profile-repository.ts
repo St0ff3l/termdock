@@ -1,19 +1,39 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
-import type { ConnectionProfile, ConnectionFolder, CreateProfileInput } from '@termdock/core'
+import type {
+  CommandFolder,
+  CommandTemplate,
+  CommandTemplateInput,
+  ConnectionFolder,
+  ConnectionProfile,
+  CreateProfileInput
+} from '@termdock/core'
 import type { ProfileRepository } from '@termdock/storage'
 
 export class FileProfileRepository implements ProfileRepository {
   private readonly filePath: string
   private readonly foldersPath: string
+  private readonly commandFoldersPath: string
+  private readonly commandsPath: string
   private readonly seedProfiles: ConnectionProfile[]
+  private readonly seedCommandTemplates: CommandTemplate[]
+  private readonly seedCommandFolders: CommandFolder[]
   private ready: Promise<void>
 
-  constructor(baseDir: string, seedProfiles: ConnectionProfile[]) {
+  constructor(
+    baseDir: string,
+    seedProfiles: ConnectionProfile[],
+    seedCommandTemplates: CommandTemplate[] = [],
+    seedCommandFolders: CommandFolder[] = []
+  ) {
     this.filePath = path.join(baseDir, 'profiles.json')
     this.foldersPath = path.join(baseDir, 'folders.json')
+    this.commandFoldersPath = path.join(baseDir, 'command-folders.json')
+    this.commandsPath = path.join(baseDir, 'commands.json')
     this.seedProfiles = seedProfiles
+    this.seedCommandTemplates = seedCommandTemplates
+    this.seedCommandFolders = seedCommandFolders
     this.ready = this.ensureFile()
   }
 
@@ -113,6 +133,93 @@ export class FileProfileRepository implements ProfileRepository {
     await this.writeFolders(nextFolders)
   }
 
+  async listCommandFolders(): Promise<CommandFolder[]> {
+    const folders = await this.readCommandFolders()
+    return [...folders]
+  }
+
+  async createCommandFolder(name: string, parentId?: string): Promise<CommandFolder> {
+    const folders = await this.readCommandFolders()
+    const folder: CommandFolder = {
+      id: randomUUID(),
+      type: 'command-folder',
+      name,
+      parentId,
+      order: Date.now()
+    }
+    await this.writeCommandFolders([folder, ...folders])
+    return folder
+  }
+
+  async updateCommandFolder(id: string, updates: Partial<CommandFolder>): Promise<CommandFolder> {
+    const folders = await this.readCommandFolders()
+    let updatedFolder: CommandFolder | undefined
+    const nextFolders = folders.map((item) => {
+      if (item.id === id) {
+        updatedFolder = { ...item, ...updates }
+        return updatedFolder
+      }
+      return item
+    })
+    if (!updatedFolder) throw new Error('Command folder not found')
+    await this.writeCommandFolders(nextFolders)
+    return updatedFolder
+  }
+
+  async deleteCommandFolder(id: string): Promise<void> {
+    const [folders, commands] = await Promise.all([
+      this.readCommandFolders(),
+      this.readCommandTemplates()
+    ])
+    await Promise.all([
+      this.writeCommandFolders(folders.filter((item) => item.id !== id)),
+      this.writeCommandTemplates(commands.map((item) => (
+        item.parentId === id ? { ...item, parentId: undefined } : item
+      )))
+    ])
+  }
+
+  async listCommandTemplates(): Promise<CommandTemplate[]> {
+    const commands = await this.readCommandTemplates()
+    return [...commands]
+  }
+
+  async createCommandTemplate(input: CommandTemplateInput): Promise<CommandTemplate> {
+    const commands = await this.readCommandTemplates()
+    const command = toCommandTemplate(randomUUID(), input)
+    await this.writeCommandTemplates([command, ...commands])
+    return command
+  }
+
+  async updateCommandTemplate(id: string, input: CommandTemplateInput): Promise<CommandTemplate> {
+    const commands = await this.readCommandTemplates()
+    const command = toCommandTemplate(id, input)
+    const nextCommands = commands.map((item) => (item.id === id ? command : item))
+    await this.writeCommandTemplates(nextCommands)
+    return command
+  }
+
+  async getCommandTemplateById(id: string): Promise<CommandTemplate | null> {
+    const commands = await this.readCommandTemplates()
+    return commands.find((item) => item.id === id) ?? null
+  }
+
+  async deleteCommandTemplate(id: string): Promise<void> {
+    const commands = await this.readCommandTemplates()
+    await this.writeCommandTemplates(commands.filter((item) => item.id !== id))
+  }
+
+  async updateCommandOrder(id: string, newParentId: string | undefined, newOrder: number): Promise<void> {
+    const commands = await this.readCommandTemplates()
+    const nextCommands = commands.map((item) => {
+      if (item.id === id) {
+        return { ...item, parentId: newParentId, order: newOrder }
+      }
+      return item
+    })
+    await this.writeCommandTemplates(nextCommands)
+  }
+
   private async ensureFile() {
     await mkdir(path.dirname(this.filePath), { recursive: true })
     try {
@@ -124,6 +231,16 @@ export class FileProfileRepository implements ProfileRepository {
       await readFile(this.foldersPath, 'utf8')
     } catch {
       await this.writeFolders([])
+    }
+    try {
+      await readFile(this.commandFoldersPath, 'utf8')
+    } catch {
+      await this.writeCommandFolders(this.seedCommandFolders)
+    }
+    try {
+      await readFile(this.commandsPath, 'utf8')
+    } catch {
+      await this.writeCommandTemplates(this.seedCommandTemplates)
     }
   }
 
@@ -147,6 +264,28 @@ export class FileProfileRepository implements ProfileRepository {
   private async writeFolders(folders: ConnectionFolder[]) {
     await mkdir(path.dirname(this.foldersPath), { recursive: true })
     await writeFile(this.foldersPath, JSON.stringify(folders, null, 2), 'utf8')
+  }
+
+  private async readCommandFolders(): Promise<CommandFolder[]> {
+    await this.ready
+    const content = await readFile(this.commandFoldersPath, 'utf8')
+    return JSON.parse(content) as CommandFolder[]
+  }
+
+  private async writeCommandFolders(folders: CommandFolder[]) {
+    await mkdir(path.dirname(this.commandFoldersPath), { recursive: true })
+    await writeFile(this.commandFoldersPath, JSON.stringify(folders, null, 2), 'utf8')
+  }
+
+  private async readCommandTemplates(): Promise<CommandTemplate[]> {
+    await this.ready
+    const content = await readFile(this.commandsPath, 'utf8')
+    return JSON.parse(content) as CommandTemplate[]
+  }
+
+  private async writeCommandTemplates(commands: CommandTemplate[]) {
+    await mkdir(path.dirname(this.commandsPath), { recursive: true })
+    await writeFile(this.commandsPath, JSON.stringify(commands, null, 2), 'utf8')
   }
 }
 
@@ -185,4 +324,17 @@ function toProfile(id: string, input: CreateProfileInput): ConnectionProfile {
         group: input.group,
         remotePath: input.remotePath
       }
+}
+
+function toCommandTemplate(id: string, input: CommandTemplateInput): CommandTemplate {
+  return {
+    id,
+    type: 'command-template',
+    name: input.name,
+    command: input.command,
+    description: input.description,
+    parentId: input.parentId,
+    order: input.order ?? Date.now(),
+    appendCarriageReturn: input.appendCarriageReturn ?? true
+  }
 }

@@ -2,7 +2,7 @@ export function AppIcon({
   name,
   size = 14
 }: {
-  name: 'grid' | 'menu' | 'server' | 'connections' | 'folder' | 'file' | 'history' | 'refresh' | 'upload' | 'download'
+  name: 'grid' | 'menu' | 'server' | 'connections' | 'folder' | 'file' | 'history' | 'refresh' | 'upload' | 'download' | 'flash'
   size?: number
 }) {
   const commonProps = {
@@ -84,6 +84,9 @@ export function AppIcon({
           <path {...commonProps} d="M4.7 6.8 8 3.5l3.3 3.3" />
           <path {...commonProps} d="M3 12.5h10" />
         </>
+      ) : null}
+      {name === 'flash' ? (
+        <path {...commonProps} d="M8.9 1.8 3.8 8h3l-.7 6.2L12.2 8h-3.1l-.2-6.2Z" />
       ) : null}
     </svg>
   )

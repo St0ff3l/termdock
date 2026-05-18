@@ -1,5 +1,5 @@
 import { BrowserWindow, ipcMain } from 'electron'
-import type { CreateProfileInput } from '@termdock/core'
+import type { CommandTemplateInput, CreateProfileInput } from '@termdock/core'
 import type { IpcServices, IpcWindowOptions } from './types.js'
 
 export function registerWorkspaceHandlers(services: IpcServices, options: IpcWindowOptions) {
@@ -47,6 +47,46 @@ export function registerWorkspaceHandlers(services: IpcServices, options: IpcWin
     const snapshot = await workspaceService.updateEntityOrder(id, newParentId, newOrder)
     broadcastSnapshot(snapshot)
     return snapshot
+  })
+
+  ipcMain.handle('workspace:createCommandFolder', async (_, name: string, parentId?: string) => {
+    const snapshot = await workspaceService.createCommandFolder(name, parentId)
+    broadcastSnapshot(snapshot)
+    return snapshot
+  })
+
+  ipcMain.handle('workspace:updateCommandFolder', async (_, folderId: string, updates: any) => {
+    const snapshot = await workspaceService.updateCommandFolder(folderId, updates)
+    broadcastSnapshot(snapshot)
+    return snapshot
+  })
+
+  ipcMain.handle('workspace:deleteCommandFolder', async (_, folderId: string) => {
+    const snapshot = await workspaceService.deleteCommandFolder(folderId)
+    broadcastSnapshot(snapshot)
+    return snapshot
+  })
+
+  ipcMain.handle('workspace:createCommandTemplate', async (_, input: CommandTemplateInput) => {
+    const snapshot = await workspaceService.createCommandTemplate(input)
+    broadcastSnapshot(snapshot)
+    return snapshot
+  })
+
+  ipcMain.handle('workspace:updateCommandTemplate', async (_, commandId: string, input: CommandTemplateInput) => {
+    const snapshot = await workspaceService.updateCommandTemplate(commandId, input)
+    broadcastSnapshot(snapshot)
+    return snapshot
+  })
+
+  ipcMain.handle('workspace:deleteCommandTemplate', async (_, commandId: string) => {
+    const snapshot = await workspaceService.deleteCommandTemplate(commandId)
+    broadcastSnapshot(snapshot)
+    return snapshot
+  })
+
+  ipcMain.handle('workspace:executeCommandTemplate', async (_, tabId: string, commandId: string, args?: string[]) => {
+    return workspaceService.executeCommandTemplate(tabId, commandId, args)
   })
 
   ipcMain.handle('workspace:openProfile', async (event, profileId: string) => {

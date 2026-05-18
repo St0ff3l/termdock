@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState, type CSSProperties, type DragEvent, type FormEvent, type MouseEvent } from 'react'
-import type { LocalFileItem, RemoteFileItem, SessionSnapshot } from '@termdock/core'
+import type {
+  CommandFolder,
+  CommandTemplate,
+  LocalFileItem,
+  RemoteFileItem,
+  SessionSnapshot,
+  WorkspaceTab
+} from '@termdock/core'
 import {
   copyText,
   localFileDragType,
@@ -12,13 +19,20 @@ import {
 } from '../../app/app-utils'
 import { t } from '../../i18n'
 import { AppIcon } from '../common/AppIcon'
+import { CommandCenter } from '../commands/CommandCenter'
 import { FileContextMenu } from './FileContextMenu'
 import { FileTable, LocalFileTable, PanePathBar } from './FileTables'
 
 export function FileManager({
   activeSession,
+  activeTab,
+  commandFolders,
+  commandTemplates,
+  isBusy,
   localItems,
   localPath,
+  onExecuteCommand,
+  onOpenCommandManager,
   onOpenLocalItem,
   onOpenLocalPath,
   onOpenRemoteItem,
@@ -30,8 +44,14 @@ export function FileManager({
   onDropUpload
 }: {
   activeSession: SessionSnapshot
+  activeTab: WorkspaceTab | null
+  commandFolders: CommandFolder[]
+  commandTemplates: CommandTemplate[]
+  isBusy: boolean
   localItems: LocalFileItem[]
   localPath: string
+  onExecuteCommand(commandId: string, args: string[]): void
+  onOpenCommandManager(): void
   onOpenLocalItem(item: LocalFileItem): void
   onOpenLocalPath(path: string): void
   onOpenRemoteItem(item: RemoteFileItem): void
@@ -42,6 +62,7 @@ export function FileManager({
   onDownloadFiles(items: RemoteFileItem[], targetDirectory?: string): void
   onDropUpload(event: DragEvent<HTMLDivElement>): void
 }) {
+  const [activeView, setActiveView] = useState<'file' | 'command'>('file')
   const [localPaneWidth, setLocalPaneWidth] = useState(230)
   const [localPathInput, setLocalPathInput] = useState(localPath)
   const [remotePathInput, setRemotePathInput] = useState(activeSession.remotePath)
@@ -238,17 +259,33 @@ export function FileManager({
   return (
     <div className="file-manager" onClick={() => setContextMenu(null)}>
       <div className="file-tabs">
-        <button className="active" type="button">{t.file}</button>
-        <button type="button">{t.command}</button>
-        <span className="file-current-path">{activeSession.remotePath}</span>
-        <div className="file-tab-actions">
-          <button title={t.refresh} type="button" onClick={onRefresh}><AppIcon name="refresh" /></button>
-          <button title={t.downloadTo} type="button" disabled={!selectedRemoteFileItems.length} onClick={() => onDownloadFiles(selectedRemoteFileItems)}>
-            <AppIcon name="download" />
-          </button>
-          <button title={t.upload} type="button" onClick={onChooseUploadFiles}><AppIcon name="upload" /></button>
-        </div>
+        <button className={activeView === 'file' ? 'active' : ''} type="button" onClick={() => setActiveView('file')}>{t.file}</button>
+        <button className={activeView === 'command' ? 'active' : ''} type="button" onClick={() => setActiveView('command')}>{t.command}</button>
+        <span className="file-current-path">{activeView === 'file' ? activeSession.remotePath : t.commandQuickLaunch}</span>
+        {activeView === 'file' ? (
+          <div className="file-tab-actions">
+            <button title={t.refresh} type="button" onClick={onRefresh}><AppIcon name="refresh" /></button>
+            <button title={t.downloadTo} type="button" disabled={!selectedRemoteFileItems.length} onClick={() => onDownloadFiles(selectedRemoteFileItems)}>
+              <AppIcon name="download" />
+            </button>
+            <button title={t.upload} type="button" onClick={onChooseUploadFiles}><AppIcon name="upload" /></button>
+          </div>
+        ) : (
+          <div className="file-tab-actions">
+            <button title={t.commandManager} type="button" onClick={onOpenCommandManager}><AppIcon name="menu" /></button>
+          </div>
+        )}
       </div>
+      {activeView === 'command' ? (
+        <CommandCenter
+          activeTab={activeTab}
+          commandFolders={commandFolders}
+          commandTemplates={commandTemplates}
+          isBusy={isBusy}
+          onExecute={onExecuteCommand}
+          onOpenManager={onOpenCommandManager}
+        />
+      ) : (
       <div className="file-split" ref={splitRef} style={{ '--local-pane-width': `${localPaneWidth}px` } as CSSProperties}>
         <div
           className="local-pane"
@@ -414,6 +451,7 @@ export function FileManager({
           </div>
         </div>
       </div>
+      )}
       {contextMenu ? (
         <FileContextMenu
           item={contextLocalItem ?? contextRemoteItem}

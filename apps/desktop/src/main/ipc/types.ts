@@ -6,6 +6,7 @@ import type { WorkspaceService } from '../services/workspace-service.js'
 export interface IpcWindowOptions {
   getMainWindow(): BrowserWindow | null
   openConnectionManagerWindow(parent: BrowserWindow): void
+  openCommandManagerWindow(parent: BrowserWindow): void
   openConnectionFormWindow(parent: BrowserWindow, mode: 'create' | 'edit', profileId?: string): void
 }
 

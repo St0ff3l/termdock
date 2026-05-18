@@ -3,14 +3,16 @@ import { readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { WebContents } from 'electron'
 import {
+  type CommandTemplateInput,
   type ConnectionProfile,
+  type CommandExecutionResult,
   type CreateProfileInput,
   type SessionSnapshot,
   type TransferTask,
   type WorkspaceSnapshot
 } from '@termdock/core'
 import type { ProfileRepository } from '@termdock/storage'
-import { seedProfiles, seedTransfers } from './workspace/seed-data.js'
+import { seedCommandFolders, seedCommandTemplates, seedProfiles, seedTransfers } from './workspace/seed-data.js'
 import { WorkspaceSessionRuntime } from './workspace/workspace-session-runtime.js'
 import { WorkspaceTabsState } from './workspace/workspace-tabs.js'
 import { WorkspaceTransfersState } from './workspace/workspace-transfers.js'
@@ -36,6 +38,8 @@ export class WorkspaceService {
     return {
       profiles: await this.profileRepository.list(),
       folders: await this.profileRepository.listFolders?.() ?? [],
+      commandFolders: await this.profileRepository.listCommandFolders?.() ?? [],
+      commandTemplates: await this.profileRepository.listCommandTemplates?.() ?? [],
       tabs: this.tabs.list(),
       activeTabId: this.tabs.getActiveTabId(),
       transfers: this.transfers.list(),
@@ -76,6 +80,57 @@ export class WorkspaceService {
   async updateEntityOrder(id: string, newParentId: string | undefined, newOrder: number): Promise<WorkspaceSnapshot> {
     await this.profileRepository.updateOrder?.(id, newParentId, newOrder)
     return this.getSnapshot()
+  }
+
+  async createCommandFolder(name: string, parentId?: string): Promise<WorkspaceSnapshot> {
+    await this.profileRepository.createCommandFolder?.(name, parentId)
+    return this.getSnapshot()
+  }
+
+  async updateCommandFolder(folderId: string, updates: any): Promise<WorkspaceSnapshot> {
+    await this.profileRepository.updateCommandFolder?.(folderId, updates)
+    return this.getSnapshot()
+  }
+
+  async deleteCommandFolder(folderId: string): Promise<WorkspaceSnapshot> {
+    await this.profileRepository.deleteCommandFolder?.(folderId)
+    return this.getSnapshot()
+  }
+
+  async createCommandTemplate(input: CommandTemplateInput): Promise<WorkspaceSnapshot> {
+    await this.profileRepository.createCommandTemplate?.(input)
+    return this.getSnapshot()
+  }
+
+  async updateCommandTemplate(commandId: string, input: CommandTemplateInput): Promise<WorkspaceSnapshot> {
+    await this.profileRepository.updateCommandTemplate?.(commandId, input)
+    return this.getSnapshot()
+  }
+
+  async deleteCommandTemplate(commandId: string): Promise<WorkspaceSnapshot> {
+    await this.profileRepository.deleteCommandTemplate?.(commandId)
+    return this.getSnapshot()
+  }
+
+  async executeCommandTemplate(tabId: string, commandId: string, args: string[] = []): Promise<CommandExecutionResult> {
+    const controller = this.sessionRuntime.requireController(tabId)
+    if (controller.type !== 'ssh') {
+      throw new Error('只有 SSH 会话支持快捷命令')
+    }
+
+    const command = await this.profileRepository.getCommandTemplateById?.(commandId)
+    if (!command) {
+      throw new Error(`Command not found: ${commandId}`)
+    }
+
+    const renderedCommand = command.command.replace(/\[p#(\d+)\]/g, (_, rawIndex: string) => {
+      const nextArg = args[Number(rawIndex) - 1]
+      return nextArg ?? ''
+    })
+
+    await controller.write(command.appendCarriageReturn ? `${renderedCommand}\r` : renderedCommand)
+
+    return { renderedCommand }
   }
 
   async openProfile(profileId: string, sender: WebContents): Promise<WorkspaceSnapshot> {
@@ -424,4 +479,4 @@ export class WorkspaceService {
   }
 }
 
-export { seedProfiles }
+export { seedCommandFolders, seedCommandTemplates, seedProfiles }

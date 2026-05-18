@@ -10,6 +10,13 @@ export function registerAppHandlers(options: IpcWindowOptions) {
     }
   })
 
+  ipcMain.handle('app:openCommandManagerWindow', (event) => {
+    const senderWindow = BrowserWindow.fromWebContents(event.sender) ?? options.getMainWindow()
+    if (senderWindow) {
+      options.openCommandManagerWindow(senderWindow)
+    }
+  })
+
   ipcMain.handle('app:openConnectionFormWindow', (event, mode: ConnectionFormMode, profileId?: string) => {
     const senderWindow = BrowserWindow.fromWebContents(event.sender) ?? options.getMainWindow()
     if (senderWindow) {

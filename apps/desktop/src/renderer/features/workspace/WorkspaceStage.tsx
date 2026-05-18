@@ -1,4 +1,6 @@
 import type {
+  CommandFolder,
+  CommandTemplate,
   ConnectionFolder,
   ConnectionProfile,
   LocalFileItem,
@@ -21,9 +23,14 @@ export function WorkspaceStage({
   activeProfile,
   activeSession,
   activeTab,
+  commandFolders,
+  commandTemplates,
   folders,
+  isBusy,
   localItems,
   localPath,
+  onExecuteCommand,
+  onOpenCommandManager,
   profiles,
   onChooseUploadFiles,
   onDownloadFiles,
@@ -40,9 +47,14 @@ export function WorkspaceStage({
   activeProfile: ConnectionProfile | null
   activeSession: SessionSnapshot | null
   activeTab: WorkspaceTab | null
+  commandFolders: CommandFolder[]
+  commandTemplates: CommandTemplate[]
   folders: ConnectionFolder[]
+  isBusy: boolean
   localItems: LocalFileItem[]
   localPath: string
+  onExecuteCommand(commandId: string, args: string[]): void
+  onOpenCommandManager(): void
   profiles: ConnectionProfile[]
   onChooseUploadFiles(): void
   onDownloadFiles(items: RemoteFileItem[], targetDirectory?: string): void
@@ -64,8 +76,13 @@ export function WorkspaceStage({
       <SessionWorkspace
         activeSession={activeSession}
         activeTab={activeTab}
+        commandFolders={commandFolders}
+        commandTemplates={commandTemplates}
+        isBusy={isBusy}
         localItems={localItems}
         localPath={localPath}
+        onExecuteCommand={onExecuteCommand}
+        onOpenCommandManager={onOpenCommandManager}
         onChooseUploadFiles={onChooseUploadFiles}
         onDownloadFiles={onDownloadFiles}
         onDropUpload={onDropUpload}

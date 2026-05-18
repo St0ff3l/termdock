@@ -27,6 +27,7 @@ export function TabBar({
   onDragEnd,
   onDragEnter,
   onDragStart,
+  onOpenCommandManager,
   onOpenConnectionManager,
   onOpenTabContext,
   onSetLocale,
@@ -45,6 +46,7 @@ export function TabBar({
   onDragEnd(): void
   onDragEnter(targetKey: string): void
   onDragStart(tabKey: string): void
+  onOpenCommandManager(): void
   onOpenConnectionManager(): void
   onOpenTabContext(event: React.MouseEvent<HTMLDivElement>, target: TabContextTarget): void
   onSetLocale(locale: AppLocale): void
@@ -158,7 +160,7 @@ export function TabBar({
               { label: '简体中文', disabled: locale === 'zhCN', action: () => onSetLocale('zhCN') },
               { label: 'English', disabled: locale === 'enUS', action: () => onSetLocale('enUS') },
               { separator: true },
-              { label: t.commandManager, action: () => window.alert(t.notReady) },
+              { label: t.commandManager, action: onOpenCommandManager },
               { label: t.connectionManager, action: onOpenConnectionManager },
               { label: t.settings, action: () => window.alert(t.notReady) }
             ]}

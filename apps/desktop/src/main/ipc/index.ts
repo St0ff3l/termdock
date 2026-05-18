@@ -1,7 +1,7 @@
 import { BrowserWindow } from 'electron'
 import { FileProfileRepository } from '../services/file-profile-repository.js'
 import { LocalFilesService } from '../services/local-files-service.js'
-import { WorkspaceService, seedProfiles } from '../services/workspace-service.js'
+import { WorkspaceService, seedCommandFolders, seedCommandTemplates, seedProfiles } from '../services/workspace-service.js'
 import { registerAppHandlers } from './app-handlers.js'
 import { registerLocalFilesHandlers } from './local-files-handlers.js'
 import { registerRemoteFilesHandlers } from './remote-files-handlers.js'
@@ -13,7 +13,7 @@ import { registerWorkspaceHandlers } from './workspace-handlers.js'
 export function registerIpcHandlers(userDataPath: string, options: IpcWindowOptions) {
   const services: IpcServices = {
     workspaceService: new WorkspaceService(
-      new FileProfileRepository(userDataPath, seedProfiles)
+      new FileProfileRepository(userDataPath, seedProfiles, seedCommandTemplates, seedCommandFolders)
     ),
     localFilesService: new LocalFilesService(),
     broadcastSnapshot(snapshot) {

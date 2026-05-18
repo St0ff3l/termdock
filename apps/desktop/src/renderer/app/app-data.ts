@@ -8,6 +8,8 @@ import type {
 export const emptyState: WorkspaceSnapshot = {
   profiles: [],
   folders: [],
+  commandFolders: [],
+  commandTemplates: [],
   tabs: [],
   activeTabId: null,
   transfers: [],
@@ -52,6 +54,32 @@ export const previewState: WorkspaceSnapshot = {
     }
   ],
   folders: [],
+  commandFolders: [
+    { id: 'preview-cmd-folder-default', type: 'command-folder', name: '默认分类', order: 1000 },
+    { id: 'preview-cmd-folder-system', type: 'command-folder', name: '系统诊断', order: 2000 }
+  ],
+  commandTemplates: [
+    {
+      id: 'preview-cmd-disk',
+      type: 'command-template',
+      name: '磁盘占用',
+      parentId: 'preview-cmd-folder-default',
+      order: 1000,
+      command: 'df -h',
+      description: '查看当前主机磁盘使用情况',
+      appendCarriageReturn: true
+    },
+    {
+      id: 'preview-cmd-tail',
+      type: 'command-template',
+      name: '日志追踪',
+      parentId: 'preview-cmd-folder-system',
+      order: 2000,
+      command: 'tail -f [p#1]',
+      description: '输入日志路径后实时查看输出',
+      appendCarriageReturn: true
+    }
+  ],
   tabs: [
     {
       id: 'preview-tab-ssh',

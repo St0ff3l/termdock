@@ -16,6 +16,17 @@ export interface ConnectionFolder extends BaseEntity {
   isExpanded?: boolean
 }
 
+export interface CommandFolder extends BaseEntity {
+  type: 'command-folder'
+}
+
+export interface CommandTemplate extends BaseEntity {
+  type: 'command-template'
+  command: string
+  description?: string
+  appendCarriageReturn: boolean
+}
+
 export interface BaseProfile extends BaseEntity {
   type: SessionType
   host: string
@@ -205,6 +216,8 @@ export interface SessionSnapshot {
 export interface WorkspaceSnapshot {
   profiles: ConnectionProfile[]
   folders: ConnectionFolder[]
+  commandFolders: CommandFolder[]
+  commandTemplates: CommandTemplate[]
   tabs: WorkspaceTab[]
   activeTabId: string | null
   transfers: TransferTask[]
@@ -231,9 +244,22 @@ export interface CreateProfileInput {
   enableExecChannel?: boolean
 }
 
+export interface CommandTemplateInput {
+  name: string
+  command: string
+  description?: string
+  parentId?: string
+  order?: number
+  appendCarriageReturn?: boolean
+}
+
 export type ConnectionFormMode = 'create' | 'edit'
 
-export type AppWindowMode = 'main' | 'connection-manager' | 'connection-form'
+export type AppWindowMode = 'main' | 'connection-manager' | 'connection-form' | 'command-manager'
+
+export interface CommandExecutionResult {
+  renderedCommand: string
+}
 
 export interface TerminalDataPayload {
   tabId: string
@@ -252,6 +278,7 @@ export interface TermdockDesktopApi {
   appName: string
   isDesktop: boolean
   openConnectionManagerWindow(): Promise<void>
+  openCommandManagerWindow(): Promise<void>
   openConnectionFormWindow(mode: ConnectionFormMode, profileId?: string): Promise<void>
   closeCurrentWindow(): Promise<void>
   getSnapshot(): Promise<WorkspaceSnapshot>
@@ -259,6 +286,13 @@ export interface TermdockDesktopApi {
   updateFolder(folderId: string, updates: Partial<ConnectionFolder>): Promise<WorkspaceSnapshot>
   deleteFolder(folderId: string): Promise<WorkspaceSnapshot>
   updateEntityOrder(id: string, newParentId: string | undefined, newOrder: number): Promise<WorkspaceSnapshot>
+  createCommandFolder(name: string, parentId?: string): Promise<WorkspaceSnapshot>
+  updateCommandFolder(folderId: string, updates: Partial<CommandFolder>): Promise<WorkspaceSnapshot>
+  deleteCommandFolder(folderId: string): Promise<WorkspaceSnapshot>
+  createCommandTemplate(input: CommandTemplateInput): Promise<WorkspaceSnapshot>
+  updateCommandTemplate(commandId: string, input: CommandTemplateInput): Promise<WorkspaceSnapshot>
+  deleteCommandTemplate(commandId: string): Promise<WorkspaceSnapshot>
+  executeCommandTemplate(tabId: string, commandId: string, args?: string[]): Promise<CommandExecutionResult>
   createProfile(input: CreateProfileInput): Promise<WorkspaceSnapshot>
   updateProfile(profileId: string, input: CreateProfileInput): Promise<WorkspaceSnapshot>
   deleteProfile(profileId: string): Promise<WorkspaceSnapshot>
