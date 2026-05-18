@@ -53,7 +53,7 @@ export function SystemSidebar({
         return parseMemory(b.memory) - parseMemory(a.memory)
       }
       return 0
-    }).slice(0, 20)
+    }).slice(0, 4)
   }, [metrics?.topProcesses, sortMode])
 
   return (

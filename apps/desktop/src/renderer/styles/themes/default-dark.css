@@ -2,8 +2,8 @@
 :root[data-theme='default-dark'] {
   color-scheme: dark;
 
-  --bg-main: #151515;
-  --bg-sidebar: #242424;
+  --bg-main: #222222;
+  --bg-sidebar: #282828;
   --bg-card: #1f1f1f;
   --bg-hover: #303030;
   --bg-active: #3a3d42;
@@ -18,23 +18,35 @@
   --primary-hover: #7f8894;
   --accent-text: #c8d0da;
   --selection-bg: #383f48;
+  --copy-link: #65a9ff;
+  --copy-link-hover: #8bbfff;
+  --folder-accent: #58aaff;
+  --kernel-accent: #5aa7ff;
+  --mini-tab-active-bg: #294366;
+  --mini-tab-active-text: #8bbfff;
+  --memory-warn: #ffcc00;
+  --network-tx: rgba(255, 168, 150, 0.45);
+  --network-rx: #7fa0de;
   --danger: #ff5f57;
   --success: #39d98a;
   --warning: #ffcc00;
 
   --meter-track: rgba(148, 163, 184, 0.16);
 
-  --terminal-bg: #1a1a1a;
-  --terminal-text: #d8d8d8;
+  --terminal-bg: #181818;
+  --terminal-text: #e0e0e0;
   --terminal-cmd-bg: rgba(148, 163, 184, 0.16);
   --terminal-cmd-text: #f1f5f9;
+  --terminal-frame-shadow: inset 0 0 10px rgba(0, 0, 0, 0.45);
+  --button-primary-bg: #1687e8;
+  --button-primary-hover: #1179d4;
 }
 
 :root[data-theme='default'] {
   color-scheme: dark;
 
-  --bg-main: #151515;
-  --bg-sidebar: #242424;
+  --bg-main: #222222;
+  --bg-sidebar: #282828;
   --bg-card: #1f1f1f;
   --bg-hover: #303030;
   --bg-active: #3a3d42;
@@ -49,16 +61,28 @@
   --primary-hover: #7f8894;
   --accent-text: #c8d0da;
   --selection-bg: #383f48;
+  --copy-link: #65a9ff;
+  --copy-link-hover: #8bbfff;
+  --folder-accent: #58aaff;
+  --kernel-accent: #5aa7ff;
+  --mini-tab-active-bg: #294366;
+  --mini-tab-active-text: #8bbfff;
+  --memory-warn: #ffcc00;
+  --network-tx: rgba(255, 168, 150, 0.45);
+  --network-rx: #7fa0de;
   --danger: #ff5f57;
   --success: #39d98a;
   --warning: #ffcc00;
 
   --meter-track: rgba(148, 163, 184, 0.16);
 
-  --terminal-bg: #1a1a1a;
-  --terminal-text: #d8d8d8;
+  --terminal-bg: #181818;
+  --terminal-text: #e0e0e0;
   --terminal-cmd-bg: rgba(148, 163, 184, 0.16);
   --terminal-cmd-text: #f1f5f9;
+  --terminal-frame-shadow: inset 0 0 10px rgba(0, 0, 0, 0.45);
+  --button-primary-bg: #1687e8;
+  --button-primary-hover: #1179d4;
 }
 
 /* Extracted dark theme overrides */
@@ -99,12 +123,12 @@
 }
 
 .copy-link {
-  color: var(--text-muted);
+  color: var(--copy-link);
   background: transparent;
 }
 
 .copy-link:hover {
-  color: var(--primary);
+  color: var(--copy-link-hover);
   background: var(--bg-hover);
 }
 
@@ -147,7 +171,7 @@
 }
 
 .metric-dot.kernel {
-  background: var(--accent-text);
+  background: var(--kernel-accent);
 }
 
 .metric-dot.status-green {
@@ -179,11 +203,11 @@
 }
 
 .meter-fill.orange {
-  background: var(--warning);
+  background: var(--memory-warn);
 }
 
 .meter-fill.yellow {
-  background: #eab308;
+  background: var(--memory-warn);
 }
 
 .meter-fill.app {
@@ -195,7 +219,7 @@
 }
 
 .meter-fill.kernel {
-  background: var(--accent-text);
+  background: var(--kernel-accent);
 }
 
 .mini-tabs {
@@ -208,8 +232,8 @@
 }
 
 .mini-tabs span.active {
-  background: var(--primary);
-  color: #fff;
+  background: var(--mini-tab-active-bg);
+  color: var(--mini-tab-active-text);
 }
 
 .up {
@@ -244,14 +268,17 @@
 }
 
 .tx-path {
-  stroke: rgba(230, 121, 93, 0.42);
+  stroke: var(--network-tx);
 }
 
 .rx-path {
-  stroke: var(--accent-text);
+  stroke: var(--network-rx);
 }
 
 .process-table {
+  height: 96px;
+  min-height: 96px;
+  max-height: 96px;
   background: var(--bg-card);
 }
 
@@ -449,11 +476,12 @@
 
 /* session.css */
 .session-workspace {
-  background: var(--bg-main);
+  background: #2a2a2a;
 }
 
 .terminal-area {
   background: var(--terminal-bg);
+  box-shadow: var(--terminal-frame-shadow);
 }
 
 .session-split-resizer {
@@ -596,7 +624,7 @@
 
 .transfer-segments button {
   border: 1px solid rgba(255, 255, 255, 0.08);
-  background: #242424;
+  background: #2a2a2a;
   color: var(--text-muted);
 }
 
@@ -608,7 +636,7 @@
 }
 
 .transfer-segments-sub button {
-  background: #1d1d1d;
+  background: #242424;
 }
 
 .transfer-row {
@@ -818,12 +846,12 @@
 
 .primary-button {
   color: #ffffff;
-  background: var(--primary);
+  background: var(--button-primary-bg);
   box-shadow: var(--shadow-sm);
 }
 
 .primary-button:hover:not(:disabled) {
-  background: var(--primary-hover);
+  background: var(--button-primary-hover);
   box-shadow: var(--shadow-md);
 }
 
@@ -831,7 +859,7 @@
 html,
 body,
 #root {
-  background: #151515;
+  background: #222222;
 }
 
 button,
@@ -842,28 +870,28 @@ textarea {
 }
 
 .fs-shell {
-  background: #151515;
+  background: #222222;
 }
 
 .fs-sidebar {
-  background: #1e1e1e;
+  background: #242424;
   border-right: 1px solid #363636;
   box-shadow: none;
 }
 
 .fs-main {
-  background: #151515;
+  background: #222222;
 }
 
 .fs-tabbar {
-  background: #272727;
+  background: #2d2d2d;
   --titlebar-divider: #3b3b3b;
   border-bottom: 1px solid #363636;
   box-shadow: none;
 }
 
 .titlebar-brand {
-  background: #242424;
+  background: #2a2a2a;
   border-right: 1px solid #363636;
 }
 
@@ -872,7 +900,7 @@ textarea {
 }
 
 .titlebar-tabarea {
-  background: #242424;
+  background: #2a2a2a;
 }
 
 .tabbar-folder-button {
@@ -931,7 +959,7 @@ textarea {
 }
 
 .workspace-stage {
-  background: #151515;
+  background: #222222;
 }
 
 .sys-card {
@@ -981,7 +1009,7 @@ textarea {
 }
 
 .copy-link {
-  color: var(--accent-text);
+  color: var(--copy-link);
 }
 
 .system-title {
@@ -1004,7 +1032,7 @@ textarea {
 
 .meter-fill.orange,
 .meter-fill.yellow {
-  background: #ffcc00;
+  background: var(--memory-warn);
 }
 
 .mini-tabs span {
@@ -1015,11 +1043,14 @@ textarea {
 }
 
 .mini-tabs span.active {
-  background: var(--selection-bg);
-  color: var(--text-main);
+  background: var(--mini-tab-active-bg);
+  color: var(--mini-tab-active-text);
 }
 
 .process-table {
+  height: 96px;
+  min-height: 96px;
+  max-height: 96px;
   background: #202020;
 }
 
@@ -1062,11 +1093,11 @@ textarea {
 }
 
 .tx-path {
-  stroke: rgba(255, 168, 150, 0.45);
+  stroke: var(--network-tx);
 }
 
 .rx-path {
-  stroke: var(--accent-text);
+  stroke: var(--network-rx);
 }
 
 .disk-table {
@@ -1093,12 +1124,12 @@ textarea {
 }
 
 .session-workspace {
-  background: #151515;
+  background: #222222;
 }
 
 .terminal-area {
-  background: #151515;
-  box-shadow: none;
+  background: var(--terminal-bg);
+  box-shadow: var(--terminal-frame-shadow);
 }
 
 .session-split-resizer {
@@ -1118,12 +1149,12 @@ textarea {
 }
 
 .file-manager {
-  background: #191919;
+  background: #242424;
   border-top: 1px solid #363636;
 }
 
 .file-tabs {
-  background: #242424;
+  background: #2a2a2a;
   border-bottom: 1px solid #303030;
 }
 
@@ -1132,8 +1163,8 @@ textarea {
 }
 
 .file-tabs button.active {
-  border: 1px solid #3d3d3d;
-  background: #2d2d2d;
+  border: 0;
+  background: #343434;
   color: #f0f0f0;
   box-shadow: none;
 }
@@ -1167,11 +1198,11 @@ textarea {
 
 .local-pane,
 .remote-pane {
-  background: #191919;
+  background: #242424;
 }
 
 .local-pane {
-  background: #1d1d1d;
+  background: #242424;
 }
 
 .file-split-resizer {
@@ -1210,7 +1241,7 @@ textarea {
 }
 
 .fs-file-table th {
-  background: #101010;
+  background: #1a1a1a;
   color: #a6a6a6;
 }
 
@@ -1224,22 +1255,22 @@ textarea {
 }
 
 .file-icon {
-  color: var(--accent-text);
+  color: var(--folder-accent);
 }
 
 .transfer-strip {
   border-top: 1px solid #363636;
-  background: #151515;
+  background: #222222;
   color: #9a9a9a;
   box-shadow: none;
 }
 
 .home-workspace {
-  background: #151515;
+  background: #222222;
 }
 
 .system-info-workspace {
-  background: linear-gradient(180deg, #161616 0%, #131313 100%);
+  background: linear-gradient(180deg, #1e1e1e 0%, #1a1a1a 100%);
 }
 
 .system-info-empty {
@@ -1319,7 +1350,7 @@ textarea {
 }
 
 .host-icon .app-icon {
-  color: var(--accent-text);
+  color: #7eaef7;
 }
 
 *::-webkit-scrollbar-track {
@@ -1351,7 +1382,18 @@ textarea {
 }
 
 .primary-button {
-  background: var(--primary);
+  background: var(--button-primary-bg);
+}
+
+.primary-button:hover:not(:disabled) {
+  background: var(--button-primary-hover);
+}
+
+.manager-toolbar .flat-button,
+.manager-toolbar .primary-button {
+  min-width: 120px;
+  height: 36px;
+  padding: 0 20px;
 }
 
 .modal-backdrop {
@@ -1371,7 +1413,7 @@ textarea {
 .ssh-grid textarea,
 .connection-form input,
 .connection-form select {
-  background: #151515;
+  background: #222222;
   border-color: rgba(255, 255, 255, 0.12);
   color: #e7e7e7;
 }

@@ -69,7 +69,6 @@ export function App() {
   const previousActiveTransferCountRef = useRef(0)
   const pendingHomeReplacementKeyRef = useRef<string | null>(null)
   const desktopApi = window.termdock
-  const isDesktopRuntime = Boolean(desktopApi?.isDesktop)
 
   useEffect(() => {
     localTabsRef.current = localTabs
@@ -1003,12 +1002,10 @@ export function App() {
               activeSession={activeSession}
               activeTab={activeTab}
               folders={workspace.folders || []}
-              isDesktopRuntime={isDesktopRuntime}
               localItems={localItems}
               localPath={localPath}
               profiles={workspace.profiles}
               onChooseUploadFiles={handleChooseUploadFiles}
-              onCreateConnection={openCreateConnection}
               onDownloadFiles={handleDownloadFiles}
               onDropUpload={handleDropUpload}
               onOpenLocalItem={handleOpenLocalItem}

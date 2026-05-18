@@ -22,12 +22,10 @@ export function WorkspaceStage({
   activeSession,
   activeTab,
   folders,
-  isDesktopRuntime,
   localItems,
   localPath,
   profiles,
   onChooseUploadFiles,
-  onCreateConnection,
   onDownloadFiles,
   onDropUpload,
   onOpenLocalItem,
@@ -43,12 +41,10 @@ export function WorkspaceStage({
   activeSession: SessionSnapshot | null
   activeTab: WorkspaceTab | null
   folders: ConnectionFolder[]
-  isDesktopRuntime: boolean
   localItems: LocalFileItem[]
   localPath: string
   profiles: ConnectionProfile[]
   onChooseUploadFiles(): void
-  onCreateConnection(): void
   onDownloadFiles(items: RemoteFileItem[], targetDirectory?: string): void
   onDropUpload(event: DragEvent<HTMLDivElement>): void
   onOpenLocalItem(item: LocalFileItem): void
@@ -86,8 +82,6 @@ export function WorkspaceStage({
   return (
     <HomeWorkspace
       folders={folders}
-      isDesktopRuntime={isDesktopRuntime}
-      onCreate={onCreateConnection}
       onOpen={onOpenProfile}
       profiles={profiles}
     />

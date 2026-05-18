@@ -6,14 +6,10 @@ import { AppIcon } from '../common/AppIcon'
 export function HomeWorkspace({
   profiles,
   folders = [],
-  isDesktopRuntime,
-  onCreate,
   onOpen
 }: {
   profiles: ConnectionProfile[]
   folders?: ConnectionFolder[]
-  isDesktopRuntime: boolean
-  onCreate(): void
   onOpen(profileId: string): void
 }) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
@@ -114,9 +110,6 @@ export function HomeWorkspace({
       <div className="quick-panel">
         <div className="quick-header">
           <strong>{t.quickConnect}</strong>
-          <div>
-            <button className="flat-button" type="button" disabled={!isDesktopRuntime} onClick={onCreate}>{t.newConnection}</button>
-          </div>
         </div>
         <div className="quick-list">
           {tree.map(node => renderNode(node, 0))}

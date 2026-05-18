@@ -374,7 +374,9 @@ textarea:focus-visible,
 }
 
 .terminal-host {
-  padding: 14px 18px 46px;
+  padding: 15px;
+  background: transparent;
+  box-shadow: none;
 }
 
 .terminal-host .xterm {

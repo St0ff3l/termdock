@@ -16,6 +16,18 @@
   overflow: hidden;
 }
 
+.terminal-area::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  box-shadow: var(--terminal-frame-shadow);
+  pointer-events: none;
+  z-index: 5;
+}
+
 .session-split-resizer {
   position: absolute;
   right: 0;
@@ -30,7 +42,6 @@
 
 .terminal-host {
   height: 100%;
-  padding: 16px 18px 16px;
 }
 
 .terminal-host .xterm,
