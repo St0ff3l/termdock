@@ -112,6 +112,7 @@ function MemoryMeter({ metrics }: { metrics?: SystemMetrics }) {
   const app = parseMemory(metrics?.memoryAppUsage ?? '')
   const cache = parseMemory(metrics?.memoryCacheUsage ?? '')
   const kernel = parseMemory(metrics?.memoryKernelUsage ?? '')
+  const memoryTone = getMemoryTone(metrics?.memoryPercent ?? 0)
   const segments = total > 0
     ? [
         { key: 'app', label: '应用', value: metrics?.memoryAppUsage ?? '-', width: Math.max(0, Math.min(100, (app / total) * 100)) },
@@ -122,7 +123,7 @@ function MemoryMeter({ metrics }: { metrics?: SystemMetrics }) {
 
   return (
     <>
-      <div className="meter-row">
+      <div className="meter-row meter-row-memory">
         <span>{t.memory}</span>
         <div className="meter-track meter-track-stacked">
           {segments.length ? segments.map((segment) => (
@@ -133,18 +134,19 @@ function MemoryMeter({ metrics }: { metrics?: SystemMetrics }) {
             />
           )) : <i className="meter-fill orange" style={{ width: `${metrics?.memoryPercent ?? 0}%` }} />}
         </div>
-        <strong>{metrics?.memoryUsage ?? '0/0'}</strong>
       </div>
-      {segments.length ? (
-        <div className="metric-subline legend">
-          {segments.map((segment) => (
-            <span className="metric-chip" key={segment.key}>
-              <i className={`metric-dot ${segment.key}`} />
-              {segment.label} {segment.value}
-            </span>
-          ))}
-        </div>
-      ) : null}
+      <div className="memory-details">
+        <span className="metric-chip">
+          <i className={`metric-dot ${memoryTone}`} />
+          <strong>{metrics?.memoryUsage ?? '0/0'}</strong>
+        </span>
+        {segments.length ? segments.map((segment) => (
+          <span className="metric-chip" key={segment.key}>
+            <i className={`metric-dot ${segment.key}`} />
+            {segment.label} {segment.value}
+          </span>
+        )) : null}
+      </div>
     </>
   )
 }
@@ -152,6 +154,12 @@ function MemoryMeter({ metrics }: { metrics?: SystemMetrics }) {
 function parseUsageTotal(usage?: string) {
   if (!usage || !usage.includes('/')) return 0
   return parseMemory(usage.split('/')[1] ?? '')
+}
+
+function getMemoryTone(percent: number) {
+  if (percent >= 85) return 'status-red'
+  if (percent >= 60) return 'status-yellow'
+  return 'status-green'
 }
 
 function ProcessTable({ rows }: { rows: SystemMetrics['topProcesses'] }) {
