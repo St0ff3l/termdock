@@ -64,8 +64,8 @@ export function SystemSidebar({
           <AddressLine label={t.accessAddress} value={accessAddress} />
         </div>
         <button className="system-title" onClick={onOpenSystemInfo} type="button">{t.systemInfo}</button>
-        <div className="metric-line"><span>{t.running}</span><strong>{metrics?.uptime ?? '-'}</strong></div>
-        <div className="metric-line"><span>{t.load}</span><strong>{metrics?.load ?? '-'}</strong></div>
+        <div className="metric-line"><span>{t.running}</span><strong className="value">{metrics?.uptime ?? '-'}</strong></div>
+        <div className="metric-line"><span>{t.load}</span><strong className="value">{metrics?.load ?? '-'}</strong></div>
         <Meter
           label={t.cpu}
           value={metrics?.cpuPercent ?? 0}

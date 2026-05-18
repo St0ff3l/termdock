@@ -112,7 +112,7 @@
 }
 
 .metric-line {
-  justify-content: flex-start;
+  justify-content: space-between;
   gap: 8px;
   height: 24px;
   font-weight: 600;

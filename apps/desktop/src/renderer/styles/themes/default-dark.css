@@ -144,6 +144,7 @@
 
 .metric-line strong {
   color: var(--text-main);
+  padding-right: 8px;
 }
 
 .metric-subline {
