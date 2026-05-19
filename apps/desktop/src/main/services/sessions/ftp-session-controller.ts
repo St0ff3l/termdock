@@ -3,9 +3,10 @@ import { readFile, stat, unlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { Client as BasicFtpClient } from 'basic-ftp'
-import type { FtpProfile, FtpSessionController, RemoteFileItem } from '@termdock/core'
+import type { FtpProfile, FtpSessionController, PermissionChangeOptions, RemoteFileItem, TransferProgress } from '@termdock/core'
 import { BaseFileSessionController } from './base-file-session-controller.js'
 import { parentRemotePath, toFtpRemoteFileItem } from './session-file-utils.js'
+import { decodeBuffer, encodeText } from '../text-encoding.js'
 
 export class LiveFtpSessionController extends BaseFileSessionController implements FtpSessionController {
   readonly type = 'ftp'
@@ -62,27 +63,50 @@ export class LiveFtpSessionController extends BaseFileSessionController implemen
     return this.readRemoteDirectory(this.currentRemotePath)
   }
 
-  async readRemoteFile(targetPath: string): Promise<string> {
+  async readRemoteFile(targetPath: string, encoding = 'utf-8'): Promise<string> {
     await this.ensureConnected()
     const localPath = this.tempFilePath(targetPath)
     try {
       await this.ftp.downloadTo(localPath, targetPath)
-      return await readFile(localPath, 'utf8')
+      return decodeBuffer(await readFile(localPath), encoding)
     } finally {
       void unlink(localPath).catch(() => undefined)
     }
   }
 
-  async writeRemoteFile(targetPath: string, content: string): Promise<void> {
+  async writeRemoteFile(targetPath: string, content: string, encoding = 'utf-8'): Promise<void> {
     await this.ensureConnected()
     const localPath = this.tempFilePath(targetPath)
     try {
-      await writeFile(localPath, content, 'utf8')
+      await writeFile(localPath, encodeText(content, encoding))
       await this.ensureRemoteDirectory(path.posix.dirname(targetPath))
       await this.ftp.uploadFrom(localPath, targetPath)
     } finally {
       void unlink(localPath).catch(() => undefined)
     }
+  }
+
+  async renameRemotePath(targetPath: string, nextPath: string): Promise<void> {
+    await this.ensureConnected()
+    await this.ftp.rename(targetPath, nextPath)
+  }
+
+  async deleteRemotePath(targetPath: string, targetType: RemoteFileItem['type']): Promise<void> {
+    await this.ensureConnected()
+    if (targetType === 'folder') {
+      await this.ftp.removeDir(targetPath)
+      return
+    }
+    await this.ftp.remove(targetPath)
+  }
+
+  async changeRemotePermissions(targetPath: string, options: PermissionChangeOptions): Promise<void> {
+    await this.ensureConnected()
+    if (options.recursive) {
+      throw new Error('FTP 暂不支持递归修改权限')
+    }
+    validateMode(options.mode)
+    await this.ftp.send(`SITE CHMOD ${options.mode.trim()} ${targetPath}`)
   }
 
   async ensureRemoteDirectory(targetPath: string): Promise<void> {
@@ -99,31 +123,39 @@ export class LiveFtpSessionController extends BaseFileSessionController implemen
     }
   }
 
-  async uploadFile(localPath: string, remotePath: string, onProgress: (progress: number) => void): Promise<void> {
+  async uploadFile(localPath: string, remotePath: string, onProgress: (progress: TransferProgress) => void): Promise<void> {
     await this.ensureConnected()
     const info = await stat(localPath)
     const total = Math.max(info.size, 1)
     this.ftp.trackProgress((progress) => {
-      onProgress(Math.min(99, Math.round((progress.bytes / total) * 100)))
+      onProgress({
+        percent: Math.min(99, Math.round((progress.bytes / total) * 100)),
+        transferredBytes: progress.bytes,
+        totalBytes: total
+      })
     })
     try {
       await this.ensureRemoteDirectory(path.posix.dirname(remotePath))
       await this.ftp.uploadFrom(localPath, remotePath)
-      onProgress(100)
+      onProgress({ percent: 100, transferredBytes: total, totalBytes: total })
     } finally {
       this.ftp.trackProgress()
     }
   }
 
-  async downloadFile(remotePath: string, localPath: string, onProgress: (progress: number) => void): Promise<void> {
+  async downloadFile(remotePath: string, localPath: string, onProgress: (progress: TransferProgress) => void): Promise<void> {
     await this.ensureConnected()
     const total = Math.max(await this.ftp.size(remotePath), 1)
     this.ftp.trackProgress((progress) => {
-      onProgress(Math.min(99, Math.round((progress.bytes / total) * 100)))
+      onProgress({
+        percent: Math.min(99, Math.round((progress.bytes / total) * 100)),
+        transferredBytes: progress.bytes,
+        totalBytes: total
+      })
     })
     try {
       await this.ftp.downloadTo(localPath, remotePath)
-      onProgress(100)
+      onProgress({ percent: 100, transferredBytes: total, totalBytes: total })
     } finally {
       this.ftp.trackProgress()
     }
@@ -164,5 +196,11 @@ export class LiveFtpSessionController extends BaseFileSessionController implemen
     if (!this.connected) {
       await this.connect()
     }
+  }
+}
+
+function validateMode(mode: string) {
+  if (!/^[0-7]{3,4}$/.test(mode.trim())) {
+    throw new Error('权限值必须是 3 到 4 位八进制数字，例如 755')
   }
 }

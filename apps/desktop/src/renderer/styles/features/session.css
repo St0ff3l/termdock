@@ -469,11 +469,76 @@
   font-size: 12px;
 }
 
-.file-editor-modal {
-  width: min(920px, calc(100vw - 48px));
-  height: min(720px, calc(100vh - 56px));
+.file-action-modal {
+  width: min(460px, calc(100vw - 48px));
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  gap: 12px;
+}
+
+.file-action-description,
+.file-action-hint {
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.file-action-field {
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.file-action-field input {
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+}
+
+.file-permission-modal {
+  width: min(520px, calc(100vw - 48px));
+  display: grid;
+  gap: 12px;
+}
+
+.file-permission-name {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.permission-row {
+  display: grid;
+  gap: 6px;
+}
+
+.permission-row-label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.permission-row-box,
+.permission-recursive-box {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+}
+
+.permission-checkline,
+.permission-radioline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.permission-checkline input,
+.permission-radioline input {
+  width: 18px;
+  height: 18px;
 }
 
 .context-menu {
@@ -516,28 +581,6 @@
 
 .context-menu .context-close {
   display: none;
-}
-
-.file-editor-path {
-  min-width: 0;
-  overflow: hidden;
-  margin: -6px 0 10px;
-  font-family: "SF Mono", Menlo, Consolas, monospace;
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.file-editor-textarea {
-  width: 100%;
-  min-height: 0;
-  padding: 12px;
-  resize: none;
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-md);
-  font-family: "SF Mono", Menlo, Consolas, monospace;
-  font-size: 12px;
-  line-height: 1.55;
 }
 
 .modal-card.manager-modal {

@@ -1,4 +1,4 @@
-import type { ConnectionProfile, FileSessionController, RemoteFileItem } from '@termdock/core'
+import type { ConnectionProfile, FileSessionController, PermissionChangeOptions, RemoteFileItem, TransferProgress } from '@termdock/core'
 
 export abstract class BaseFileSessionController implements FileSessionController {
   readonly id: string
@@ -35,10 +35,13 @@ export abstract class BaseFileSessionController implements FileSessionController
 
   abstract listRemoteFiles(): Promise<RemoteFileItem[]>
   abstract openRemotePath(path: string): Promise<RemoteFileItem[]>
-  abstract readRemoteFile(path: string): Promise<string>
-  abstract writeRemoteFile(path: string, content: string): Promise<void>
+  abstract readRemoteFile(path: string, encoding?: string): Promise<string>
+  abstract writeRemoteFile(path: string, content: string, encoding?: string): Promise<void>
+  abstract renameRemotePath(path: string, nextPath: string): Promise<void>
+  abstract deleteRemotePath(path: string, targetType: RemoteFileItem['type']): Promise<void>
+  abstract changeRemotePermissions(path: string, options: PermissionChangeOptions): Promise<void>
   abstract ensureRemoteDirectory(path: string): Promise<void>
   abstract abortTransfer(): Promise<void>
-  abstract uploadFile(localPath: string, remotePath: string, onProgress: (progress: number) => void): Promise<void>
-  abstract downloadFile(remotePath: string, localPath: string, onProgress: (progress: number) => void): Promise<void>
+  abstract uploadFile(localPath: string, remotePath: string, onProgress: (progress: TransferProgress) => void): Promise<void>
+  abstract downloadFile(remotePath: string, localPath: string, onProgress: (progress: TransferProgress) => void): Promise<void>
 }

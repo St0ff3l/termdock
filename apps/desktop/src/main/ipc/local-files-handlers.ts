@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import type { OpenDialogOptions } from 'electron'
+import type { PermissionChangeOptions } from '@termdock/core'
 import type { IpcServices } from './types.js'
 
 export function registerLocalFilesHandlers(services: IpcServices) {
@@ -9,12 +10,32 @@ export function registerLocalFilesHandlers(services: IpcServices) {
     localFilesService.listDirectory(dirPath)
   )
 
-  ipcMain.handle('localFiles:readFile', (_, filePath: string) =>
-    localFilesService.readFile(filePath)
+  ipcMain.handle('localFiles:readFile', (_, filePath: string, encoding?: string) =>
+    localFilesService.readFile(filePath, encoding)
   )
 
-  ipcMain.handle('localFiles:writeFile', (_, filePath: string, content: string) =>
-    localFilesService.writeFile(filePath, content)
+  ipcMain.handle('localFiles:writeFile', (_, filePath: string, content: string, encoding?: string) =>
+    localFilesService.writeFile(filePath, content, encoding)
+  )
+
+  ipcMain.handle('localFiles:createDirectory', (_, dirPath: string, name: string) =>
+    localFilesService.createDirectory(dirPath, name)
+  )
+
+  ipcMain.handle('localFiles:createFile', (_, dirPath: string, name: string) =>
+    localFilesService.createFile(dirPath, name)
+  )
+
+  ipcMain.handle('localFiles:renamePath', (_, targetPath: string, newName: string) =>
+    localFilesService.renamePath(targetPath, newName)
+  )
+
+  ipcMain.handle('localFiles:deletePath', (_, targetPath: string) =>
+    localFilesService.deletePath(targetPath)
+  )
+
+  ipcMain.handle('localFiles:changePermissions', (_, targetPath: string, options: PermissionChangeOptions) =>
+    localFilesService.changePermissions(targetPath, options)
   )
 
   ipcMain.handle('localFiles:selectFiles', async (event, defaultPath?: string) => {

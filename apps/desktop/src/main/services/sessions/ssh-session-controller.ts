@@ -3,13 +3,15 @@ import path from 'node:path'
 import { readFile, stat, writeFile } from 'node:fs/promises'
 import type { ClientChannel, ConnectConfig, FileEntry, SFTPWrapper } from 'ssh2'
 import { Client } from 'ssh2'
-import type { FileSessionController, RemoteFileItem, SystemMetrics, SshProfile, SshSessionController } from '@termdock/core'
+import type { FileSessionController, PermissionChangeOptions, RemoteFileItem, SystemMetrics, SshProfile, SshSessionController, TransferProgress } from '@termdock/core'
 import { BaseFileSessionController } from './base-file-session-controller.js'
 import { buildMetricsCommand, parentRemotePath, parseSystemMetrics, toRemoteFileItem } from './session-file-utils.js'
 import { createSshDebugLogger, isSshDebugEnabled, singleLine } from './ssh-debug-logger.js'
+import { decodeBuffer, encodeText } from '../text-encoding.js'
 
 export class LiveSshSessionController extends BaseFileSessionController implements SshSessionController {
   readonly type = 'ssh'
+  private static readonly TRANSCRIPT_LIMIT = 200_000
 
   private readonly ssh = new Client()
   private readonly sftpSsh = new Client()
@@ -100,9 +102,8 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
               this.shellStream = stream
               stream.on('data', (chunk: Buffer) => {
                 const text = chunk.toString('utf8')
-                this.transcript += text
+                this.transcript = trimTranscript(`${this.transcript}${text}`, LiveSshSessionController.TRANSCRIPT_LIMIT)
                 this.onData(text)
-                this.onStateChange(this.getSummary(), this.transcript, true)
               })
               stream.on('close', () => {
                 this.connected = false
@@ -199,29 +200,30 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
     }
   }
 
-  async readRemoteFile(targetPath: string): Promise<string> {
+  async readRemoteFile(targetPath: string, encoding = 'utf-8'): Promise<string> {
     try {
       const sftp = await this.ensureSftp()
       return await new Promise<string>((resolve, reject) => {
-        sftp.readFile(targetPath, 'utf8', (error, data) => {
+        sftp.readFile(targetPath, (error, data) => {
           if (error) {
             reject(error)
             return
           }
-          resolve(typeof data === 'string' ? data : data.toString('utf8'))
+          resolve(decodeBuffer(Buffer.isBuffer(data) ? data : Buffer.from(data), encoding))
         })
       })
     } catch (error) {
-      return this.readRemoteFileViaShell(targetPath, error)
+      return this.readRemoteFileViaShell(targetPath, error, encoding)
     }
   }
 
-  async writeRemoteFile(targetPath: string, content: string): Promise<void> {
+  async writeRemoteFile(targetPath: string, content: string, encoding = 'utf-8'): Promise<void> {
     try {
       const sftp = await this.ensureSftp()
       await this.ensureRemoteDirectory(path.posix.dirname(targetPath))
+      const payload = encodeText(content, encoding)
       await new Promise<void>((resolve, reject) => {
-        sftp.writeFile(targetPath, content, 'utf8', (error) => {
+        sftp.writeFile(targetPath, payload, (error) => {
           if (error) {
             reject(error)
             return
@@ -230,7 +232,71 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
         })
       })
     } catch (error) {
-      await this.writeRemoteFileViaShell(targetPath, content, error)
+      await this.writeRemoteFileViaShell(targetPath, content, error, encoding)
+    }
+  }
+
+  async renameRemotePath(targetPath: string, nextPath: string): Promise<void> {
+    try {
+      const sftp = await this.ensureSftp()
+      await this.ensureRemoteDirectory(path.posix.dirname(nextPath))
+      await new Promise<void>((resolve, reject) => {
+        sftp.rename(targetPath, nextPath, (error) => {
+          if (error) {
+            reject(error)
+            return
+          }
+          resolve()
+        })
+      })
+    } catch (error) {
+      await this.execCommand(`sh -lc 'mkdir -p ${shellQuote(path.posix.dirname(nextPath))} && mv ${shellQuote(targetPath)} ${shellQuote(nextPath)}'`, { allowNonZeroWithStdout: true })
+      if (error && !this.sftpUnavailableReason) {
+        throw error
+      }
+    }
+  }
+
+  async deleteRemotePath(targetPath: string, targetType: RemoteFileItem['type']): Promise<void> {
+    const command = targetType === 'folder'
+      ? `sh -lc 'rm -rf -- ${shellQuote(targetPath)}'`
+      : `sh -lc 'rm -f -- ${shellQuote(targetPath)}'`
+    await this.execCommand(command, { allowNonZeroWithStdout: true })
+  }
+
+  async changeRemotePermissions(targetPath: string, options: PermissionChangeOptions): Promise<void> {
+    validateMode(options.mode)
+    const mode = options.mode.trim()
+    const recursive = Boolean(options.recursive)
+    const applyTo = options.applyTo ?? 'all'
+
+    if (recursive) {
+      const baseCommand = applyTo === 'all'
+        ? `chmod -R ${shellQuote(mode)} ${shellQuote(targetPath)}`
+        : applyTo === 'files'
+          ? `chmod ${shellQuote(mode)} ${shellQuote(targetPath)} && find ${shellQuote(targetPath)} -type f -exec chmod ${shellQuote(mode)} {} +`
+          : `chmod ${shellQuote(mode)} ${shellQuote(targetPath)} && find ${shellQuote(targetPath)} -type d -exec chmod ${shellQuote(mode)} {} +`
+
+      await this.execCommand(`sh -lc ${shellQuote(baseCommand)}`, { allowNonZeroWithStdout: true })
+      return
+    }
+
+    try {
+      const sftp = await this.ensureSftp()
+      await new Promise<void>((resolve, reject) => {
+        sftp.chmod(targetPath, Number.parseInt(mode, 8), (error) => {
+          if (error) {
+            reject(error)
+            return
+          }
+          resolve()
+        })
+      })
+    } catch (error) {
+      await this.execCommand(`sh -lc 'chmod ${shellQuote(mode)} ${shellQuote(targetPath)}'`, { allowNonZeroWithStdout: true })
+      if (error && !this.sftpUnavailableReason) {
+        throw error
+      }
     }
   }
 
@@ -280,7 +346,7 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
     }
   }
 
-  async uploadFile(localPath: string, remotePath: string, onProgress: (progress: number) => void): Promise<void> {
+  async uploadFile(localPath: string, remotePath: string, onProgress: (progress: TransferProgress) => void): Promise<void> {
     try {
       const sftp = await this.ensureSftp()
       const info = await stat(localPath)
@@ -288,13 +354,17 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
       await this.ensureRemoteDirectory(path.posix.dirname(remotePath))
       await new Promise<void>((resolve, reject) => {
         sftp.fastPut(localPath, remotePath, {
-          step: (transferred) => onProgress(Math.min(99, Math.round((transferred / total) * 100)))
+          step: (transferred, _chunk, fileSize) => onProgress({
+            percent: Math.min(99, Math.round((transferred / total) * 100)),
+            transferredBytes: transferred,
+            totalBytes: Math.max(fileSize || total, 1)
+          })
         }, (error) => {
           if (error) {
             reject(error)
             return
           }
-          onProgress(100)
+          onProgress({ percent: 100, transferredBytes: total, totalBytes: total })
           resolve()
         })
       })
@@ -303,7 +373,7 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
     }
   }
 
-  async downloadFile(remotePath: string, localPath: string, onProgress: (progress: number) => void): Promise<void> {
+  async downloadFile(remotePath: string, localPath: string, onProgress: (progress: TransferProgress) => void): Promise<void> {
     try {
       const sftp = await this.ensureSftp()
       const attrs = await new Promise<{ size?: number }>((resolve, reject) => {
@@ -318,13 +388,17 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
       const total = Math.max(attrs.size ?? 1, 1)
       await new Promise<void>((resolve, reject) => {
         sftp.fastGet(remotePath, localPath, {
-          step: (transferred) => onProgress(Math.min(99, Math.round((transferred / total) * 100)))
+          step: (transferred, _chunk, fileSize) => onProgress({
+            percent: Math.min(99, Math.round((transferred / total) * 100)),
+            transferredBytes: transferred,
+            totalBytes: Math.max(fileSize || total, 1)
+          })
         }, (error) => {
           if (error) {
             reject(error)
             return
           }
-          onProgress(100)
+          onProgress({ percent: 100, transferredBytes: total, totalBytes: total })
           resolve()
         })
       })
@@ -491,14 +565,15 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
     }
   }
 
-  private async readRemoteFileViaShell(targetPath: string, cause: unknown): Promise<string> {
+  private async readRemoteFileViaShell(targetPath: string, cause: unknown, encoding = 'utf-8'): Promise<string> {
     this.ensureShellFileFallback(cause)
-    return this.execCommand(`sh -lc 'cat ${shellQuote(targetPath)}'`)
+    const output = await this.execCommand(`sh -lc 'base64 ${shellQuote(targetPath)}'`)
+    return decodeBuffer(Buffer.from(output.replace(/\s+/g, ''), 'base64'), encoding)
   }
 
-  private async writeRemoteFileViaShell(targetPath: string, content: string, cause: unknown): Promise<void> {
+  private async writeRemoteFileViaShell(targetPath: string, content: string, cause: unknown, encoding = 'utf-8'): Promise<void> {
     this.ensureShellFileFallback(cause)
-    const payload = Buffer.from(content, 'utf8').toString('base64')
+    const payload = encodeText(content, encoding).toString('base64')
     await this.execCommand(`sh -lc 'base64 -d > ${shellQuote(targetPath)} <<'"'"'__TERMDOCK__'"'"'
 ${payload}
 __TERMDOCK__'`)
@@ -507,29 +582,32 @@ __TERMDOCK__'`)
   private async uploadFileViaShell(
     localPath: string,
     remotePath: string,
-    onProgress: (progress: number) => void,
+    onProgress: (progress: TransferProgress) => void,
     cause: unknown
   ): Promise<void> {
     this.ensureShellFileFallback(cause)
     const payload = await readFile(localPath)
-    onProgress(20)
+    const total = Math.max(payload.byteLength, 1)
+    onProgress({ percent: 20, transferredBytes: Math.round(total * 0.2), totalBytes: total })
     await this.execCommand(`sh -lc 'base64 -d > ${shellQuote(remotePath)} <<'"'"'__TERMDOCK__'"'"'
 ${payload.toString('base64')}
 __TERMDOCK__'`)
-    onProgress(100)
+    onProgress({ percent: 100, transferredBytes: total, totalBytes: total })
   }
 
   private async downloadFileViaShell(
     remotePath: string,
     localPath: string,
-    onProgress: (progress: number) => void,
+    onProgress: (progress: TransferProgress) => void,
     cause: unknown
   ): Promise<void> {
     this.ensureShellFileFallback(cause)
     const output = await this.execCommand(`sh -lc 'base64 ${shellQuote(remotePath)}'`)
-    onProgress(80)
-    await writeFile(localPath, Buffer.from(output.replace(/\s+/g, ''), 'base64'))
-    onProgress(100)
+    const payload = Buffer.from(output.replace(/\s+/g, ''), 'base64')
+    const total = Math.max(payload.byteLength, 1)
+    onProgress({ percent: 80, transferredBytes: Math.round(total * 0.8), totalBytes: total })
+    await writeFile(localPath, payload)
+    onProgress({ percent: 100, transferredBytes: total, totalBytes: total })
   }
 
   private async readRemoteDirectoryViaShell(targetPath: string, cause: unknown): Promise<RemoteFileItem[]> {
@@ -631,11 +709,19 @@ done
   }
 
   private appendSystemMessage(message: string) {
-    this.transcript += message
+    this.transcript = trimTranscript(`${this.transcript}${message}`, LiveSshSessionController.TRANSCRIPT_LIMIT)
     this.onData(message)
     this.onStateChange(this.getSummary(), this.transcript, this.connected)
   }
 
+}
+
+function trimTranscript(transcript: string, limit: number) {
+  if (transcript.length <= limit) {
+    return transcript
+  }
+
+  return transcript.slice(transcript.length - limit)
 }
 
 const DEFAULT_SSH_KEY_FILES = ['id_ed25519', 'id_ecdsa', 'id_rsa', 'id_dsa']
@@ -736,6 +822,12 @@ async function readDefaultPrivateKey(): Promise<string | undefined> {
 
 function shellQuote(value: string) {
   return `'${value.replace(/'/g, `'\"'\"'`)}'`
+}
+
+function validateMode(mode: string) {
+  if (!/^[0-7]{3,4}$/.test(mode.trim())) {
+    throw new Error('权限值必须是 3 到 4 位八进制数字，例如 755')
+  }
 }
 
 function joinRemotePath(basePath: string, name: string) {

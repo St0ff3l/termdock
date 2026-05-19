@@ -7,6 +7,7 @@ import type {
   CreateProfileInput,
   FileContentSnapshot,
   LocalFileItem,
+  PermissionChangeOptions,
   RemoteFileItem,
   WorkspaceSnapshot,
   WorkspaceTab
@@ -17,7 +18,9 @@ import { CommandEditorModal, emptyCommandForm, toCommandTemplateInput } from './
 import { CommandManagerModal } from './features/commands/CommandManagerModal'
 import { ConnectionManagerModal } from './features/connections/ConnectionManagerModal'
 import { ConnectionModal } from './features/connections/ConnectionModal'
+import { FileActionModal } from './features/files/FileActionModal'
 import { FileEditorModal } from './features/files/FileEditorModal'
+import { FilePermissionModal } from './features/files/FilePermissionModal'
 import { TabBar, type OrderedTabEntry, type TabContextTarget } from './features/layout/TabBar'
 import { TabContextMenu } from './features/layout/TabContextMenu'
 import { SystemSidebar } from './features/system/SystemSidebar'
@@ -27,9 +30,24 @@ import { WorkspaceStage } from './features/workspace/WorkspaceStage'
 import { useThemeMode, type ThemeMode } from './hooks/useThemeMode'
 import { defaultLocale, setLocale, t, type AppLocale } from './i18n'
 
+const TERMINAL_TRANSCRIPT_LIMIT = 200_000
+
 type LocalTab =
   | { id: string; kind: 'home'; title: string }
   | { id: string; kind: 'system'; title: string; sessionTabId: string }
+
+type FileDialogTarget = {
+  pane: 'local' | 'remote'
+  path: string
+  name: string
+  type: 'file' | 'folder'
+}
+
+type FileActionDialog =
+  | { kind: 'new-folder'; pane: 'local' | 'remote'; directoryPath: string }
+  | { kind: 'new-file'; pane: 'local' | 'remote'; directoryPath: string }
+  | { kind: 'rename'; target: FileDialogTarget }
+  | { kind: 'delete'; target: FileDialogTarget }
 
 export function App() {
   const searchParams = new URLSearchParams(window.location.search)
@@ -68,6 +86,13 @@ export function App() {
   const [isResizingSidebar, setIsResizingSidebar] = useState(false)
   const [fileEditor, setFileEditor] = useState<FileContentSnapshot | null>(null)
   const [fileEditorError, setFileEditorError] = useState<string | null>(null)
+  const [fileActionDialog, setFileActionDialog] = useState<FileActionDialog | null>(null)
+  const [fileActionError, setFileActionError] = useState<string | null>(null)
+  const [permissionDialog, setPermissionDialog] = useState<{
+    target: FileDialogTarget & { permission?: string }
+    supportsRecursive: boolean
+  } | null>(null)
+  const [permissionDialogError, setPermissionDialogError] = useState<string | null>(null)
   const [showTransfers, setShowTransfers] = useState(false)
   const [themeMode, setThemeMode] = useState<ThemeMode>('default-dark')
   const [locale, setLocaleState] = useState<AppLocale>(defaultLocale)
@@ -115,6 +140,26 @@ export function App() {
       return
     }
 
+    const offTerminalData = desktopApi.onTerminalData(({ tabId, chunk }) => {
+      setWorkspace((prev) => {
+        const session = prev.sessions[tabId]
+        if (!session) {
+          return prev
+        }
+
+        return {
+          ...prev,
+          sessions: {
+            ...prev.sessions,
+            [tabId]: {
+              ...session,
+              terminalTranscript: appendTerminalTranscript(session.terminalTranscript, chunk)
+            }
+          }
+        }
+      })
+    })
+
     const offSnapshot = desktopApi.onWorkspaceSnapshot((snapshot) => {
       applySnapshot(snapshot)
     })
@@ -130,6 +175,7 @@ export function App() {
     }
 
     return () => {
+      offTerminalData()
       offSnapshot()
     }
   }, [desktopApi, isCommandFormWindow, isCommandManagerWindow, isConnectionFormWindow, isConnectionManagerWindow])
@@ -817,8 +863,9 @@ export function App() {
         await openLocalDirectory(item.path)
         return
       }
-      const content = await desktopApi.readLocalFile(item.path)
-      setFileEditor({ path: item.path, name: item.name, source: 'local', content })
+      const encoding = 'utf-8'
+      const content = await desktopApi.readLocalFile(item.path, encoding)
+      setFileEditor({ path: item.path, name: item.name, source: 'local', content, encoding })
       setFileEditorError(null)
     } catch (err) {
       setError(item.type === 'folder' ? t.localLoadFailed : (err as Error).message)
@@ -838,12 +885,13 @@ export function App() {
     if (!desktopApi) {
       return
     }
-    const content = await desktopApi.readRemoteFile(tabId, item.path)
-    setFileEditor({ path: item.path, name: item.name, source: 'remote', content })
+    const encoding = 'utf-8'
+    const content = await desktopApi.readRemoteFile(tabId, item.path, encoding)
+    setFileEditor({ path: item.path, name: item.name, source: 'remote', content, encoding })
     setFileEditorError(null)
   }
 
-  const handleSaveFileEditor = async (content: string) => {
+  const handleSaveFileEditor = async (content: string, encoding: string) => {
     if (!desktopApi || !fileEditor) {
       return
     }
@@ -851,10 +899,10 @@ export function App() {
     try {
       setIsBusy(true)
       if (fileEditor.source === 'local') {
-        await desktopApi.writeLocalFile(fileEditor.path, content)
+        await desktopApi.writeLocalFile(fileEditor.path, content, encoding)
         await openLocalDirectory(localPath)
       } else if (activeTab) {
-        const snapshot = await desktopApi.writeRemoteFile(activeTab.id, fileEditor.path, content)
+        const snapshot = await desktopApi.writeRemoteFile(activeTab.id, fileEditor.path, content, encoding)
         applySnapshot(snapshot)
       }
       setFileEditor(null)
@@ -864,6 +912,194 @@ export function App() {
     } finally {
       setIsBusy(false)
     }
+  }
+
+  const handleReloadFileEditorWithEncoding = async (encoding: string) => {
+    if (!desktopApi || !fileEditor) {
+      return
+    }
+
+    try {
+      setIsBusy(true)
+      const content = fileEditor.source === 'local'
+        ? await desktopApi.readLocalFile(fileEditor.path, encoding)
+        : activeTab
+          ? await desktopApi.readRemoteFile(activeTab.id, fileEditor.path, encoding)
+          : fileEditor.content
+      setFileEditor({ ...fileEditor, content, encoding })
+      setFileEditorError(null)
+    } catch (err) {
+      setFileEditorError((err as Error).message)
+    } finally {
+      setIsBusy(false)
+    }
+  }
+
+  const refreshCurrentPane = async (pane: 'local' | 'remote') => {
+    if (pane === 'local') {
+      await openLocalDirectory(localPath)
+      return
+    }
+
+    if (activeTab && activeSession) {
+      await openRemoteDirectory(activeTab.id, activeSession.remotePath)
+    }
+  }
+
+  const runFileAction = async (action: () => Promise<void>) => {
+    try {
+      setIsBusy(true)
+      await action()
+      setFileActionDialog(null)
+      setFileActionError(null)
+    } catch (err) {
+      setFileActionError((err as Error).message)
+    } finally {
+      setIsBusy(false)
+    }
+  }
+
+  const handleSubmitFileAction = async (rawValue: string) => {
+    if (!desktopApi || !fileActionDialog) {
+      return
+    }
+
+    const value = rawValue.trim()
+
+    if (fileActionDialog.kind === 'delete') {
+      await runFileAction(async () => {
+        if (fileActionDialog.target.pane === 'local') {
+          await desktopApi.deleteLocalPath(fileActionDialog.target.path)
+        } else if (activeTab) {
+          const snapshot = await desktopApi.deleteRemotePath(activeTab.id, fileActionDialog.target.path, fileActionDialog.target.type)
+          applySnapshot(snapshot)
+        }
+        await refreshCurrentPane(fileActionDialog.target.pane)
+      })
+      return
+    }
+
+    if (!value) {
+      setFileActionError(t.fileNameRequired)
+      return
+    }
+
+    if (fileActionDialog.kind === 'new-folder') {
+      await runFileAction(async () => {
+        if (fileActionDialog.pane === 'local') {
+          await desktopApi.createLocalDirectory(fileActionDialog.directoryPath, value)
+        } else if (activeTab) {
+          const snapshot = await desktopApi.createRemoteDirectory(activeTab.id, fileActionDialog.directoryPath, value)
+          applySnapshot(snapshot)
+        }
+        await refreshCurrentPane(fileActionDialog.pane)
+      })
+      return
+    }
+
+    if (fileActionDialog.kind === 'new-file') {
+      await runFileAction(async () => {
+        if (fileActionDialog.pane === 'local') {
+          await desktopApi.createLocalFile(fileActionDialog.directoryPath, value)
+        } else if (activeTab) {
+          const snapshot = await desktopApi.createRemoteFile(activeTab.id, fileActionDialog.directoryPath, value)
+          applySnapshot(snapshot)
+        }
+        await refreshCurrentPane(fileActionDialog.pane)
+      })
+      return
+    }
+
+    if (fileActionDialog.kind === 'rename') {
+      await runFileAction(async () => {
+        if (fileActionDialog.target.pane === 'local') {
+          await desktopApi.renameLocalPath(fileActionDialog.target.path, value)
+        } else if (activeTab) {
+          const snapshot = await desktopApi.renameRemotePath(activeTab.id, fileActionDialog.target.path, value)
+          applySnapshot(snapshot)
+        }
+        await refreshCurrentPane(fileActionDialog.target.pane)
+      })
+      return
+    }
+
+  }
+
+  const requestNewFolder = (pane: 'local' | 'remote', directoryPath: string) => {
+    setFileActionError(null)
+    setFileActionDialog({ kind: 'new-folder', pane, directoryPath })
+  }
+
+  const requestNewFile = (pane: 'local' | 'remote', directoryPath: string) => {
+    setFileActionError(null)
+    setFileActionDialog({ kind: 'new-file', pane, directoryPath })
+  }
+
+  const requestRename = (pane: 'local' | 'remote', item: LocalFileItem | RemoteFileItem) => {
+    setFileActionError(null)
+    setFileActionDialog({
+      kind: 'rename',
+      target: { pane, path: item.path, name: item.name, type: item.type }
+    })
+  }
+
+  const requestDelete = (pane: 'local' | 'remote', item: LocalFileItem | RemoteFileItem) => {
+    setFileActionError(null)
+    setFileActionDialog({
+      kind: 'delete',
+      target: { pane, path: item.path, name: item.name, type: item.type }
+    })
+  }
+
+  const requestChangePermissions = (pane: 'local' | 'remote', item: LocalFileItem | RemoteFileItem) => {
+    setPermissionDialogError(null)
+    setPermissionDialog({
+      target: { pane, path: item.path, name: item.name, type: item.type, permission: item.permission },
+      supportsRecursive: item.type === 'folder' && (pane === 'local' || activeTab?.sessionType === 'ssh')
+    })
+  }
+
+  const handleSubmitPermissions = async (options: PermissionChangeOptions) => {
+    if (!desktopApi || !permissionDialog) {
+      return
+    }
+
+    try {
+      setIsBusy(true)
+      const { target } = permissionDialog
+      if (target.pane === 'local') {
+        await desktopApi.changeLocalPermissions(target.path, options)
+      } else if (activeTab) {
+        const snapshot = await desktopApi.changeRemotePermissions(activeTab.id, target.path, options)
+        applySnapshot(snapshot)
+      }
+      await refreshCurrentPane(target.pane)
+      setPermissionDialog(null)
+      setPermissionDialogError(null)
+    } catch (err) {
+      setPermissionDialogError((err as Error).message)
+    } finally {
+      setIsBusy(false)
+    }
+  }
+
+  const handleQuickDelete = (pane: 'local' | 'remote', item: LocalFileItem | RemoteFileItem) => {
+    if (!desktopApi || pane !== 'remote' || !activeTab) {
+      return
+    }
+
+    void (async () => {
+      try {
+        setIsBusy(true)
+        const snapshot = await desktopApi.deleteRemotePath(activeTab.id, item.path, item.type)
+        applySnapshot(snapshot)
+        await refreshCurrentPane('remote')
+      } catch (err) {
+        setError((err as Error).message)
+      } finally {
+        setIsBusy(false)
+      }
+    })()
   }
 
   const uploadLocalPaths = async (paths: string[]) => {
@@ -1221,6 +1457,12 @@ export function App() {
               onOpenProfile={handleOpenProfile}
               onOpenRemoteItem={handleOpenRemoteItem}
               onOpenRemotePath={handleOpenRemotePath}
+              onRequestChangePermissions={requestChangePermissions}
+              onRequestDelete={requestDelete}
+              onRequestNewFile={requestNewFile}
+              onRequestNewFolder={requestNewFolder}
+              onRequestQuickDelete={handleQuickDelete}
+              onRequestRename={requestRename}
               onRefresh={handleRefreshWorkspace}
               onUploadFiles={handleUploadFiles}
             />
@@ -1336,19 +1578,88 @@ export function App() {
         />
       ) : null}
 
+      {fileActionDialog ? (
+        <FileActionModal
+          confirmLabel={
+            fileActionDialog.kind === 'delete' ? t.delete : t.confirm
+          }
+          danger={fileActionDialog.kind === 'delete'}
+          description={
+            fileActionDialog.kind === 'delete'
+              ? `${t.deleteConfirmPrefix}${fileActionDialog.target.name}${t.deleteConfirmSuffix}`
+              : undefined
+          }
+          errorMessage={fileActionError}
+          hint={fileActionDialog.kind === 'new-file' ? t.newFileExtensionHint : undefined}
+          initialValue={
+            fileActionDialog.kind === 'rename' ? fileActionDialog.target.name : ''
+          }
+          inputLabel={fileActionDialog.kind === 'delete' ? undefined : t.fileName}
+          inputPlaceholder={
+            fileActionDialog.kind === 'new-folder' ? t.folderName : t.fileName
+          }
+          onClose={() => {
+            setFileActionDialog(null)
+            setFileActionError(null)
+          }}
+          onConfirm={(value) => {
+            void handleSubmitFileAction(value)
+          }}
+          title={
+            fileActionDialog.kind === 'new-folder'
+              ? t.newFolder
+              : fileActionDialog.kind === 'new-file'
+                ? t.newFile
+                : fileActionDialog.kind === 'rename'
+                  ? t.rename
+                  : t.delete
+          }
+        />
+      ) : null}
+
+      {permissionDialog ? (
+        <FilePermissionModal
+          errorMessage={permissionDialogError}
+          fileName={permissionDialog.target.name}
+          initialPermission={permissionDialog.target.permission}
+          onClose={() => {
+            setPermissionDialog(null)
+            setPermissionDialogError(null)
+          }}
+          onSubmit={(options) => {
+            void handleSubmitPermissions(options)
+          }}
+          supportsRecursive={permissionDialog.supportsRecursive}
+        />
+      ) : null}
+
       {fileEditor ? (
         <FileEditorModal
           errorMessage={fileEditorError}
           file={fileEditor}
+          isBusy={isBusy}
           onClose={() => {
             setFileEditor(null)
             setFileEditorError(null)
           }}
+          onReloadWithEncoding={(encoding) => {
+            void handleReloadFileEditorWithEncoding(encoding)
+          }}
           onSave={handleSaveFileEditor}
+          themeMode={themeMode}
         />
       ) : null}
     </>
   )
+}
+
+function appendTerminalTranscript(current: string | undefined, chunk: string) {
+  const next = `${current ?? ''}${chunk}`
+  if (next.length <= TERMINAL_TRANSCRIPT_LIMIT) {
+    return next
+  }
+
+  return next.slice(next.length - TERMINAL_TRANSCRIPT_LIMIT)
 }
 
 function extractDroppedLocalPaths(event: DragEvent<HTMLDivElement>) {

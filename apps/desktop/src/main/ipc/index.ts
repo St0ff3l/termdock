@@ -19,7 +19,13 @@ export function registerIpcHandlers(userDataPath: string, options: IpcWindowOpti
     broadcastSnapshot(snapshot) {
       for (const window of BrowserWindow.getAllWindows()) {
         if (!window.isDestroyed()) {
-          window.webContents.send('workspace:snapshot', snapshot)
+          try {
+            window.webContents.send('workspace:snapshot', snapshot)
+          } catch (error) {
+            if (!(error instanceof Error) || !error.message.includes('Render frame was disposed')) {
+              throw error
+            }
+          }
         }
       }
     }

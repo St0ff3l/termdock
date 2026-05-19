@@ -1,0 +1,142 @@
+.file-editor-modal {
+  width: min(1180px, calc(100vw - 44px));
+  height: min(820px, calc(100vh - 40px));
+  padding: 0;
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto auto;
+  overflow: hidden;
+}
+
+.file-editor-title {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.file-editor-title strong,
+.file-editor-title span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-editor-title strong {
+  font-size: 14px;
+}
+
+.file-editor-title b {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.file-editor-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.file-editor-menubar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-top: 1px solid transparent;
+  border-bottom: 1px solid transparent;
+}
+
+.file-editor-menu-anchor,
+.file-editor-status-menu {
+  position: relative;
+}
+
+.file-editor-menubar-button,
+.file-editor-status-button {
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.file-editor-menubar-button.is-open,
+.file-editor-status-button.is-open {
+  transform: translateY(1px);
+}
+
+.file-editor-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 125;
+  min-width: 188px;
+  max-height: 360px;
+  overflow: auto;
+  padding: 6px;
+  border-radius: 12px;
+  backdrop-filter: blur(20px);
+}
+
+.file-editor-menu--wide {
+  min-width: 240px;
+}
+
+.file-editor-menu button {
+  display: block;
+  width: 100%;
+  min-height: 30px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 8px;
+  text-align: left;
+  font-size: 12px;
+  line-height: 30px;
+}
+
+.file-editor-menu-separator {
+  height: 1px;
+  margin: 6px 4px;
+}
+
+.file-editor-path {
+  min-width: 0;
+  padding: 0 16px 10px;
+  overflow: hidden;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-editor-body {
+  min-height: 0;
+  margin: 0 16px;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 14px;
+}
+
+.file-editor-statusbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 38px;
+  padding: 0 16px;
+  font-size: 12px;
+}
+
+.file-editor-statusbar span {
+  white-space: nowrap;
+}
+
+.file-editor-status-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+

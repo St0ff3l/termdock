@@ -26,6 +26,12 @@ export function SessionWorkspace({
   onOpenLocalPath,
   onOpenRemoteItem,
   onOpenRemotePath,
+  onRequestChangePermissions,
+  onRequestDelete,
+  onRequestNewFile,
+  onRequestNewFolder,
+  onRequestQuickDelete,
+  onRequestRename,
   onRefresh,
   onUploadFiles,
   onChooseUploadFiles,
@@ -46,6 +52,12 @@ export function SessionWorkspace({
   onOpenLocalPath(path: string): void
   onOpenRemoteItem(item: RemoteFileItem): void
   onOpenRemotePath(path: string): void
+  onRequestChangePermissions(pane: 'local' | 'remote', item: LocalFileItem | RemoteFileItem): void
+  onRequestDelete(pane: 'local' | 'remote', item: LocalFileItem | RemoteFileItem): void
+  onRequestNewFile(pane: 'local' | 'remote', directoryPath: string): void
+  onRequestNewFolder(pane: 'local' | 'remote', directoryPath: string): void
+  onRequestQuickDelete(pane: 'local' | 'remote', item: LocalFileItem | RemoteFileItem): void
+  onRequestRename(pane: 'local' | 'remote', item: LocalFileItem | RemoteFileItem): void
   onRefresh(): void
   onUploadFiles(items: LocalFileItem[]): void
   onChooseUploadFiles(): void
@@ -157,6 +169,12 @@ export function SessionWorkspace({
         onOpenLocalPath={onOpenLocalPath}
         onOpenRemoteItem={onOpenRemoteItem}
         onOpenRemotePath={onOpenRemotePath}
+        onRequestChangePermissions={onRequestChangePermissions}
+        onRequestDelete={onRequestDelete}
+        onRequestNewFile={onRequestNewFile}
+        onRequestNewFolder={onRequestNewFolder}
+        onRequestQuickDelete={onRequestQuickDelete}
+        onRequestRename={onRequestRename}
         onRefresh={onRefresh}
         onUploadFiles={onUploadFiles}
         onChooseUploadFiles={onChooseUploadFiles}

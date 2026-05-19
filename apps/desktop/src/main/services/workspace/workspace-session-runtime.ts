@@ -11,11 +11,13 @@ type LiveSessionController = LiveSshSessionController | LiveFtpSessionController
 
 export class WorkspaceSessionRuntime {
   private static readonly NETWORK_HISTORY_LIMIT = 600
+  private static readonly TERMINAL_TRANSCRIPT_LIMIT = 200_000
   private readonly sessions = new Map<string, SessionSnapshot>()
   private readonly liveControllers = new Map<string, LiveSessionController>()
   private readonly metricsPollers = new Map<string, ReturnType<typeof setInterval>>()
   private readonly metricsRefreshInFlight = new Set<string>()
   private readonly tabSenders = new Map<string, WebContents>()
+  private readonly invalidSenders = new WeakSet<WebContents>()
 
   constructor(
     private readonly options: {
@@ -38,6 +40,7 @@ export class WorkspaceSessionRuntime {
   }
 
   setSender(tabId: string, sender: WebContents) {
+    this.invalidSenders.delete(sender)
     this.tabSenders.set(tabId, sender)
     sender.once('destroyed', () => {
       this.handleSenderDestroyed(sender)
@@ -70,12 +73,23 @@ export class WorkspaceSessionRuntime {
     return controller
   }
 
+  getController(tabId: string) {
+    return this.liveControllers.get(tabId)
+  }
+
   createController(tabId: string, profile: ConnectionProfile): LiveSessionController {
     return profile.type === 'ssh'
       ? new LiveSshSessionController(
           tabId,
           profile,
           (chunk) => {
+            const current = this.sessions.get(tabId)
+            if (current) {
+              this.sessions.set(tabId, {
+                ...current,
+                terminalTranscript: this.appendToTranscript(current.terminalTranscript, chunk)
+              })
+            }
             this.sendToTab(tabId, 'terminal:data', { tabId, chunk })
           },
           (summary, transcript, connected) => {
@@ -216,16 +230,21 @@ export class WorkspaceSessionRuntime {
   }
 
   async emitSnapshot(sender: WebContents) {
-    if (sender.isDestroyed()) {
+    if (!this.canSendToSender(sender)) {
       this.handleSenderDestroyed(sender)
       return
     }
-    sender.send('workspace:snapshot', await this.options.getSnapshot())
+
+    const snapshot = await this.options.getSnapshot()
+    const didSend = this.trySend(sender, 'workspace:snapshot', snapshot)
+    if (!didSend) {
+      this.handleSenderDestroyed(sender)
+    }
   }
 
   async emitSnapshotForTab(tabId: string) {
     const sender = this.tabSenders.get(tabId)
-    if (!sender || sender.isDestroyed()) {
+    if (!sender || !this.canSendToSender(sender)) {
       this.handleSenderDestroyed(sender)
       this.tabSenders.delete(tabId)
       this.stopMetricsPolling(tabId)
@@ -288,19 +307,67 @@ export class WorkspaceSessionRuntime {
 
   private sendToTab(tabId: string, channel: string, payload: unknown) {
     const sender = this.tabSenders.get(tabId)
-    if (!sender || sender.isDestroyed()) {
+    if (!sender || !this.canSendToSender(sender)) {
       this.handleSenderDestroyed(sender)
       this.tabSenders.delete(tabId)
       this.stopMetricsPolling(tabId)
       return
     }
-    sender.send(channel, payload)
+
+    const didSend = this.trySend(sender, channel, payload)
+    if (!didSend) {
+      this.handleSenderDestroyed(sender)
+      this.tabSenders.delete(tabId)
+      this.stopMetricsPolling(tabId)
+    }
+  }
+
+  private canSendToSender(sender: WebContents) {
+    if (this.invalidSenders.has(sender)) {
+      return false
+    }
+
+    if (sender.isDestroyed()) {
+      return false
+    }
+
+    try {
+      const frame = sender.mainFrame
+      if (!frame) {
+        return false
+      }
+    } catch {
+      return false
+    }
+
+    return true
+  }
+
+  private trySend(sender: WebContents, channel: string, payload: unknown) {
+    if (this.invalidSenders.has(sender)) {
+      return false
+    }
+
+    try {
+      sender.send(channel, payload)
+      return true
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('Render frame was disposed')) {
+        this.invalidSenders.add(sender)
+        return false
+      }
+
+      throw error
+    }
   }
 
   private handleSenderDestroyed(sender?: WebContents) {
     if (!sender) {
       return
     }
+
+    this.invalidSenders.add(sender)
+
     for (const [tabId, candidate] of this.tabSenders.entries()) {
       if (candidate === sender) {
         this.tabSenders.delete(tabId)
@@ -333,6 +400,15 @@ export class WorkspaceSessionRuntime {
       networkSamples: [...previousSamples, nextPoint].slice(-WorkspaceSessionRuntime.NETWORK_HISTORY_LIMIT),
       networkSamplesByInterface: mergedByInterface
     }
+  }
+
+  private appendToTranscript(current: string | undefined, chunk: string) {
+    const next = `${current ?? ''}${chunk}`
+    if (next.length <= WorkspaceSessionRuntime.TERMINAL_TRANSCRIPT_LIMIT) {
+      return next
+    }
+
+    return next.slice(next.length - WorkspaceSessionRuntime.TERMINAL_TRANSCRIPT_LIMIT)
   }
 }
 

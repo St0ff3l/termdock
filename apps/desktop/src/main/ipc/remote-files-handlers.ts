@@ -1,4 +1,5 @@
 import { ipcMain } from 'electron'
+import type { PermissionChangeOptions } from '@termdock/core'
 import type { IpcServices } from './types.js'
 
 export function registerRemoteFilesHandlers(services: IpcServices) {
@@ -8,11 +9,31 @@ export function registerRemoteFilesHandlers(services: IpcServices) {
     workspaceService.openRemotePath(tabId, targetPath)
   )
 
-  ipcMain.handle('remoteFiles:readFile', (_, tabId: string, targetPath: string) =>
-    workspaceService.readRemoteFile(tabId, targetPath)
+  ipcMain.handle('remoteFiles:readFile', (_, tabId: string, targetPath: string, encoding?: string) =>
+    workspaceService.readRemoteFile(tabId, targetPath, encoding)
   )
 
-  ipcMain.handle('remoteFiles:writeFile', (_, tabId: string, targetPath: string, content: string) =>
-    workspaceService.writeRemoteFile(tabId, targetPath, content)
+  ipcMain.handle('remoteFiles:writeFile', (_, tabId: string, targetPath: string, content: string, encoding?: string) =>
+    workspaceService.writeRemoteFile(tabId, targetPath, content, encoding)
+  )
+
+  ipcMain.handle('remoteFiles:createDirectory', (_, tabId: string, parentPath: string, name: string) =>
+    workspaceService.createRemoteDirectory(tabId, parentPath, name)
+  )
+
+  ipcMain.handle('remoteFiles:createFile', (_, tabId: string, parentPath: string, name: string) =>
+    workspaceService.createRemoteFile(tabId, parentPath, name)
+  )
+
+  ipcMain.handle('remoteFiles:renamePath', (_, tabId: string, targetPath: string, newName: string) =>
+    workspaceService.renameRemotePath(tabId, targetPath, newName)
+  )
+
+  ipcMain.handle('remoteFiles:deletePath', (_, tabId: string, targetPath: string, targetType: 'file' | 'folder') =>
+    workspaceService.deleteRemotePath(tabId, targetPath, targetType)
+  )
+
+  ipcMain.handle('remoteFiles:changePermissions', (_, tabId: string, targetPath: string, options: PermissionChangeOptions) =>
+    workspaceService.changeRemotePermissions(tabId, targetPath, options)
   )
 }

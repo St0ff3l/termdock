@@ -9,6 +9,8 @@ import {
   type CommandExecutionResult,
   type CreateProfileInput,
   type SessionSnapshot,
+  type PermissionChangeOptions,
+  type TransferProgress,
   type TransferTask,
   type WorkspaceSnapshot
 } from '@termdock/core'
@@ -23,6 +25,7 @@ export class WorkspaceService {
   private readonly tabs = new WorkspaceTabsState()
   private readonly transfers = new WorkspaceTransfersState(seedTransfers)
   private readonly transferCancels = new Map<string, () => Promise<void> | void>()
+  private readonly transferCanceling = new Set<string>()
   private readonly sessionRuntime = new WorkspaceSessionRuntime({
     getSnapshot: () => this.getSnapshot(),
     updateTabStatus: (tabId, status) => {
@@ -250,19 +253,30 @@ export class WorkspaceService {
   }
 
   async cancelTransfer(transferId: string, sender: WebContents): Promise<WorkspaceSnapshot> {
+    if (this.transferCanceling.has(transferId)) {
+      return this.getSnapshot()
+    }
+
     const transfer = this.transfers.get(transferId)
     if (!transfer || (transfer.status !== 'running' && transfer.status !== 'queued')) {
       return this.getSnapshot()
     }
 
+    this.transferCanceling.add(transferId)
+    const cancel = this.transferCancels.get(transferId)
+    this.transferCancels.delete(transferId)
+    await this.updateTransfer(transferId, {
+      status: 'canceled',
+      message: '传输已终止',
+      speed: undefined
+    }, sender)
+
     try {
-      await this.transferCancels.get(transferId)?.()
+      await cancel?.()
+    } catch {
+      // Cancel is best-effort here; the UI state should not bounce back to running.
     } finally {
-      this.transferCancels.delete(transferId)
-      await this.updateTransfer(transferId, {
-        status: 'canceled',
-        message: '传输已终止'
-      }, sender)
+      this.transferCanceling.delete(transferId)
     }
 
     return this.getSnapshot()
@@ -272,6 +286,7 @@ export class WorkspaceService {
     const controller = this.sessionRuntime.requireController(tabId)
     const transferId = this.addTransfer('upload', path.basename(localPath), sender)
     const transferState = { canceled: false }
+    const transferTracker = createTransferSpeedTracker()
     this.setTransferCancel(transferId, async () => {
       transferState.canceled = true
       await controller.abortTransfer()
@@ -279,12 +294,19 @@ export class WorkspaceService {
 
     try {
       await this.uploadLocalEntry(controller, localPath, remoteDirectory, transferState, (progress) => {
-        void this.updateTransfer(transferId, { progress, status: 'running' }, sender)
+        if (transferState.canceled) {
+          return
+        }
+        void this.updateTransfer(transferId, {
+          progress: progress.percent,
+          status: 'running',
+          speed: transferTracker(progress)
+        }, sender)
       })
       if (transferState.canceled) {
         return this.getSnapshot()
       }
-      await this.updateTransfer(transferId, { progress: 100, status: 'done' }, sender)
+      await this.updateTransfer(transferId, { progress: 100, status: 'done', speed: undefined }, sender)
       await this.refreshRemoteFiles(tabId)
     } catch (error) {
       if (transferState.canceled) {
@@ -292,7 +314,8 @@ export class WorkspaceService {
       }
       await this.updateTransfer(transferId, {
         status: 'failed',
-        message: error instanceof Error ? error.message : '上传失败'
+        message: error instanceof Error ? error.message : '上传失败',
+        speed: undefined
       }, sender)
       throw error
     } finally {
@@ -307,6 +330,7 @@ export class WorkspaceService {
     const localPath = path.join(localDirectory, path.posix.basename(remotePath))
     const transferId = this.addTransfer('download', path.posix.basename(remotePath), sender)
     const transferState = { canceled: false }
+    const transferTracker = createTransferSpeedTracker()
     this.setTransferCancel(transferId, async () => {
       transferState.canceled = true
       await controller.abortTransfer()
@@ -314,19 +338,27 @@ export class WorkspaceService {
 
     try {
       await controller.downloadFile(remotePath, localPath, (progress) => {
-        void this.updateTransfer(transferId, { progress, status: 'running' }, sender)
+        if (transferState.canceled) {
+          return
+        }
+        void this.updateTransfer(transferId, {
+          progress: progress.percent,
+          status: 'running',
+          speed: transferTracker(progress)
+        }, sender)
       })
       if (transferState.canceled) {
         return this.getSnapshot()
       }
-      await this.updateTransfer(transferId, { progress: 100, status: 'done' }, sender)
+      await this.updateTransfer(transferId, { progress: 100, status: 'done', speed: undefined }, sender)
     } catch (error) {
       if (transferState.canceled) {
         return this.getSnapshot()
       }
       await this.updateTransfer(transferId, {
         status: 'failed',
-        message: error instanceof Error ? error.message : '下载失败'
+        message: error instanceof Error ? error.message : '下载失败',
+        speed: undefined
       }, sender)
       throw error
     } finally {
@@ -336,19 +368,55 @@ export class WorkspaceService {
     return this.getSnapshot()
   }
 
-  async readRemoteFile(tabId: string, targetPath: string): Promise<string> {
-    return this.sessionRuntime.requireController(tabId).readRemoteFile(targetPath)
+  async readRemoteFile(tabId: string, targetPath: string, encoding?: string): Promise<string> {
+    return this.sessionRuntime.requireController(tabId).readRemoteFile(targetPath, encoding)
   }
 
-  async writeRemoteFile(tabId: string, targetPath: string, content: string): Promise<WorkspaceSnapshot> {
+  async writeRemoteFile(tabId: string, targetPath: string, content: string, encoding?: string): Promise<WorkspaceSnapshot> {
     const controller = this.sessionRuntime.requireController(tabId)
-    await controller.writeRemoteFile(targetPath, content)
+    await controller.writeRemoteFile(targetPath, content, encoding)
+    await this.refreshRemoteFiles(tabId)
+    return this.getSnapshot()
+  }
+
+  async createRemoteDirectory(tabId: string, parentPath: string, name: string): Promise<WorkspaceSnapshot> {
+    const controller = this.sessionRuntime.requireController(tabId)
+    await controller.ensureRemoteDirectory(path.posix.join(parentPath, name))
+    await this.refreshRemoteFiles(tabId)
+    return this.getSnapshot()
+  }
+
+  async createRemoteFile(tabId: string, parentPath: string, name: string): Promise<WorkspaceSnapshot> {
+    const controller = this.sessionRuntime.requireController(tabId)
+    await controller.writeRemoteFile(path.posix.join(parentPath, name), '')
+    await this.refreshRemoteFiles(tabId)
+    return this.getSnapshot()
+  }
+
+  async renameRemotePath(tabId: string, targetPath: string, newName: string): Promise<WorkspaceSnapshot> {
+    const controller = this.sessionRuntime.requireController(tabId)
+    const nextPath = path.posix.join(path.posix.dirname(targetPath), newName)
+    await controller.renameRemotePath(targetPath, nextPath)
+    await this.refreshRemoteFiles(tabId)
+    return this.getSnapshot()
+  }
+
+  async deleteRemotePath(tabId: string, targetPath: string, targetType: 'file' | 'folder'): Promise<WorkspaceSnapshot> {
+    const controller = this.sessionRuntime.requireController(tabId)
+    await controller.deleteRemotePath(targetPath, targetType)
+    await this.refreshRemoteFiles(tabId)
+    return this.getSnapshot()
+  }
+
+  async changeRemotePermissions(tabId: string, targetPath: string, options: PermissionChangeOptions): Promise<WorkspaceSnapshot> {
+    const controller = this.sessionRuntime.requireController(tabId)
+    await controller.changeRemotePermissions(targetPath, options)
     await this.refreshRemoteFiles(tabId)
     return this.getSnapshot()
   }
 
   async writeToTerminal(tabId: string, data: string): Promise<void> {
-    const controller = this.sessionRuntime.requireController(tabId)
+    const controller = this.sessionRuntime.getController(tabId)
     if (!controller || controller.type !== 'ssh') {
       return
     }
@@ -356,7 +424,7 @@ export class WorkspaceService {
   }
 
   async resizeTerminal(tabId: string, cols: number, rows: number): Promise<void> {
-    const controller = this.sessionRuntime.requireController(tabId)
+    const controller = this.sessionRuntime.getController(tabId)
     if (!controller || controller.type !== 'ssh') {
       return
     }
@@ -377,7 +445,7 @@ export class WorkspaceService {
     localPath: string,
     remoteDirectory: string,
     transferState: { canceled: boolean },
-    onProgress: (progress: number) => void
+    onProgress: (progress: TransferProgress) => void
   ) {
     this.ensureTransferActive(transferState)
     const info = await stat(localPath)
@@ -389,12 +457,13 @@ export class WorkspaceService {
 
     const { directories, files } = await this.collectLocalUploadEntries(localPath)
     const remoteRoot = path.posix.join(remoteDirectory, path.basename(localPath))
-    onProgress(1)
+    const totalBytes = Math.max(files.reduce((sum, file) => sum + Math.max(file.size, 1), 0), 1)
+    onProgress({ percent: 1, transferredBytes: 0, totalBytes })
     this.ensureTransferActive(transferState)
     await controller.ensureRemoteDirectory(remoteRoot)
 
     if (directories.length) {
-      onProgress(3)
+      onProgress({ percent: 3, transferredBytes: 0, totalBytes })
     }
     for (const directory of directories) {
       this.ensureTransferActive(transferState)
@@ -402,11 +471,10 @@ export class WorkspaceService {
     }
 
     if (!files.length) {
-      onProgress(100)
+      onProgress({ percent: 100, transferredBytes: totalBytes, totalBytes })
       return
     }
 
-    const totalBytes = Math.max(files.reduce((sum, file) => sum + Math.max(file.size, 1), 0), 1)
     let uploadedBytes = 0
 
     for (const file of files) {
@@ -415,11 +483,19 @@ export class WorkspaceService {
       await controller.ensureRemoteDirectory(path.posix.dirname(remotePath))
       await controller.uploadFile(file.fullPath, remotePath, (fileProgress) => {
         const fileBytes = Math.max(file.size, 1)
-        const completedBytes = uploadedBytes + Math.round((fileProgress / 100) * fileBytes)
-        onProgress(Math.max(5, Math.min(99, Math.round((completedBytes / totalBytes) * 100))))
+        const completedBytes = uploadedBytes + Math.min(fileBytes, fileProgress.transferredBytes ?? Math.round((fileProgress.percent / 100) * fileBytes))
+        onProgress({
+          percent: Math.max(5, Math.min(99, Math.round((completedBytes / totalBytes) * 100))),
+          transferredBytes: completedBytes,
+          totalBytes
+        })
       })
       uploadedBytes += Math.max(file.size, 1)
-      onProgress(Math.max(5, Math.min(99, Math.round((uploadedBytes / totalBytes) * 100))))
+      onProgress({
+        percent: Math.max(5, Math.min(99, Math.round((uploadedBytes / totalBytes) * 100))),
+        transferredBytes: uploadedBytes,
+        totalBytes
+      })
     }
   }
 
@@ -483,12 +559,57 @@ export class WorkspaceService {
 
   private async updateTransfer(
     transferId: string,
-    patch: Partial<Pick<TransferTask, 'progress' | 'status' | 'message'>>,
+    patch: Partial<Pick<TransferTask, 'progress' | 'status' | 'message' | 'speed'>>,
     sender: WebContents
   ) {
     this.transfers.update(transferId, patch)
     await this.sessionRuntime.emitSnapshot(sender)
   }
+}
+
+function createTransferSpeedTracker() {
+  let lastTransferredBytes = 0
+  let lastTimestamp = Date.now()
+  let lastSpeed: string | undefined
+
+  return (progress: TransferProgress) => {
+    if (progress.transferredBytes === undefined) {
+      return lastSpeed
+    }
+
+    const now = Date.now()
+    const deltaBytes = progress.transferredBytes - lastTransferredBytes
+    const deltaMs = now - lastTimestamp
+
+    if (deltaBytes > 0 && deltaMs >= 200) {
+      lastTransferredBytes = progress.transferredBytes
+      lastTimestamp = now
+      lastSpeed = formatTransferSpeed(deltaBytes / (deltaMs / 1000))
+    } else if (progress.transferredBytes >= lastTransferredBytes) {
+      lastTransferredBytes = progress.transferredBytes
+      lastTimestamp = now
+    }
+
+    return lastSpeed
+  }
+}
+
+function formatTransferSpeed(bytesPerSecond: number) {
+  if (!Number.isFinite(bytesPerSecond) || bytesPerSecond <= 0) {
+    return undefined
+  }
+
+  const units = ['B/s', 'KB/s', 'MB/s', 'GB/s']
+  let value = bytesPerSecond
+  let unitIndex = 0
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024
+    unitIndex += 1
+  }
+
+  const digits = value >= 100 ? 0 : value >= 10 ? 1 : 2
+  return `${value.toFixed(digits)} ${units[unitIndex]}`
 }
 
 export { seedCommandFolders, seedCommandTemplates, seedProfiles }

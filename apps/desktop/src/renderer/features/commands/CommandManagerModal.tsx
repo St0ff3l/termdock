@@ -1,10 +1,11 @@
 import { useMemo, useState, type DragEvent } from 'react'
 import type { CommandFolder, CommandTemplate, CommandTemplateInput } from '@termdock/core'
 import { t } from '../../i18n'
-import { sortByOrder } from './command-utils'
 import { CommandEditorModal, emptyCommandForm, toCommandTemplateInput } from './CommandEditorModal'
 
-type FolderNode = CommandFolder & { children: FolderNode[] }
+type CommandTreeNode =
+  | (CommandFolder & { children: CommandTreeNode[] })
+  | (CommandTemplate & { children?: never })
 
 export function CommandManagerModal({
   commandFolders,
@@ -31,257 +32,157 @@ export function CommandManagerModal({
   onDeleteCommand(commandId: string): void
   standalone?: boolean
 }) {
-  const [selectedFolderId, setSelectedFolderId] = useState<string>('all')
-  const [selectedCommandId, setSelectedCommandId] = useState<string | null>(commandTemplates[0]?.id ?? null)
-  const [newFolderName, setNewFolderName] = useState('')
-  const [editingFolderId, setEditingFolderId] = useState<string | null>(null)
-  const [editingFolderName, setEditingFolderName] = useState('')
-  const [draggingFolderId, setDraggingFolderId] = useState<string | null>(null)
-  const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null)
-  const [dragPosition, setDragPosition] = useState<'top' | 'bottom' | 'inside' | null>(null)
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
+  const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [dragOverId, setDragOverId] = useState<string | null>(null)
+  const [dragPosition, setDragPosition] = useState<'top' | 'bottom' | 'inside' | null>(null)
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false)
+  const [newFolderName, setNewFolderName] = useState('')
   const [editorState, setEditorState] = useState<{ mode: 'create' | 'edit'; commandId?: string } | null>(null)
 
-  const folderTree = useMemo(() => {
-    const roots: FolderNode[] = []
-    const map = new Map<string, FolderNode>()
-    const items = sortByOrder(commandFolders).map((folder) => ({ ...folder, children: [] as FolderNode[] }))
+  const desktopApi = window.termdock
 
-    items.forEach((folder) => {
-      map.set(folder.id, folder)
+  const tree = useMemo(() => {
+    const items: CommandTreeNode[] = [
+      ...commandTemplates,
+      ...commandFolders.map((folder) => ({ ...folder, children: [] }))
+    ]
+
+    items.forEach((item, index) => {
+      if (typeof item.order !== 'number') item.order = index * 1000
     })
 
-    items.forEach((folder) => {
-      if (folder.parentId && map.has(folder.parentId)) {
-        map.get(folder.parentId)?.children.push(folder)
+    const roots: CommandTreeNode[] = []
+    const map = new Map<string, CommandTreeNode>()
+
+    items.forEach(item => {
+      map.set(item.id, item)
+    })
+
+    items.forEach(item => {
+      if (item.parentId && map.has(item.parentId)) {
+        const parent = map.get(item.parentId)!
+        if (parent.type === 'command-folder') {
+          parent.children.push(item)
+        } else {
+          roots.push(item)
+        }
       } else {
-        roots.push(folder)
+        roots.push(item)
       }
     })
 
-    const sortNodes = (nodes: FolderNode[]) => {
-      nodes.sort((left, right) => (left.order ?? 0) - (right.order ?? 0))
-      nodes.forEach((node) => sortNodes(node.children))
+    const sortNodes = (nodes: CommandTreeNode[]) => {
+      nodes.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      nodes.forEach(n => {
+        if (n.type === 'command-folder') sortNodes(n.children)
+      })
     }
-
     sortNodes(roots)
     return { roots, map }
-  }, [commandFolders])
+  }, [commandTemplates, commandFolders])
 
-  const folders = useMemo(() => sortByOrder(commandFolders), [commandFolders])
-
-  const filteredCommands = useMemo(() => {
-    if (selectedFolderId === 'all') {
-      return sortByOrder(commandTemplates)
-    }
-    if (selectedFolderId === 'ungrouped') {
-      return sortByOrder(commandTemplates.filter((item) => !item.parentId))
-    }
-    return sortByOrder(commandTemplates.filter((item) => item.parentId === selectedFolderId))
-  }, [commandTemplates, selectedFolderId])
-
-  const selectedCommand = useMemo(
-    () => commandTemplates.find((item) => item.id === selectedCommandId) ?? null,
-    [commandTemplates, selectedCommandId]
-  )
-
-  const toggleFolder = (folderId: string) => {
-    setExpandedFolders((prev) => {
+  const toggleFolder = (folderId: string, event?: React.MouseEvent) => {
+    event?.stopPropagation()
+    setExpandedFolders(prev => {
       const next = new Set(prev)
-      if (next.has(folderId)) {
-        next.delete(folderId)
-      } else {
-        next.add(folderId)
-      }
+      if (next.has(folderId)) next.delete(folderId)
+      else next.add(folderId)
       return next
     })
   }
 
-  const desktopApi = window.termdock
-
-  const editorInitialValue = editorState?.mode === 'edit'
-    ? (() => {
-        const command = commandTemplates.find((item) => item.id === editorState.commandId)
-        return command ? toCommandTemplateInput(command) : emptyCommandForm
-      })()
-    : {
-        ...emptyCommandForm,
-        parentId: selectedFolderId === 'all' || selectedFolderId === 'ungrouped' ? undefined : selectedFolderId
-      }
-
-  const handleDragStart = (event: DragEvent<HTMLDivElement>, folderId: string) => {
-    event.stopPropagation()
-    setDraggingFolderId(folderId)
-    event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData('text/plain', folderId)
+  const handleDragStart = (e: DragEvent, id: string) => {
+    e.stopPropagation()
+    setDraggingId(id)
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', id)
   }
 
-  const handleDragOver = (event: DragEvent<HTMLDivElement>, targetId: string) => {
-    event.preventDefault()
-    event.stopPropagation()
-    if (draggingFolderId === targetId) {
-      return
-    }
+  const handleDragOver = (e: DragEvent, targetId: string, type: 'command-folder' | 'command-template') => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (draggingId === targetId) return
 
-    const rect = event.currentTarget.getBoundingClientRect()
-    const y = event.clientY - rect.top
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const y = e.clientY - rect.top
     const height = rect.height
-    let nextPosition: 'top' | 'bottom' | 'inside' = 'bottom'
-    if (y < height * 0.25) {
-      nextPosition = 'top'
-    } else if (y > height * 0.75) {
-      nextPosition = 'bottom'
+
+    let pos: 'top' | 'bottom' | 'inside' = 'bottom'
+    if (type === 'command-folder') {
+      if (y < height * 0.25) pos = 'top'
+      else if (y > height * 0.75) pos = 'bottom'
+      else pos = 'inside'
     } else {
-      nextPosition = 'inside'
+      if (y < height * 0.5) pos = 'top'
+      else pos = 'bottom'
     }
 
-    setDragOverFolderId(targetId)
-    setDragPosition(nextPosition)
+    setDragOverId(targetId)
+    setDragPosition(pos)
   }
 
-  const handleDrop = (event: DragEvent<HTMLDivElement>, targetId: string) => {
-    event.preventDefault()
-    event.stopPropagation()
+  const handleDragLeave = (e: DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragOverId(null)
+    setDragPosition(null)
+  }
 
-    if (!draggingFolderId || draggingFolderId === targetId) {
-      setDraggingFolderId(null)
-      setDragOverFolderId(null)
-      setDragPosition(null)
+  const handleDrop = (e: DragEvent, targetId: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!draggingId || draggingId === targetId) {
+      setDraggingId(null)
+      setDragOverId(null)
       return
     }
 
-    const draggedNode = folderTree.map.get(draggingFolderId)
-    const targetNode = folderTree.map.get(targetId)
-    if (!draggedNode || !targetNode) {
-      return
-    }
+    const draggedNode = tree.map.get(draggingId)
+    const targetNode = tree.map.get(targetId)
+    if (!draggedNode || !targetNode) return
 
-    let current: FolderNode | undefined = targetNode
-    while (current?.parentId) {
-      if (current.parentId === draggingFolderId) {
-        setDraggingFolderId(null)
-        setDragOverFolderId(null)
-        setDragPosition(null)
-        return
+    // Prevent dropping a folder into its own descendant
+    let current = targetNode
+    let invalid = false
+    while (current.parentId) {
+      if (current.parentId === draggingId) {
+        invalid = true
+        break
       }
-      current = folderTree.map.get(current.parentId)
+      current = tree.map.get(current.parentId)!
+    }
+    if (invalid) {
+      setDraggingId(null)
+      setDragOverId(null)
+      return
     }
 
     let newParentId = targetNode.parentId
-    let siblings = newParentId ? folderTree.map.get(newParentId)?.children ?? [] : folderTree.roots
+    let siblings = newParentId ? tree.map.get(newParentId)!.children! : tree.roots
+
     let newOrder = targetNode.order ?? 0
 
-    if (dragPosition === 'inside') {
+    if (dragPosition === 'inside' && targetNode.type === 'command-folder') {
       newParentId = targetNode.id
       const children = targetNode.children
-      newOrder = children.length ? (children[children.length - 1].order ?? 0) + 1000 : 1000
-      setExpandedFolders((prev) => new Set(prev).add(targetNode.id))
+      newOrder = children.length > 0 ? (children[children.length - 1].order ?? 0) + 1000 : 1000
+      setExpandedFolders(prev => new Set(prev).add(targetNode.id))
     } else {
-      const targetIndex = siblings.findIndex((item) => item.id === targetId)
+      const targetIndex = siblings.findIndex(s => s.id === targetId)
       if (dragPosition === 'top') {
         const prev = siblings[targetIndex - 1]
         newOrder = prev ? ((prev.order ?? 0) + (targetNode.order ?? 0)) / 2 : (targetNode.order ?? 0) - 1000
-      } else {
+      } else if (dragPosition === 'bottom') {
         const next = siblings[targetIndex + 1]
         newOrder = next ? ((next.order ?? 0) + (targetNode.order ?? 0)) / 2 : (targetNode.order ?? 0) + 1000
       }
     }
 
-    onUpdateOrder(draggingFolderId, newParentId, newOrder)
-    setDraggingFolderId(null)
-    setDragOverFolderId(null)
+    onUpdateOrder(draggingId, newParentId, newOrder)
+    setDraggingId(null)
+    setDragOverId(null)
     setDragPosition(null)
-  }
-
-  const renderFolderNode = (node: FolderNode, depth: number) => {
-    const isExpanded = expandedFolders.has(node.id)
-    const isEditing = editingFolderId === node.id
-    const isDragOver = dragOverFolderId === node.id
-    const dropClass = isDragOver && dragPosition ? `drop-${dragPosition}` : ''
-
-    return (
-      <div key={node.id}>
-        <div
-          className={`command-folder-manager-row ${dropClass} ${draggingFolderId === node.id ? 'dragging' : ''} ${selectedFolderId === node.id ? 'active' : ''}`}
-          draggable
-          onClick={() => setSelectedFolderId(node.id)}
-          onDoubleClick={() => toggleFolder(node.id)}
-          onDragStart={(event) => handleDragStart(event, node.id)}
-          onDragOver={(event) => handleDragOver(event, node.id)}
-          onDrop={(event) => handleDrop(event, node.id)}
-          onDragEnd={() => {
-            setDraggingFolderId(null)
-            setDragOverFolderId(null)
-            setDragPosition(null)
-          }}
-        >
-          <div className="command-folder-manager-main" style={{ paddingLeft: `${depth * 18}px` }}>
-            <button
-              className="command-folder-toggle"
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation()
-                toggleFolder(node.id)
-              }}
-            >
-              {isExpanded ? '▾' : '▸'}
-            </button>
-            {isEditing ? (
-              <input
-                autoFocus
-                value={editingFolderName}
-                onChange={(event) => setEditingFolderName(event.currentTarget.value)}
-                onBlur={() => {
-                  const nextName = editingFolderName.trim()
-                  if (nextName && nextName !== node.name) {
-                    onUpdateFolder(node.id, { name: nextName })
-                  }
-                  setEditingFolderId(null)
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    const nextName = editingFolderName.trim()
-                    if (nextName && nextName !== node.name) {
-                      onUpdateFolder(node.id, { name: nextName })
-                    }
-                    setEditingFolderId(null)
-                  }
-                  if (event.key === 'Escape') {
-                    setEditingFolderId(null)
-                  }
-                }}
-              />
-            ) : (
-              <strong>{node.name}</strong>
-            )}
-          </div>
-          <div className="command-folder-manager-actions">
-            <button
-              className="flat-button compact"
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation()
-                setEditingFolderId(node.id)
-                setEditingFolderName(node.name)
-              }}
-            >
-              {t.edit}
-            </button>
-            <button
-              className="flat-button compact danger"
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation()
-                onDeleteFolder(node.id)
-              }}
-            >
-              {t.delete}
-            </button>
-          </div>
-        </div>
-        {isExpanded ? node.children.map((child) => renderFolderNode(child, depth + 1)) : null}
-      </div>
-    )
   }
 
   const openEditorWindow = (mode: 'create' | 'edit', commandId?: string) => {
@@ -289,146 +190,176 @@ export function CommandManagerModal({
       setEditorState({ mode, commandId })
       return
     }
-
-    const folderId = selectedFolderId === 'all' || selectedFolderId === 'ungrouped' ? undefined : selectedFolderId
-    void desktopApi.openCommandFormWindow(mode, commandId, folderId)
+    // We don't have a reliable way to get parentId here easily without more state, 
+    // but we can pass undefined or the user can select it in the modal.
+    void desktopApi.openCommandFormWindow(mode, commandId)
   }
 
-  const shell = (
+  const editorInitialValue = editorState?.mode === 'edit'
+    ? (() => {
+        const command = commandTemplates.find((item) => item.id === editorState.commandId)
+        return command ? toCommandTemplateInput(command) : emptyCommandForm
+      })()
+    : emptyCommandForm
+
+  const renderNode = (node: CommandTreeNode, depth: number) => {
+    const isFolder = node.type === 'command-folder'
+    const isExpanded = expandedFolders.has(node.id)
+    const isDragOver = dragOverId === node.id
+    const isDragging = draggingId === node.id
+
+    let dropClass = ''
+    if (isDragOver && dragPosition) {
+      dropClass = `drop-${dragPosition}`
+    }
+
+    return (
+      <div key={node.id}>
+        <div
+          className={`manager-row ${isFolder ? 'folder-row' : ''} ${dropClass} ${isDragging ? 'dragging' : ''}`}
+          draggable
+          onDragStart={(e) => handleDragStart(e, node.id)}
+          onDragOver={(e) => handleDragOver(e, node.id, isFolder ? 'command-folder' : 'command-template')}
+          onDragLeave={handleDragLeave}
+          onDrop={(e) => handleDrop(e, node.id)}
+          onDragEnd={() => {
+            setDraggingId(null)
+            setDragOverId(null)
+            setDragPosition(null)
+          }}
+          onDoubleClick={() => isFolder ? toggleFolder(node.id) : openEditorWindow('edit', node.id)}
+          onClick={() => isFolder ? toggleFolder(node.id) : undefined}
+          role="button"
+          tabIndex={0}
+        >
+          <span style={{ paddingLeft: `${depth * 20}px`, display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
+            {isFolder && (
+              <span className="folder-icon" style={{ transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.1s', display: 'inline-block', fontSize: '10px' }}>
+                ▶
+              </span>
+            )}
+            {!isFolder && <span style={{ width: '12px', display: 'inline-block' }}></span>}
+            <strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{node.name}</strong>
+          </span>
+          <span>
+            {isFolder ? '--' : <code style={{ fontSize: '11px', opacity: 0.8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>{node.command}</code>}
+          </span>
+          <span className="manager-actions">
+            {!isFolder && (
+              <button
+                className="flat-button compact"
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  openEditorWindow('edit', node.id)
+                }}
+              >
+                {t.edit}
+              </button>
+            )}
+            <button
+              className="flat-button compact danger"
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                if (isFolder) onDeleteFolder(node.id)
+                else onDeleteCommand(node.id)
+              }}
+            >
+              {t.delete}
+            </button>
+          </span>
+        </div>
+        {isFolder && isExpanded && node.children && (
+          <div className="folder-children">
+            {node.children.map((child) => renderNode(child, depth + 1))}
+            {node.children.length === 0 && (
+              <div className="manager-row empty-folder" style={{ paddingLeft: `${(depth + 1) * 20 + 14}px`, color: '#666' }}>
+                <span style={{ gridColumn: '1 / -1' }}>{t.commandEmpty}</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const content = (
     <div className={`modal-card manager-modal command-manager-modal ${standalone ? 'standalone' : ''}`}>
       <div className="modal-header">
         <span>{t.commandManager}</span>
         {!standalone ? <button className="icon-button" onClick={onClose} type="button">×</button> : null}
       </div>
-      <div className="manager-toolbar">
-        <button className="flat-button" type="button" onClick={() => openEditorWindow('create')}>{t.newCommand}</button>
+      <div className="manager-toolbar" style={{ gap: '10px' }}>
+        <button 
+          className="flat-button" 
+          type="button" 
+          onClick={() => {
+            setIsCreatingFolder(true)
+            setNewFolderName('')
+          }}
+        >
+          {t.newFolder}
+        </button>
+        <button className="primary-button" type="button" onClick={() => openEditorWindow('create')}>{t.newCommand}</button>
       </div>
-      <div className="command-manager-panel-grid">
-        <section className="command-manager-panel">
-          <div className="manager-head command-manager-panel-head">
-            <span>{t.commandCategory}</span>
-            <span>{t.actions}</span>
-          </div>
-          <div className="command-manager-folder-create">
-            <input
-              placeholder={t.folderName}
-              type="text"
-              value={newFolderName}
-              onChange={(event) => setNewFolderName(event.currentTarget.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  const nextName = newFolderName.trim()
-                  if (!nextName) {
-                    return
-                  }
-                  onCreateFolder(nextName)
-                  setNewFolderName('')
-                }
-              }}
-            />
-            <button
-              className="flat-button compact"
-              type="button"
-              onClick={() => {
-                const nextName = newFolderName.trim()
-                if (!nextName) {
-                  return
-                }
-                onCreateFolder(nextName)
-                setNewFolderName('')
-              }}
-            >
-              {t.newFolder}
-            </button>
-          </div>
-          <div className="command-folder-manager-list">
-            <div
-              className={`command-folder-manager-row root-row ${selectedFolderId === 'all' ? 'active' : ''}`}
-              onClick={() => setSelectedFolderId('all')}
-            >
-              <div className="command-folder-manager-main">
-                <strong>{t.all}</strong>
-              </div>
+      <div className="manager-table command-manager-table">
+        <div className="manager-head">
+          <span>{t.name}</span>
+          <span>{t.commandTemplate}</span>
+          <span>{t.actions}</span>
+        </div>
+        <div className="manager-body" style={{ flex: 1, overflowY: 'auto' }}>
+          {isCreatingFolder && (
+            <div className="manager-row folder-row">
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span className="folder-icon" style={{ display: 'inline-block', fontSize: '10px' }}>▶</span>
+                <input
+                  type="text"
+                  autoFocus
+                  value={newFolderName}
+                  onChange={(e) => setNewFolderName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && newFolderName.trim()) {
+                      onCreateFolder(newFolderName.trim())
+                      setIsCreatingFolder(false)
+                    } else if (e.key === 'Escape') {
+                      setIsCreatingFolder(false)
+                    }
+                  }}
+                  onBlur={() => {
+                    if (newFolderName.trim()) onCreateFolder(newFolderName.trim())
+                    setIsCreatingFolder(false)
+                  }}
+                  style={{ background: 'var(--bg-active)', border: 'none', color: 'inherit', padding: '2px 4px', outline: 'none' }}
+                  placeholder={t.folderName}
+                />
+              </span>
+              <span>--</span>
+              <span></span>
             </div>
-            <div
-              className={`command-folder-manager-row root-row ${selectedFolderId === 'ungrouped' ? 'active' : ''}`}
-              onClick={() => setSelectedFolderId('ungrouped')}
-            >
-              <div className="command-folder-manager-main">
-                <strong>{t.commandUncategorized}</strong>
-              </div>
+          )}
+          {tree.roots.map((node) => renderNode(node, 0))}
+          {tree.roots.length === 0 && !isCreatingFolder && (
+            <div style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
+              {t.commandEmpty}
             </div>
-            {folderTree.roots.map((node) => renderFolderNode(node, 0))}
-          </div>
-        </section>
-
-        <section className="command-manager-panel">
-          <div className="manager-head command-manager-panel-head">
-            <span>{t.commandList}</span>
-            <span>{filteredCommands.length}</span>
-          </div>
-          <div className="command-manager-list-shell">
-            <table className="command-table">
-              <thead>
-                <tr>
-                  <th className="col-name">{t.name}</th>
-                  <th className="col-template">{t.commandTemplate}</th>
-                  <th>{t.actions}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredCommands.map((item) => (
-                  <tr
-                    key={item.id}
-                    className={selectedCommandId === item.id ? 'active' : ''}
-                    onClick={() => setSelectedCommandId(item.id)}
-                  >
-                    <td className="col-name">
-                      <strong>{item.name}</strong>
-                    </td>
-                    <td className="col-template">
-                      <code>{item.command}</code>
-                    </td>
-                    <td className="command-manager-actions-cell">
-                      <button
-                        className="flat-button compact"
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          setSelectedCommandId(item.id)
-                          openEditorWindow('edit', item.id)
-                        }}
-                      >
-                        {t.edit}
-                      </button>
-                      <button
-                        className="flat-button compact danger"
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          onDeleteCommand(item.id)
-                        }}
-                      >
-                        {t.delete}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {!filteredCommands.length ? <div className="command-empty-state">{t.commandEmpty}</div> : null}
-          </div>
-        </section>
+          )}
+        </div>
       </div>
     </div>
   )
 
   return (
     <>
-      {standalone ? <div className="modal-shell standalone-shell">{shell}</div> : <div className="modal-shell">{shell}</div>}
+      {standalone ? (
+        <div className="standalone-shell">{content}</div>
+      ) : (
+        <div className="modal-backdrop">{content}</div>
+      )}
       {editorState ? (
         <CommandEditorModal
-          folders={folders}
+          folders={commandFolders}
           mode={editorState.mode}
           initialValue={editorInitialValue}
           onClose={() => setEditorState(null)}

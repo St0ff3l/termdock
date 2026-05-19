@@ -91,6 +91,19 @@ export interface TransferTask {
   progress: number
   status: 'queued' | 'running' | 'done' | 'failed' | 'canceled'
   message?: string
+  speed?: string
+}
+
+export interface TransferProgress {
+  percent: number
+  transferredBytes?: number
+  totalBytes?: number
+}
+
+export interface PermissionChangeOptions {
+  mode: string
+  recursive?: boolean
+  applyTo?: 'all' | 'files' | 'directories'
 }
 
 export interface FileContentSnapshot {
@@ -98,6 +111,7 @@ export interface FileContentSnapshot {
   name: string
   content: string
   source: 'local' | 'remote'
+  encoding?: string
 }
 
 export interface DirectorySnapshot<TItem> {
@@ -309,8 +323,13 @@ export interface TermdockDesktopApi {
   disconnectTab(tabId: string): Promise<WorkspaceSnapshot>
   closeTab(tabId: string): Promise<WorkspaceSnapshot>
   listLocalDirectory(dirPath?: string): Promise<DirectorySnapshot<LocalFileItem>>
-  readLocalFile(filePath: string): Promise<string>
-  writeLocalFile(filePath: string, content: string): Promise<void>
+  readLocalFile(filePath: string, encoding?: string): Promise<string>
+  writeLocalFile(filePath: string, content: string, encoding?: string): Promise<void>
+  createLocalDirectory(dirPath: string, name: string): Promise<void>
+  createLocalFile(dirPath: string, name: string): Promise<void>
+  renameLocalPath(targetPath: string, newName: string): Promise<void>
+  deleteLocalPath(targetPath: string): Promise<void>
+  changeLocalPermissions(targetPath: string, options: PermissionChangeOptions): Promise<void>
   getDroppedFilePaths(files: File[]): string[]
   selectLocalFiles(defaultPath?: string): Promise<string[]>
   selectLocalDirectory(defaultPath?: string): Promise<string | null>
@@ -321,8 +340,13 @@ export interface TermdockDesktopApi {
   writeTerminal(tabId: string, data: string): Promise<void>
   resizeTerminal(tabId: string, cols: number, rows: number): Promise<void>
   openRemotePath(tabId: string, targetPath: string): Promise<WorkspaceSnapshot>
-  readRemoteFile(tabId: string, targetPath: string): Promise<string>
-  writeRemoteFile(tabId: string, targetPath: string, content: string): Promise<WorkspaceSnapshot>
+  readRemoteFile(tabId: string, targetPath: string, encoding?: string): Promise<string>
+  writeRemoteFile(tabId: string, targetPath: string, content: string, encoding?: string): Promise<WorkspaceSnapshot>
+  createRemoteDirectory(tabId: string, parentPath: string, name: string): Promise<WorkspaceSnapshot>
+  createRemoteFile(tabId: string, parentPath: string, name: string): Promise<WorkspaceSnapshot>
+  renameRemotePath(tabId: string, targetPath: string, newName: string): Promise<WorkspaceSnapshot>
+  deleteRemotePath(tabId: string, targetPath: string, targetType: RemoteFileItem['type']): Promise<WorkspaceSnapshot>
+  changeRemotePermissions(tabId: string, targetPath: string, options: PermissionChangeOptions): Promise<WorkspaceSnapshot>
   onTerminalData(listener: (payload: TerminalDataPayload) => void): () => void
   onTerminalState(listener: (payload: TerminalStatePayload) => void): () => void
   onWorkspaceSnapshot(listener: (snapshot: WorkspaceSnapshot) => void): () => void
@@ -347,12 +371,15 @@ export interface FileSessionController extends SessionController {
   getRemotePath(): string
   listRemoteFiles(): Promise<RemoteFileItem[]>
   openRemotePath(path: string): Promise<RemoteFileItem[]>
-  readRemoteFile(path: string): Promise<string>
-  writeRemoteFile(path: string, content: string): Promise<void>
+  readRemoteFile(path: string, encoding?: string): Promise<string>
+  writeRemoteFile(path: string, content: string, encoding?: string): Promise<void>
+  renameRemotePath(path: string, nextPath: string): Promise<void>
+  deleteRemotePath(path: string, targetType: RemoteFileItem['type']): Promise<void>
+  changeRemotePermissions(path: string, options: PermissionChangeOptions): Promise<void>
   ensureRemoteDirectory(path: string): Promise<void>
   abortTransfer(): Promise<void>
-  uploadFile(localPath: string, remotePath: string, onProgress: (progress: number) => void): Promise<void>
-  downloadFile(remotePath: string, localPath: string, onProgress: (progress: number) => void): Promise<void>
+  uploadFile(localPath: string, remotePath: string, onProgress: (progress: TransferProgress) => void): Promise<void>
+  downloadFile(remotePath: string, localPath: string, onProgress: (progress: TransferProgress) => void): Promise<void>
 }
 
 export interface SshSessionController extends ShellSessionController, FileSessionController {

@@ -43,7 +43,13 @@ export function FileManager({
   onUploadFiles,
   onChooseUploadFiles,
   onDownloadFiles,
-  onDropUpload
+  onDropUpload,
+  onRequestChangePermissions,
+  onRequestDelete,
+  onRequestNewFile,
+  onRequestNewFolder,
+  onRequestQuickDelete,
+  onRequestRename
 }: {
   activeSession: SessionSnapshot
   activeTab: WorkspaceTab | null
@@ -64,6 +70,12 @@ export function FileManager({
   onChooseUploadFiles(): void
   onDownloadFiles(items: RemoteFileItem[], targetDirectory?: string): void
   onDropUpload(event: DragEvent<HTMLDivElement>): void
+  onRequestChangePermissions(pane: 'local' | 'remote', item: LocalFileItem | RemoteFileItem): void
+  onRequestDelete(pane: 'local' | 'remote', item: LocalFileItem | RemoteFileItem): void
+  onRequestNewFile(pane: 'local' | 'remote', directoryPath: string): void
+  onRequestNewFolder(pane: 'local' | 'remote', directoryPath: string): void
+  onRequestQuickDelete(pane: 'local' | 'remote', item: LocalFileItem | RemoteFileItem): void
+  onRequestRename(pane: 'local' | 'remote', item: LocalFileItem | RemoteFileItem): void
 }) {
   const [activeView, setActiveView] = useState<'file' | 'command'>('file')
   const [localPaneWidth, setLocalPaneWidth] = useState(230)
@@ -459,11 +471,33 @@ export function FileManager({
       )}
       {contextMenu ? (
         <FileContextMenu
+          canQuickDelete={contextMenu.pane === 'remote' && activeTab?.sessionType === 'ssh'}
           item={contextLocalItem ?? contextRemoteItem}
           pane={contextMenu.pane}
           position={{ x: contextMenu.x, y: contextMenu.y }}
+          onChangePermissions={() => {
+            const item = contextLocalItem ?? contextRemoteItem
+            if (item) {
+              onRequestChangePermissions(contextMenu.pane, item)
+            }
+            setContextMenu(null)
+          }}
           onClose={() => setContextMenu(null)}
           onCopyPath={copyContextPath}
+          onDelete={() => {
+            const item = contextLocalItem ?? contextRemoteItem
+            if (item) {
+              onRequestDelete(contextMenu.pane, item)
+            }
+            setContextMenu(null)
+          }}
+          onDeleteFast={() => {
+            const item = contextLocalItem ?? contextRemoteItem
+            if (item) {
+              onRequestQuickDelete(contextMenu.pane, item)
+            }
+            setContextMenu(null)
+          }}
           onDownload={() => {
             const items = contextRemoteItem && selectedRemotePaths.includes(contextRemoteItem.path)
               ? selectedRemoteItems
@@ -471,9 +505,24 @@ export function FileManager({
             onDownloadFiles(items)
             setContextMenu(null)
           }}
+          onNewFile={() => {
+            onRequestNewFile(contextMenu.pane, contextMenu.pane === 'local' ? localPath : activeSession.remotePath)
+            setContextMenu(null)
+          }}
+          onNewFolder={() => {
+            onRequestNewFolder(contextMenu.pane, contextMenu.pane === 'local' ? localPath : activeSession.remotePath)
+            setContextMenu(null)
+          }}
           onOpen={openContextTarget}
           onRefresh={() => {
             onRefresh()
+            setContextMenu(null)
+          }}
+          onRename={() => {
+            const item = contextLocalItem ?? contextRemoteItem
+            if (item) {
+              onRequestRename(contextMenu.pane, item)
+            }
             setContextMenu(null)
           }}
           onUpload={() => {

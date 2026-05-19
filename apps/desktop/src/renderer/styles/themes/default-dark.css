@@ -739,13 +739,73 @@
   background: rgba(255, 255, 255, 0.08);
 }
 
-.file-editor-path {
-  color: var(--text-muted);
+.file-editor-modal--dark {
+  background: #171b20;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.52);
 }
 
-.file-editor-textarea {
-  background: var(--bg-main);
-  color: var(--text-main);
+.file-editor-modal--dark .modal-header {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.file-editor-title span {
+  color: #8f9cad;
+}
+
+.file-editor-title strong {
+  color: #eaf1fb;
+}
+
+.file-editor-title b {
+  background: rgba(103, 187, 255, 0.14);
+  color: #8cd3ff;
+}
+
+.file-editor-menubar {
+  border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+
+.file-editor-menubar-button,
+.file-editor-status-button {
+  background: rgba(255, 255, 255, 0.04);
+  color: #d5deea;
+}
+
+.file-editor-menubar-button:hover,
+.file-editor-status-button:hover,
+.file-editor-menu button:hover,
+.file-editor-menu button.is-active {
+  background: rgba(103, 187, 255, 0.14);
+  color: #eef7ff;
+}
+
+.file-editor-path,
+.file-editor-statusbar {
+  color: #93a0b1;
+}
+
+.file-editor-body {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: #111316;
+}
+
+.file-editor-menu {
+  background: rgba(24, 28, 33, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.48);
+}
+
+.file-editor-menu button {
+  color: #d4dde8;
+}
+
+.file-editor-menu-separator {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.file-editor-statusbar {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .manager-window {

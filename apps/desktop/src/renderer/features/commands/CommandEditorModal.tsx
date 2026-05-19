@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { CommandFolder, CommandTemplate, CommandTemplateInput } from '@termdock/core'
 import { t } from '../../i18n'
 import { extractCommandParams, sortByOrder } from './command-utils'
@@ -34,14 +34,10 @@ function CommandDialogShell({
   children: ReactNode
 }) {
   const dialog = (
-    <div className={`command-dialog command-editor-page ${standalone ? 'standalone' : ''}`} onClick={(event) => event.stopPropagation()}>
-      <div className="command-dialog-titlebar">
-        <div className="command-dialog-lights" aria-hidden="true">
-          <span className="is-red" />
-          <span className="is-muted" />
-          <span className="is-green" />
-        </div>
-        <strong>{title}</strong>
+    <div className={`modal-card command-dialog command-editor-page ${standalone ? 'standalone' : ''}`} onClick={(event) => event.stopPropagation()}>
+      <div className="modal-header">
+        <span>{title}</span>
+        {!standalone ? <button className="icon-button" onClick={onClose} type="button">×</button> : null}
       </div>
       <div className="command-dialog-body">
         {children}
@@ -78,6 +74,18 @@ export function CommandEditorModal({
   const [form, setForm] = useState<CommandTemplateInput>(initialValue)
   const orderedFolders = useMemo(() => sortByOrder(folders), [folders])
   const title = mode === 'edit' && initialValue.name ? `${t.commandEdit}-${initialValue.name}` : t.commandCreate
+
+  useEffect(() => {
+    setForm(initialValue)
+  }, [
+    mode,
+    initialValue.name,
+    initialValue.command,
+    initialValue.description,
+    initialValue.parentId,
+    initialValue.order,
+    initialValue.appendCarriageReturn
+  ])
 
   return (
     <CommandDialogShell title={title} standalone={standalone} onClose={onClose}>
@@ -147,10 +155,10 @@ export function CommandEditorModal({
             <code>{extractCommandParams(form.command).join(', ') || '-'}</code>
           </div>
         </div>
-        <div className="command-dialog-actions">
-          <button className="flat-button compact" type="button" onClick={onClose}>{t.cancel}</button>
+        <div className="form-actions command-dialog-actions">
+          <button className="flat-button" type="button" onClick={onClose}>{t.cancel}</button>
           <button
-            className="flat-button compact"
+            className="primary-button"
             type="button"
             onClick={() => {
               if (!form.name?.trim() || !form.command?.trim()) {

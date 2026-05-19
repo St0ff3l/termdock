@@ -38,15 +38,23 @@ export class WorkspaceTransfersState {
 
   update(
     transferId: string,
-    patch: Partial<Pick<TransferTask, 'progress' | 'status' | 'message'>>
+    patch: Partial<Pick<TransferTask, 'progress' | 'status' | 'message' | 'speed'>>
   ) {
     const index = this.transfers.findIndex((transfer) => transfer.id === transferId)
     if (index === -1) {
       return
     }
 
+    const current = this.transfers[index]
+    if (
+      (current.status === 'done' || current.status === 'failed' || current.status === 'canceled')
+      && (patch.status === 'running' || patch.status === 'queued')
+    ) {
+      return
+    }
+
     this.transfers[index] = {
-      ...this.transfers[index],
+      ...current,
       ...patch
     }
   }

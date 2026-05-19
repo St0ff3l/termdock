@@ -8,6 +8,7 @@ import type {
   CreateProfileInput,
   DirectorySnapshot,
   LocalFileItem,
+  PermissionChangeOptions,
   TermdockDesktopApi,
   TerminalDataPayload,
   TerminalStatePayload,
@@ -73,10 +74,20 @@ const api: TermdockDesktopApi = {
     ipcRenderer.invoke('workspace:closeTab', tabId),
   listLocalDirectory: (dirPath?: string): Promise<DirectorySnapshot<LocalFileItem>> =>
     ipcRenderer.invoke('localFiles:listDirectory', dirPath),
-  readLocalFile: (filePath: string): Promise<string> =>
-    ipcRenderer.invoke('localFiles:readFile', filePath),
-  writeLocalFile: (filePath: string, content: string): Promise<void> =>
-    ipcRenderer.invoke('localFiles:writeFile', filePath, content),
+  readLocalFile: (filePath: string, encoding?: string): Promise<string> =>
+    ipcRenderer.invoke('localFiles:readFile', filePath, encoding),
+  writeLocalFile: (filePath: string, content: string, encoding?: string): Promise<void> =>
+    ipcRenderer.invoke('localFiles:writeFile', filePath, content, encoding),
+  createLocalDirectory: (dirPath: string, name: string): Promise<void> =>
+    ipcRenderer.invoke('localFiles:createDirectory', dirPath, name),
+  createLocalFile: (dirPath: string, name: string): Promise<void> =>
+    ipcRenderer.invoke('localFiles:createFile', dirPath, name),
+  renameLocalPath: (targetPath: string, newName: string): Promise<void> =>
+    ipcRenderer.invoke('localFiles:renamePath', targetPath, newName),
+  deleteLocalPath: (targetPath: string): Promise<void> =>
+    ipcRenderer.invoke('localFiles:deletePath', targetPath),
+  changeLocalPermissions: (targetPath: string, options: PermissionChangeOptions): Promise<void> =>
+    ipcRenderer.invoke('localFiles:changePermissions', targetPath, options),
   getDroppedFilePaths: (files: File[]): string[] =>
     files.map((file) => webUtils.getPathForFile(file)).filter(Boolean),
   selectLocalFiles: (defaultPath?: string): Promise<string[]> =>
@@ -97,10 +108,20 @@ const api: TermdockDesktopApi = {
     ipcRenderer.invoke('terminal:resize', tabId, cols, rows),
   openRemotePath: (tabId: string, targetPath: string): Promise<WorkspaceSnapshot> =>
     ipcRenderer.invoke('remoteFiles:openPath', tabId, targetPath),
-  readRemoteFile: (tabId: string, targetPath: string): Promise<string> =>
-    ipcRenderer.invoke('remoteFiles:readFile', tabId, targetPath),
-  writeRemoteFile: (tabId: string, targetPath: string, content: string): Promise<WorkspaceSnapshot> =>
-    ipcRenderer.invoke('remoteFiles:writeFile', tabId, targetPath, content),
+  readRemoteFile: (tabId: string, targetPath: string, encoding?: string): Promise<string> =>
+    ipcRenderer.invoke('remoteFiles:readFile', tabId, targetPath, encoding),
+  writeRemoteFile: (tabId: string, targetPath: string, content: string, encoding?: string): Promise<WorkspaceSnapshot> =>
+    ipcRenderer.invoke('remoteFiles:writeFile', tabId, targetPath, content, encoding),
+  createRemoteDirectory: (tabId: string, parentPath: string, name: string): Promise<WorkspaceSnapshot> =>
+    ipcRenderer.invoke('remoteFiles:createDirectory', tabId, parentPath, name),
+  createRemoteFile: (tabId: string, parentPath: string, name: string): Promise<WorkspaceSnapshot> =>
+    ipcRenderer.invoke('remoteFiles:createFile', tabId, parentPath, name),
+  renameRemotePath: (tabId: string, targetPath: string, newName: string): Promise<WorkspaceSnapshot> =>
+    ipcRenderer.invoke('remoteFiles:renamePath', tabId, targetPath, newName),
+  deleteRemotePath: (tabId: string, targetPath: string, targetType: 'file' | 'folder'): Promise<WorkspaceSnapshot> =>
+    ipcRenderer.invoke('remoteFiles:deletePath', tabId, targetPath, targetType),
+  changeRemotePermissions: (tabId: string, targetPath: string, options: PermissionChangeOptions): Promise<WorkspaceSnapshot> =>
+    ipcRenderer.invoke('remoteFiles:changePermissions', tabId, targetPath, options),
   onTerminalData: (listener: (payload: TerminalDataPayload) => void) => {
     const wrapped = (_event: unknown, payload: TerminalDataPayload) => listener(payload)
     ipcRenderer.on('terminal:data', wrapped)

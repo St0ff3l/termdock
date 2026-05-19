@@ -236,123 +236,14 @@
   border-bottom: 1px solid var(--border-light);
 }
 
-.command-manager-panel-grid {
-  display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
-  gap: 12px;
-  min-height: 0;
-  align-items: start;
+.command-manager-table .manager-head,
+.command-manager-table .manager-row {
+  grid-template-columns: minmax(120px, 1.2fr) minmax(200px, 4fr) 120px;
 }
 
-.command-manager-panel {
-  min-height: 0;
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  background: var(--bg-card);
-}
-
-.command-manager-panel-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0 12px;
-}
-
-.command-manager-folder-create {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border-light);
-}
-
-.command-manager-folder-create input,
-.command-folder-manager-main input {
-  width: 100%;
-  height: 30px;
-  padding: 0 10px;
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-sm);
-  background: var(--bg-main);
-  color: var(--text-main);
-  font-size: 12px;
-}
-
-.command-folder-manager-list {
-  min-height: 0;
-  overflow: auto;
-  padding: 6px;
-}
-
-.command-folder-manager-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-  min-height: 34px;
-  padding: 0 8px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-}
-
-.command-folder-manager-row:hover {
-  background: var(--bg-hover);
-}
-
-.command-folder-manager-row.active {
-  background: var(--selection-bg);
-}
-
-.command-folder-manager-row.root-row {
-  margin-bottom: 2px;
-}
-
-.command-folder-manager-row.dragging {
-  opacity: 0.55;
-}
-
-.command-folder-manager-row.drop-top {
-  box-shadow: inset 0 2px 0 var(--primary);
-}
-
-.command-folder-manager-row.drop-bottom {
-  box-shadow: inset 0 -2px 0 var(--primary);
-}
-
-.command-folder-manager-row.drop-inside {
-  background: rgba(96, 165, 250, 0.12);
-}
-
-.command-folder-manager-main {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.command-folder-manager-main strong {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-}
-
-.command-folder-toggle {
-  width: 16px;
-  height: 16px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 11px;
-}
-
-.command-folder-manager-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.command-manager-table .manager-head span:nth-child(2),
+.command-manager-table .manager-row span:nth-child(2) {
+  text-align: left;
 }
 
 /* Table Style for Command List - matching .fs-file-table */
@@ -701,78 +592,86 @@
   width: min(700px, calc(100vw - 64px));
   overflow: hidden;
   border: 1px solid var(--border-light);
-  border-radius: 18px;
+  border-radius: var(--radius-lg);
   background: var(--bg-card);
   box-shadow: var(--shadow-lg);
-  display: grid;
-  grid-template-rows: 58px minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
 }
 
 .command-editor-page {
   width: min(920px, calc(100vw - 48px));
-  max-height: calc(100vh - 24px);
+  max-height: calc(100vh - 48px);
 }
 
-.command-editor-page.standalone {
+.command-editor-window,
+.standalone-shell {
+  min-height: 100vh;
+  background: #1b1b1b;
+  display: flex;
+  flex-direction: column;
+}
+
+.command-editor-page.standalone,
+.command-manager-modal.standalone {
   width: 100%;
   max-width: none;
-  max-height: calc(100vh - 24px);
-}
-
-.command-editor-window {
   min-height: 100vh;
-  padding: 12px;
-  display: flex;
-  align-items: stretch;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  margin: 0;
+  padding: 46px 20px 20px !important;
+  background: transparent !important;
+  flex: 1;
 }
 
-.command-dialog-titlebar {
-  position: relative;
+.command-editor-page.standalone .modal-header,
+.command-manager-modal.standalone .modal-header {
+  position: absolute;
+  top: 14px;
+  left: 0;
+  width: 100%;
+  height: 32px;
   display: flex;
-  align-items: center;
   justify-content: center;
-  height: 58px;
-  border-bottom: 1px solid var(--border-light);
+  align-items: center;
+  pointer-events: none;
+  margin-bottom: 0;
   -webkit-app-region: drag;
 }
 
-.command-dialog-titlebar strong {
-  font-size: 15px;
+.command-editor-page.standalone .modal-header span,
+.command-manager-modal.standalone .modal-header span {
+  font-size: 13px;
   font-weight: 600;
+  color: #999;
+  pointer-events: auto;
 }
 
-.command-dialog-lights {
-  position: absolute;
-  left: 18px;
-  display: flex;
-  gap: 10px;
+.command-editor-window,
+.standalone-shell {
+  -webkit-app-region: drag;
+}
+
+.command-editor-page.standalone button,
+.command-editor-page.standalone input,
+.command-editor-page.standalone select,
+.command-editor-page.standalone textarea,
+.command-editor-page.standalone .command-dialog-body,
+.command-manager-modal.standalone button,
+.command-manager-modal.standalone input,
+.command-manager-modal.standalone select,
+.command-manager-modal.standalone textarea,
+.command-manager-modal.standalone .manager-toolbar,
+.command-manager-modal.standalone .manager-table {
   -webkit-app-region: no-drag;
-}
-
-.command-dialog-lights span {
-  width: 12px;
-  height: 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(0, 0, 0, 0.15);
-}
-
-.command-dialog-lights .is-red {
-  background: #ff5f57;
-}
-
-.command-dialog-lights .is-muted {
-  background: #cfcfcf;
-}
-
-.command-dialog-lights .is-green {
-  background: #28c840;
 }
 
 .command-dialog-body {
-  padding: 16px 18px 18px;
+  padding: 0 18px 18px;
   min-height: 0;
   overflow-y: auto;
-  -webkit-app-region: no-drag;
 }
 
 .command-editor-dialog-form,
@@ -907,34 +806,13 @@
   max-width: 980px;
 }
 
-.command-manager-modal.standalone {
-  position: relative;
-  width: min(980px, calc(100vw - 88px));
-  min-height: 640px;
-  max-width: 980px;
-  height: auto;
-  margin: auto;
-  padding: 18px 20px 20px;
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-lg);
-  background: var(--bg-card);
-  box-shadow: var(--shadow-lg);
-}
-
 .command-manager-body {
   display: block;
   overflow: visible;
 }
 
-.standalone-shell {
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
-  padding: 28px;
-}
-
 .command-manager-modal .modal-header {
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 
 .command-manager-modal.standalone .modal-header {

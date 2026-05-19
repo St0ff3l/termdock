@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { TransferTask } from '@termdock/core'
 import { isActiveTransfer, isCompletedTransfer, transferStatusText } from '../../app/app-utils'
 import { t } from '../../i18n'
@@ -8,12 +8,13 @@ export function TransferPopover({
   onClose,
   transfers
 }: {
-  onCancelTransfer(transferId: string): void
+  onCancelTransfer(transferId: string): Promise<void> | void
   onClose(): void
   transfers: TransferTask[]
 }) {
   const [statusFilter, setStatusFilter] = useState<'running' | 'completed' | 'all'>('running')
   const [directionFilter, setDirectionFilter] = useState<'all' | 'download' | 'upload'>('all')
+  const [pendingCancelIds, setPendingCancelIds] = useState<string[]>([])
   const visibleTransfers = transfers
     .filter((transfer) => {
       if (statusFilter === 'running') {
@@ -26,6 +27,10 @@ export function TransferPopover({
     })
     .filter((transfer) => directionFilter === 'all' || transfer.direction === directionFilter)
     .slice(0, 24)
+
+  useEffect(() => {
+    setPendingCancelIds((prev) => prev.filter((id) => transfers.some((transfer) => transfer.id === id && isActiveTransfer(transfer))))
+  }, [transfers])
 
   return (
     <section className="transfer-popover">
@@ -53,13 +58,25 @@ export function TransferPopover({
               <div className="transfer-row-inline">
                 <span>{transferStatusText(transfer)}</span>
                 {isActiveTransfer(transfer) ? (
-                  <button className="transfer-cancel" onClick={() => onCancelTransfer(transfer.id)} type="button">{t.stop}</button>
+                  <button
+                    className="transfer-cancel"
+                    disabled={pendingCancelIds.includes(transfer.id)}
+                    onClick={() => {
+                      setPendingCancelIds((prev) => prev.includes(transfer.id) ? prev : [...prev, transfer.id])
+                      void Promise.resolve(onCancelTransfer(transfer.id)).catch(() => {
+                        setPendingCancelIds((prev) => prev.filter((id) => id !== transfer.id))
+                      })
+                    }}
+                    type="button"
+                  >
+                    {pendingCancelIds.includes(transfer.id) ? t.stopping : t.stop}
+                  </button>
                 ) : null}
               </div>
             </div>
             <div className="transfer-row-meta">
               <span>{transfer.direction === 'upload' ? t.upload : t.download}</span>
-              <b>{transfer.progress}%</b>
+              <b>{transfer.speed ? `${transfer.speed} · ${transfer.progress}%` : `${transfer.progress}%`}</b>
             </div>
             <i className="transfer-progress"><b style={{ width: `${transfer.progress}%` }} /></i>
             {transfer.message ? <small title={transfer.message}>{transfer.message}</small> : null}
