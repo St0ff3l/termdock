@@ -18,3 +18,7 @@ pnpm-debug.log*
 
 coverage/
 *.tsbuildinfo
+
+.trae/
+.idea/
+.git/

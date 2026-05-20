@@ -3,7 +3,16 @@ import path from 'node:path'
 import { readFile, stat, writeFile } from 'node:fs/promises'
 import type { ClientChannel, ConnectConfig, FileEntry, SFTPWrapper } from 'ssh2'
 import { Client } from 'ssh2'
-import type { FileSessionController, PermissionChangeOptions, RemoteFileItem, SystemMetrics, SshProfile, SshSessionController, TransferProgress } from '@termdock/core'
+import type {
+  FileSessionController,
+  PermissionChangeOptions,
+  RemoteFileAccessOptions,
+  RemoteFileItem,
+  SystemMetrics,
+  SshProfile,
+  SshSessionController,
+  TransferProgress
+} from '@termdock/core'
 import { BaseFileSessionController } from './base-file-session-controller.js'
 import { buildMetricsCommand, parentRemotePath, parseSystemMetrics, toRemoteFileItem } from './session-file-utils.js'
 import { createSshDebugLogger, isSshDebugEnabled, singleLine } from './ssh-debug-logger.js'
@@ -28,6 +37,9 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
   }
   private transcript = ''
   private currentRemotePath: string
+  private fileAccessMode: 'user' | 'root' = 'user'
+  private sudoUser = 'root'
+  private sudoPassword?: string
   private metrics?: SystemMetrics
 
   constructor(
@@ -153,6 +165,36 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
     return this.currentRemotePath
   }
 
+  override getFileAccessMode(): 'user' | 'root' {
+    return this.fileAccessMode
+  }
+
+  override async setFileAccessMode(mode: 'user' | 'root', options?: RemoteFileAccessOptions): Promise<void> {
+    if (mode === 'root' && (this.profile as SshProfile).enableExecChannel === false) {
+      throw new Error('启用 root 视角需要开启 Exec Channel')
+    }
+
+    if (options?.sudoUser?.trim()) {
+      this.sudoUser = options.sudoUser.trim()
+    }
+    if (options && 'sudoPassword' in options) {
+      this.sudoPassword = options.sudoPassword || undefined
+    }
+
+    if (mode === this.fileAccessMode) {
+      return
+    }
+
+    if (mode === 'root' && this.connected) {
+      await this.verifyRootFileAccess()
+    }
+
+    this.fileAccessMode = mode
+    if (this.sftp && mode === 'root') {
+      this.closeSftpSession()
+    }
+  }
+
   getSystemMetrics(): SystemMetrics | undefined {
     return this.metrics
   }
@@ -170,6 +212,10 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
   }
 
   async listRemoteFiles(): Promise<RemoteFileItem[]> {
+    if (this.fileAccessMode === 'root') {
+      return this.readRemoteDirectoryViaShell(this.currentRemotePath, new Error('Root file access mode enabled'))
+    }
+
     try {
       return await this.readRemoteDirectory(this.currentRemotePath)
     } catch (error) {
@@ -193,6 +239,10 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
 
   async openRemotePath(nextPath: string): Promise<RemoteFileItem[]> {
     this.currentRemotePath = nextPath
+    if (this.fileAccessMode === 'root') {
+      return this.readRemoteDirectoryViaShell(this.currentRemotePath, new Error('Root file access mode enabled'))
+    }
+
     try {
       return await this.readRemoteDirectory(this.currentRemotePath)
     } catch (error) {
@@ -201,6 +251,10 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
   }
 
   async readRemoteFile(targetPath: string, encoding = 'utf-8'): Promise<string> {
+    if (this.fileAccessMode === 'root') {
+      return this.readRemoteFileViaShell(targetPath, new Error('Root file access mode enabled'), encoding)
+    }
+
     try {
       const sftp = await this.ensureSftp()
       return await new Promise<string>((resolve, reject) => {
@@ -218,6 +272,12 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
   }
 
   async writeRemoteFile(targetPath: string, content: string, encoding = 'utf-8'): Promise<void> {
+    if (this.fileAccessMode === 'root') {
+      await this.ensureRemoteDirectory(path.posix.dirname(targetPath))
+      await this.writeRemoteFileViaShell(targetPath, content, new Error('Root file access mode enabled'), encoding)
+      return
+    }
+
     try {
       const sftp = await this.ensureSftp()
       await this.ensureRemoteDirectory(path.posix.dirname(targetPath))
@@ -237,6 +297,15 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
   }
 
   async renameRemotePath(targetPath: string, nextPath: string): Promise<void> {
+    if (this.fileAccessMode === 'root') {
+      await this.execShellFileCommand(
+        `mkdir -p ${shellQuote(path.posix.dirname(nextPath))} && mv ${shellQuote(targetPath)} ${shellQuote(nextPath)}`,
+        { allowNonZeroWithStdout: true },
+        true
+      )
+      return
+    }
+
     try {
       const sftp = await this.ensureSftp()
       await this.ensureRemoteDirectory(path.posix.dirname(nextPath))
@@ -258,6 +327,14 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
   }
 
   async deleteRemotePath(targetPath: string, targetType: RemoteFileItem['type']): Promise<void> {
+    if (this.fileAccessMode === 'root') {
+      const command = targetType === 'folder'
+        ? `rm -rf -- ${shellQuote(targetPath)}`
+        : `rm -f -- ${shellQuote(targetPath)}`
+      await this.execShellFileCommand(command, { allowNonZeroWithStdout: true }, true)
+      return
+    }
+
     const command = targetType === 'folder'
       ? `sh -lc 'rm -rf -- ${shellQuote(targetPath)}'`
       : `sh -lc 'rm -f -- ${shellQuote(targetPath)}'`
@@ -269,6 +346,22 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
     const mode = options.mode.trim()
     const recursive = Boolean(options.recursive)
     const applyTo = options.applyTo ?? 'all'
+
+    if (this.fileAccessMode === 'root') {
+      if (recursive) {
+        const baseCommand = applyTo === 'all'
+          ? `chmod -R ${shellQuote(mode)} ${shellQuote(targetPath)}`
+          : applyTo === 'files'
+            ? `chmod ${shellQuote(mode)} ${shellQuote(targetPath)} && find ${shellQuote(targetPath)} -type f -exec chmod ${shellQuote(mode)} {} +`
+            : `chmod ${shellQuote(mode)} ${shellQuote(targetPath)} && find ${shellQuote(targetPath)} -type d -exec chmod ${shellQuote(mode)} {} +`
+
+        await this.execShellFileCommand(baseCommand, { allowNonZeroWithStdout: true }, true)
+        return
+      }
+
+      await this.execShellFileCommand(`chmod ${shellQuote(mode)} ${shellQuote(targetPath)}`, { allowNonZeroWithStdout: true }, true)
+      return
+    }
 
     if (recursive) {
       const baseCommand = applyTo === 'all'
@@ -303,6 +396,11 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
   async ensureRemoteDirectory(targetPath: string): Promise<void> {
     const normalized = path.posix.normalize(targetPath || '.')
     if (!normalized || normalized === '.' || normalized === '/') {
+      return
+    }
+
+    if (this.fileAccessMode === 'root') {
+      await this.execShellFileCommand(`mkdir -p ${shellQuote(normalized)}`, { allowNonZeroWithStdout: true }, true)
       return
     }
 
@@ -347,6 +445,15 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
   }
 
   async uploadFile(localPath: string, remotePath: string, onProgress: (progress: TransferProgress) => void): Promise<void> {
+    if (this.fileAccessMode === 'root') {
+      await this.uploadFileAsPrivileged(localPath, remotePath, onProgress, new Error('Root file access mode enabled'))
+      return
+    }
+
+    await this.uploadFileAsUser(localPath, remotePath, onProgress)
+  }
+
+  private async uploadFileAsUser(localPath: string, remotePath: string, onProgress: (progress: TransferProgress) => void): Promise<void> {
     try {
       const sftp = await this.ensureSftp()
       const info = await stat(localPath)
@@ -374,6 +481,11 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
   }
 
   async downloadFile(remotePath: string, localPath: string, onProgress: (progress: TransferProgress) => void): Promise<void> {
+    if (this.fileAccessMode === 'root') {
+      await this.downloadFileViaShell(remotePath, localPath, onProgress, new Error('Root file access mode enabled'))
+      return
+    }
+
     try {
       const sftp = await this.ensureSftp()
       const attrs = await new Promise<{ size?: number }>((resolve, reject) => {
@@ -567,32 +679,80 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
 
   private async readRemoteFileViaShell(targetPath: string, cause: unknown, encoding = 'utf-8'): Promise<string> {
     this.ensureShellFileFallback(cause)
-    const output = await this.execCommand(`sh -lc 'base64 ${shellQuote(targetPath)}'`)
+    const output = await this.execShellFileCommand(`base64 ${shellQuote(targetPath)}`, undefined, this.fileAccessMode === 'root')
     return decodeBuffer(Buffer.from(output.replace(/\s+/g, ''), 'base64'), encoding)
   }
 
   private async writeRemoteFileViaShell(targetPath: string, content: string, cause: unknown, encoding = 'utf-8'): Promise<void> {
     this.ensureShellFileFallback(cause)
     const payload = encodeText(content, encoding).toString('base64')
-    await this.execCommand(`sh -lc 'base64 -d > ${shellQuote(targetPath)} <<'"'"'__TERMDOCK__'"'"'
-${payload}
-__TERMDOCK__'`)
+    await this.execShellFileCommand(`base64 -d > ${shellQuote(targetPath)}`, undefined, this.fileAccessMode === 'root', `${payload}\n`)
   }
 
   private async uploadFileViaShell(
     localPath: string,
     remotePath: string,
     onProgress: (progress: TransferProgress) => void,
-    cause: unknown
+    cause: unknown,
+    privileged = this.fileAccessMode === 'root'
   ): Promise<void> {
     this.ensureShellFileFallback(cause)
     const payload = await readFile(localPath)
     const total = Math.max(payload.byteLength, 1)
     onProgress({ percent: 20, transferredBytes: Math.round(total * 0.2), totalBytes: total })
-    await this.execCommand(`sh -lc 'base64 -d > ${shellQuote(remotePath)} <<'"'"'__TERMDOCK__'"'"'
-${payload.toString('base64')}
-__TERMDOCK__'`)
+    await this.execShellFileCommand(
+      `base64 -d > ${shellQuote(remotePath)}`,
+      undefined,
+      privileged,
+      `${payload.toString('base64')}\n`
+    )
     onProgress({ percent: 100, transferredBytes: total, totalBytes: total })
+  }
+
+  private async uploadFileAsPrivileged(
+    localPath: string,
+    remotePath: string,
+    onProgress: (progress: TransferProgress) => void,
+    cause: unknown
+  ): Promise<void> {
+    this.ensureShellFileFallback(cause)
+    const tempRemotePath = await this.createTemporaryRemoteUploadPath(path.posix.basename(remotePath))
+
+    try {
+      await this.uploadFileAsUser(localPath, tempRemotePath, (progress) => {
+        onProgress({
+          percent: Math.min(99, Math.max(1, progress.percent === 100 ? 99 : progress.percent)),
+          transferredBytes: progress.transferredBytes,
+          totalBytes: progress.totalBytes,
+          message: undefined
+        })
+      })
+      onProgress({
+        percent: 99,
+        transferredBytes: undefined,
+        totalBytes: undefined,
+        message: '正在应用 root 写入...'
+      })
+      await this.ensureRemoteDirectory(path.posix.dirname(remotePath))
+      await this.execShellFileCommand(
+        `mv ${shellQuote(tempRemotePath)} ${shellQuote(remotePath)}`,
+        { allowNonZeroWithStdout: true },
+        true
+      )
+      onProgress({
+        percent: 100,
+        transferredBytes: undefined,
+        totalBytes: undefined,
+        message: undefined
+      })
+    } catch (error) {
+      try {
+        await this.execCommand(`sh -lc ${shellQuote(`rm -f -- ${tempRemotePath}`)}`, { allowNonZeroWithStdout: true })
+      } catch {
+        // Best-effort cleanup for temp upload artifacts.
+      }
+      throw error
+    }
   }
 
   private async downloadFileViaShell(
@@ -602,7 +762,7 @@ __TERMDOCK__'`)
     cause: unknown
   ): Promise<void> {
     this.ensureShellFileFallback(cause)
-    const output = await this.execCommand(`sh -lc 'base64 ${shellQuote(remotePath)}'`)
+    const output = await this.execShellFileCommand(`base64 ${shellQuote(remotePath)}`, undefined, this.fileAccessMode === 'root')
     const payload = Buffer.from(output.replace(/\s+/g, ''), 'base64')
     const total = Math.max(payload.byteLength, 1)
     onProgress({ percent: 80, transferredBytes: Math.round(total * 0.8), totalBytes: total })
@@ -612,7 +772,7 @@ __TERMDOCK__'`)
 
   private async readRemoteDirectoryViaShell(targetPath: string, cause: unknown): Promise<RemoteFileItem[]> {
     this.ensureShellFileFallback(cause)
-    const output = await this.execCommand(`sh -lc '
+    const output = await this.execShellFileCommand(`
 target=${shellQuote(targetPath)}
 if [ ! -d "$target" ]; then
   echo "__NOT_DIR__"
@@ -625,10 +785,13 @@ for name in .* *; do
   [ ! -e "$name" ] && continue
   kind=file
   [ -d "$name" ] && kind=folder
-  stat_line=$(stat -c "%Y|%s|%a|%u|%g" -- "$name" 2>/dev/null || echo "0|0|||")
+  stat_line=$(stat -c "%Y|%s|%A|%u|%g" -- "$name" 2>/dev/null || echo "0|0|||")
   printf "%s\t%s\t%s\n" "$name" "$kind" "$stat_line"
 done
-'`)
+`, undefined, this.fileAccessMode === 'root')
+    if (output.trim() === '__NOT_DIR__') {
+      throw new Error(`无法打开远程目录: ${targetPath}`)
+    }
 
     const rows = output
       .split('\n')
@@ -669,6 +832,16 @@ done
     return rows
   }
 
+  private async createTemporaryRemoteUploadPath(fileName: string): Promise<string> {
+    const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_') || 'upload.bin'
+    const output = await this.execCommand(`sh -lc ${shellQuote(`mktemp /tmp/termdock-upload.XXXXXX-${safeName}`)}`)
+    const tempPath = output.trim()
+    if (!tempPath) {
+      throw new Error('无法创建远程临时上传文件')
+    }
+    return tempPath
+  }
+
   private ensureShellFileFallback(cause: unknown) {
     const profile = this.profile as SshProfile
     if (profile.enableExecChannel === false) {
@@ -676,9 +849,37 @@ done
     }
   }
 
-  private async execCommand(command: string, options?: { allowNonZeroWithStdout?: boolean }): Promise<string> {
+  private async execShellFileCommand(
+    command: string,
+    options?: { allowNonZeroWithStdout?: boolean },
+    privileged = false,
+    stdinPayload?: string
+  ): Promise<string> {
+    if (!privileged) {
+      return this.execCommand(`sh -lc ${shellQuote(command)}`, options, false, stdinPayload)
+    }
+
+    const sudoUser = this.sudoUser || 'root'
+    if (this.sudoPassword) {
+      const stdin = `${this.sudoPassword}\n${stdinPayload ?? ''}`
+      return this.execCommand(`sudo -S -p '' -u ${shellQuote(sudoUser)} sh -lc ${shellQuote(command)}`, options, true, stdin)
+    }
+
+    return this.execCommand(`sudo -n -u ${shellQuote(sudoUser)} sh -lc ${shellQuote(command)}`, options, true, stdinPayload)
+  }
+
+  private async verifyRootFileAccess(): Promise<void> {
+    await this.execShellFileCommand('true', undefined, true)
+  }
+
+  private async execCommand(
+    command: string,
+    options?: { allowNonZeroWithStdout?: boolean },
+    privileged = false,
+    stdinPayload?: string
+  ): Promise<string> {
     return new Promise<string>((resolve, reject) => {
-      this.ssh.exec(command, (error, stream) => {
+      const handleExec = (error: Error | undefined, stream: ClientChannel) => {
         if (error) {
           reject(error)
           return
@@ -693,18 +894,37 @@ done
         stream.stderr.on('data', (chunk: Buffer) => {
           stderr += chunk.toString('utf8')
         })
+        if (stdinPayload !== undefined) {
+          stream.write(stdinPayload)
+          stream.end()
+        }
         stream.on('close', (code?: number) => {
           if (options?.allowNonZeroWithStdout && stdout.trim()) {
             resolve(stdout)
             return
           }
           if (code && code !== 0 && stderr.trim()) {
+            if (privileged && /password is required|a password is required|no tty present|a terminal is required|sorry, you must have a tty|需要密码|必须输入密码/i.test(stderr)) {
+              reject(new Error('root 视角需要可用的 sudo 凭据。请先在终端里运行 `sudo -v` 或 `sudo -i`。'))
+              return
+            }
+            if (privileged && /incorrect password|authentication failure|3 incorrect password attempts|sorry, try again|no password was provided|密码错误|认证失败|对不起，请重试|未提供密码/i.test(stderr)) {
+              reject(new Error('sudo 密码无效，请重新输入。'))
+              return
+            }
             reject(new Error(stderr.trim()))
             return
           }
           resolve(stdout)
         })
-      })
+      }
+
+      if (privileged && stdinPayload !== undefined) {
+        this.ssh.exec(command, { pty: true }, handleExec)
+        return
+      }
+
+      this.ssh.exec(command, handleExec)
     })
   }
 

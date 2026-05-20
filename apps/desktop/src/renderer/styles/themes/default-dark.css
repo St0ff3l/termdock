@@ -451,6 +451,10 @@
   background: rgba(245, 158, 11, 0.1);
 }
 
+.status-message-close:hover {
+  background: rgba(255, 204, 0, 0.12);
+}
+
 /* home.css */
 .home-workspace {
   background: var(--bg-main);

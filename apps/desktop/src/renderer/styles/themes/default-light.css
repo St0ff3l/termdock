@@ -190,3 +190,7 @@
 :root[data-theme='default-light'] .meter-fill.orange {
   background: var(--warning);
 }
+
+:root[data-theme='default-light'] .status-message-close:hover {
+  background: rgba(183, 121, 0, 0.08);
+}

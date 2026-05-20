@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron'
-import type { PermissionChangeOptions } from '@termdock/core'
+import type { PermissionChangeOptions, RemoteFileAccessOptions } from '@termdock/core'
 import type { IpcServices } from './types.js'
 
 export function registerRemoteFilesHandlers(services: IpcServices) {
@@ -7,6 +7,10 @@ export function registerRemoteFilesHandlers(services: IpcServices) {
 
   ipcMain.handle('remoteFiles:openPath', (_, tabId: string, targetPath: string) =>
     workspaceService.openRemotePath(tabId, targetPath)
+  )
+
+  ipcMain.handle('remoteFiles:setFileAccessMode', (_, tabId: string, mode: 'user' | 'root', options?: RemoteFileAccessOptions) =>
+    workspaceService.setRemoteFileAccessMode(tabId, mode, options)
   )
 
   ipcMain.handle('remoteFiles:readFile', (_, tabId: string, targetPath: string, encoding?: string) =>

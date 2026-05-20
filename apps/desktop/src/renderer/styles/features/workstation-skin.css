@@ -130,6 +130,12 @@ textarea:focus-visible,
   font-size: 12px;
 }
 
+.status-message-close {
+  width: 20px;
+  height: 20px;
+  font-size: 14px;
+}
+
 .workspace-stage {
   height: 100%;
   min-height: 0;

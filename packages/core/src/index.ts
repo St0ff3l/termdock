@@ -98,6 +98,7 @@ export interface TransferProgress {
   percent: number
   transferredBytes?: number
   totalBytes?: number
+  message?: string
 }
 
 export interface PermissionChangeOptions {
@@ -232,6 +233,8 @@ export interface SessionSnapshot {
   terminalTranscript?: string
   remotePath: string
   remoteFiles: RemoteFileItem[]
+  fileAccessMode?: 'user' | 'root'
+  sudoUser?: string
   connected?: boolean
   systemMetrics?: SystemMetrics
 }
@@ -300,6 +303,11 @@ export interface TerminalStatePayload {
   connected: boolean
 }
 
+export interface RemoteFileAccessOptions {
+  sudoUser?: string
+  sudoPassword?: string
+}
+
 export interface TermdockDesktopApi {
   platform: string
   appName: string
@@ -347,6 +355,7 @@ export interface TermdockDesktopApi {
   cancelTransfer(transferId: string): Promise<WorkspaceSnapshot>
   uploadFile(tabId: string, localPath: string, remoteDirectory: string): Promise<WorkspaceSnapshot>
   downloadFile(tabId: string, remotePath: string, localDirectory: string): Promise<WorkspaceSnapshot>
+  setRemoteFileAccessMode(tabId: string, mode: 'user' | 'root', options?: RemoteFileAccessOptions): Promise<WorkspaceSnapshot>
   writeTerminal(tabId: string, data: string): Promise<void>
   resizeTerminal(tabId: string, cols: number, rows: number): Promise<void>
   openRemotePath(tabId: string, targetPath: string): Promise<WorkspaceSnapshot>
@@ -379,6 +388,8 @@ export interface ShellSessionController extends SessionController {
 
 export interface FileSessionController extends SessionController {
   getRemotePath(): string
+  getFileAccessMode(): 'user' | 'root'
+  setFileAccessMode(mode: 'user' | 'root', options?: RemoteFileAccessOptions): Promise<void>
   listRemoteFiles(): Promise<RemoteFileItem[]>
   openRemotePath(path: string): Promise<RemoteFileItem[]>
   readRemoteFile(path: string, encoding?: string): Promise<string>

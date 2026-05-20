@@ -1,6 +1,7 @@
 import type { WebContents } from 'electron'
 import type {
   ConnectionProfile,
+  RemoteFileAccessOptions,
   SessionSnapshot,
   WorkspaceSnapshot,
   WorkspaceTab
@@ -136,6 +137,7 @@ export class WorkspaceSessionRuntime {
         terminalTranscript:
           controller.type === 'ssh' ? controller.getTerminalTranscript() : undefined,
         remotePath: controller.getRemotePath(),
+        fileAccessMode: controller.getFileAccessMode(),
         connected: true,
         remoteFiles: current.remoteFiles,
         systemMetrics: current.systemMetrics
@@ -151,6 +153,7 @@ export class WorkspaceSessionRuntime {
           this.sessions.set(tabId, {
             ...latest,
             remotePath: controller.getRemotePath(),
+            fileAccessMode: controller.getFileAccessMode(),
             remoteFiles: files
           })
           await this.emitSnapshotForTab(tabId)
@@ -210,8 +213,46 @@ export class WorkspaceSessionRuntime {
     this.sessions.set(tabId, {
       ...current,
       remotePath: controller.getRemotePath(),
+      fileAccessMode: controller.getFileAccessMode(),
       remoteFiles
     })
+  }
+
+  async setFileAccessMode(tabId: string, mode: 'user' | 'root', options?: RemoteFileAccessOptions) {
+    const controller = this.requireController(tabId)
+    const current = this.sessions.get(tabId)
+    if (!current) {
+      throw new Error(`Session not found: ${tabId}`)
+    }
+
+    const previousMode = controller.getFileAccessMode()
+    if (previousMode === mode) {
+      return
+    }
+
+    const nextSudoUser = options?.sudoUser?.trim() || current.sudoUser || 'root'
+
+    await controller.setFileAccessMode(mode, options)
+    try {
+      const remoteFiles = await controller.listRemoteFiles()
+      this.sessions.set(tabId, {
+        ...current,
+        fileAccessMode: controller.getFileAccessMode(),
+        sudoUser: nextSudoUser,
+        remotePath: controller.getRemotePath(),
+        remoteFiles
+      })
+      await this.emitSnapshotForTab(tabId)
+    } catch (error) {
+      if (mode === 'root') {
+        try {
+          await controller.setFileAccessMode(previousMode, { sudoUser: current.sudoUser })
+        } catch {
+          // Keep the original error; this rollback is best-effort.
+        }
+      }
+      throw error
+    }
   }
 
   async openRemotePath(tabId: string, targetPath: string) {

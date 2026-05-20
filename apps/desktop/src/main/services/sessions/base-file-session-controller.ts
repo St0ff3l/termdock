@@ -1,4 +1,4 @@
-import type { ConnectionProfile, FileSessionController, PermissionChangeOptions, RemoteFileItem, TransferProgress } from '@termdock/core'
+import type { ConnectionProfile, FileSessionController, PermissionChangeOptions, RemoteFileAccessOptions, RemoteFileItem, TransferProgress } from '@termdock/core'
 
 export abstract class BaseFileSessionController implements FileSessionController {
   readonly id: string
@@ -31,6 +31,14 @@ export abstract class BaseFileSessionController implements FileSessionController
 
   getRemotePath(): string {
     return this.profile.remotePath
+  }
+
+  getFileAccessMode(): 'user' | 'root' {
+    return 'user'
+  }
+
+  async setFileAccessMode(_mode: 'user' | 'root', _options?: RemoteFileAccessOptions): Promise<void> {
+    return
   }
 
   abstract listRemoteFiles(): Promise<RemoteFileItem[]>

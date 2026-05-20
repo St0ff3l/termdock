@@ -21,6 +21,7 @@ import { ConnectionModal } from './features/connections/ConnectionModal'
 import { FileActionModal } from './features/files/FileActionModal'
 import { FileEditorModal } from './features/files/FileEditorModal'
 import { FilePermissionModal } from './features/files/FilePermissionModal'
+import { RootAccessModal } from './features/files/RootAccessModal'
 import { TabBar, type OrderedTabEntry, type TabContextTarget } from './features/layout/TabBar'
 import { TabContextMenu } from './features/layout/TabContextMenu'
 import { SystemSidebar } from './features/system/SystemSidebar'
@@ -31,6 +32,13 @@ import { useThemeMode, type ThemeMode } from './hooks/useThemeMode'
 import { defaultLocale, setLocale, t, type AppLocale } from './i18n'
 
 const TERMINAL_TRANSCRIPT_LIMIT = 200_000
+const STATUS_MESSAGE_TIMEOUT_MS = 15_000
+const REMOTE_METHOD_ERROR_PREFIX = /Error invoking remote method '[^']+':\s*/i
+
+type ErrorDetails = {
+  item?: RemoteFileItem
+  targetPath?: string
+}
 
 type LocalTab =
   | { id: string; kind: 'home'; title: string }
@@ -110,6 +118,12 @@ export function App() {
     supportsRecursive: boolean
   } | null>(null)
   const [permissionDialogError, setPermissionDialogError] = useState<string | null>(null)
+  const [rootAccessDialog, setRootAccessDialog] = useState<{
+    tabId: string
+    sshUser?: string
+    sudoUser: string
+  } | null>(null)
+  const [rootAccessDialogError, setRootAccessDialogError] = useState<string | null>(null)
   const [showTransfers, setShowTransfers] = useState(false)
   const [themeMode, setThemeMode] = useState<ThemeMode>('default-dark')
   const [locale, setLocaleState] = useState<AppLocale>(defaultLocale)
@@ -151,7 +165,7 @@ export function App() {
     desktopApi
       .getSnapshot()
       .then(setWorkspace)
-      .catch((err: Error) => setError(err.message))
+      .catch((err: Error) => reportError(setError, '获取工作区快照', err))
   }, [desktopApi, isFileEditorWindow])
 
   useEffect(() => {
@@ -205,11 +219,11 @@ export function App() {
     }
 
     void (async () => {
-      try {
-        setIsBusy(true)
-        const content = fileEditorWindowSource === 'local'
-          ? await desktopApi.readLocalFile(fileEditorWindowPath, fileEditorWindowEncoding)
-          : fileEditorWindowTabId
+    try {
+      setIsBusy(true)
+      const content = fileEditorWindowSource === 'local'
+        ? await desktopApi.readLocalFile(fileEditorWindowPath, fileEditorWindowEncoding)
+        : fileEditorWindowTabId
             ? await desktopApi.readRemoteFile(fileEditorWindowTabId, fileEditorWindowPath, fileEditorWindowEncoding)
             : ''
 
@@ -223,7 +237,7 @@ export function App() {
         })
         setFileEditorError(null)
       } catch (err) {
-        setFileEditorError((err as Error).message)
+        reportError(setFileEditorError, '打开文件编辑器', err)
       } finally {
         setIsBusy(false)
       }
@@ -311,6 +325,20 @@ export function App() {
     }
   }, [isResizingSidebar])
 
+  useEffect(() => {
+    if (!error) {
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setError((current) => current === error ? null : current)
+    }, STATUS_MESSAGE_TIMEOUT_MS)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [error])
+
   const activeLocalTab = activeLocalTabId ? localTabs.find((tab) => tab.id === activeLocalTabId) ?? null : null
   const displayedSessionTabId = activeLocalTab
     ? activeLocalTab.kind === 'system' ? activeLocalTab.sessionTabId : null
@@ -322,9 +350,40 @@ export function App() {
     : null
   const activeTransferCount = workspace.transfers.filter(isActiveTransfer).length
 
+  const normalizeErrorMessage = (err: unknown) => {
+    const rawMessage = err instanceof Error ? err.message : String(err)
+    return rawMessage.replace(REMOTE_METHOD_ERROR_PREFIX, '').trim()
+  }
+
+  const formatAppError = (scope: string, err: unknown, details?: ErrorDetails) => {
+    const message = normalizeErrorMessage(err)
+    const likelyPathIssue = /can't cd to|__NOT_DIR__|no such file|not a directory|permission denied|failure/i.test(message)
+    const metadata = details?.item
+      ? ` (${t.permission}: ${details.item.permission || '-'}, ${t.ownerGroup}: ${details.item.ownerGroup || '-'})`
+      : ''
+    const pathText = details?.targetPath ? ` ${details.targetPath}` : ''
+
+    if (locale === 'zhCN') {
+      if (details?.targetPath && likelyPathIssue) {
+        return `无法打开远程目录${pathText}${metadata}。可能是目录不存在、不是目录，或者当前账号没有进入权限。原始错误：${message}`
+      }
+      return `${scope}${pathText}${metadata}失败：${message}`
+    }
+
+    if (details?.targetPath && likelyPathIssue) {
+      return `Could not open remote directory${pathText}${metadata}. It may not exist, may not be a directory, or your account may not have permission to enter it. Raw error: ${message}`
+    }
+
+    return `${scope}${pathText}${metadata} failed: ${message}`
+  }
+
+  const reportError = (setter: (message: string) => void, scope: string, err: unknown, details?: ErrorDetails) => {
+    console.error(`[TermDock] ${scope}`, err)
+    setter(formatAppError(scope, err, details))
+  }
+
   const applySnapshot = (snapshot: WorkspaceSnapshot) => {
     setWorkspace(snapshot)
-    setError(null)
     setFormError(null)
   }
 
@@ -402,7 +461,7 @@ export function App() {
       setEditingProfileId(null)
       setForm(defaultForm)
     } catch (err) {
-      setFormError((err as Error).message)
+      reportError(setFormError, '保存连接', err)
     } finally {
       setIsBusy(false)
     }
@@ -431,7 +490,7 @@ export function App() {
         closeCurrentWindow()
       }
     } catch (err) {
-      setError((err as Error).message)
+      reportError(setError, '保存命令模板', err)
     } finally {
       setIsBusy(false)
     }
@@ -447,7 +506,7 @@ export function App() {
       const snapshot = await desktopApi.createCommandFolder(name)
       applySnapshot(snapshot)
     } catch (err) {
-      setError((err as Error).message)
+      reportError(setError, '新建命令分类', err)
     } finally {
       setIsBusy(false)
     }
@@ -463,7 +522,7 @@ export function App() {
       const snapshot = await desktopApi.updateCommandFolder(folderId, updates)
       applySnapshot(snapshot)
     } catch (err) {
-      setError((err as Error).message)
+      reportError(setError, '更新命令分类', err)
     } finally {
       setIsBusy(false)
     }
@@ -479,7 +538,7 @@ export function App() {
       const snapshot = await desktopApi.updateCommandOrder(id, parentId, order)
       applySnapshot(snapshot)
     } catch (err) {
-      setError((err as Error).message)
+      reportError(setError, '调整命令顺序', err)
     } finally {
       setIsBusy(false)
     }
@@ -495,7 +554,7 @@ export function App() {
       const snapshot = await desktopApi.deleteCommandFolder(folderId)
       applySnapshot(snapshot)
     } catch (err) {
-      setError((err as Error).message)
+      reportError(setError, '删除命令分类', err)
     } finally {
       setIsBusy(false)
     }
@@ -511,7 +570,7 @@ export function App() {
       const snapshot = await desktopApi.deleteCommandTemplate(commandId)
       applySnapshot(snapshot)
     } catch (err) {
-      setError((err as Error).message)
+      reportError(setError, '删除命令模板', err)
     } finally {
       setIsBusy(false)
     }
@@ -539,7 +598,7 @@ export function App() {
         await desktopApi.executeCommandTemplate(tab.id, commandId, args, options)
       }
     } catch (err) {
-      setError((err as Error).message)
+      reportError(setError, '执行命令模板', err)
     } finally {
       setIsBusy(false)
     }
@@ -569,7 +628,7 @@ export function App() {
       setActiveLocalTabId(null)
     } catch (err) {
       pendingHomeReplacementKeyRef.current = null
-      setError((err as Error).message)
+      reportError(setError, '打开连接', err)
     } finally {
       setIsBusy(false)
     }
@@ -590,7 +649,7 @@ export function App() {
       const snapshot = await desktopApi.deleteProfile(profileId)
       applySnapshot(snapshot)
     } catch (err) {
-      setError((err as Error).message)
+      reportError(setError, '删除连接', err)
     } finally {
       setIsBusy(false)
     }
@@ -607,7 +666,7 @@ export function App() {
       applySnapshot(snapshot)
       setActiveLocalTabId(null)
     } catch (err) {
-      setError((err as Error).message)
+      reportError(setError, '激活标签页', err)
     } finally {
       setIsBusy(false)
     }
@@ -645,7 +704,7 @@ export function App() {
       setIsBusy(true)
       await closeSessionTabById(tabId)
     } catch (err) {
-      setError((err as Error).message)
+      reportError(setError, '关闭标签页', err)
     } finally {
       setIsBusy(false)
     }
@@ -786,7 +845,7 @@ export function App() {
         applySnapshot(snapshot)
         setActiveLocalTabId(null)
       } catch (err) {
-        setError((err as Error).message)
+        reportError(setError, '重新连接标签页', err)
       } finally {
         setIsBusy(false)
       }
@@ -812,7 +871,7 @@ export function App() {
           setActiveLocalTabId(null)
         }
       } catch (err) {
-        setError((err as Error).message)
+        reportError(setError, '连接全部 SSH', err)
       } finally {
         setIsBusy(false)
       }
@@ -828,7 +887,7 @@ export function App() {
         const snapshot = await desktopApi.disconnectTab(target.id)
         applySnapshot(snapshot)
       } catch (err) {
-        setError((err as Error).message)
+        reportError(setError, '断开标签页', err)
       } finally {
         setIsBusy(false)
       }
@@ -866,7 +925,7 @@ export function App() {
         setActiveLocalTabId((prev) => prev ?? preferredActiveHomeId ?? localTabsRef.current.at(-1)?.id ?? 'home-1')
       }
     } catch (err) {
-      setError((err as Error).message)
+      reportError(setError, '关闭标签组', err)
     } finally {
       setIsBusy(false)
     }
@@ -885,7 +944,7 @@ export function App() {
       setIsBusy(true)
       await uploadLocalPaths(localPaths)
     } catch (err) {
-      setError((err as Error).message)
+      reportError(setError, '上传文件', err)
     } finally {
       setIsBusy(false)
     }
@@ -920,17 +979,21 @@ export function App() {
         encoding: 'utf-8'
       })
     } catch (err) {
-      setError(item.type === 'folder' ? t.localLoadFailed : (err as Error).message)
+      reportError(setError, item.type === 'folder' ? '打开本地文件夹' : '打开本地文件', err)
     }
   }
 
-  const openRemoteDirectory = async (tabId: string, targetPath: string) => {
+  const openRemoteDirectory = async (tabId: string, targetPath: string, item?: RemoteFileItem) => {
     if (!desktopApi) {
       return
     }
 
-    const snapshot = await desktopApi.openRemotePath(tabId, targetPath)
-    applySnapshot(snapshot)
+    try {
+      const snapshot = await desktopApi.openRemotePath(tabId, targetPath)
+      applySnapshot(snapshot)
+    } catch (err) {
+      throw new Error(formatAppError('打开远程目录', err, { targetPath, item }))
+    }
   }
 
   const openRemoteFileForEdit = async (tabId: string, item: RemoteFileItem) => {
@@ -965,7 +1028,7 @@ export function App() {
       setFileEditor((prev) => prev ? { ...prev, content, encoding } : prev)
       setFileEditorError(null)
     } catch (err) {
-      setFileEditorError((err as Error).message)
+      reportError(setFileEditorError, '保存文件', err, { targetPath: fileEditor.path })
     } finally {
       setIsBusy(false)
     }
@@ -986,7 +1049,7 @@ export function App() {
       setFileEditor({ ...fileEditor, content, encoding })
       setFileEditorError(null)
     } catch (err) {
-      setFileEditorError((err as Error).message)
+      reportError(setFileEditorError, '重新按编码打开文件', err)
     } finally {
       setIsBusy(false)
     }
@@ -1010,7 +1073,7 @@ export function App() {
       setFileActionDialog(null)
       setFileActionError(null)
     } catch (err) {
-      setFileActionError((err as Error).message)
+      reportError(setFileActionError, '文件操作', err)
     } finally {
       setIsBusy(false)
     }
@@ -1134,7 +1197,7 @@ export function App() {
       setPermissionDialog(null)
       setPermissionDialogError(null)
     } catch (err) {
-      setPermissionDialogError((err as Error).message)
+      reportError(setPermissionDialogError, '修改文件权限', err)
     } finally {
       setIsBusy(false)
     }
@@ -1152,7 +1215,7 @@ export function App() {
         applySnapshot(snapshot)
         await refreshCurrentPane('remote')
       } catch (err) {
-        setError((err as Error).message)
+        reportError(setError, '快速删除远程文件', err, { item, targetPath: item.path })
       } finally {
         setIsBusy(false)
       }
@@ -1201,12 +1264,12 @@ export function App() {
       try {
         setIsBusy(true)
         if (item.type === 'folder') {
-          await openRemoteDirectory(activeTab.id, item.path)
+          await openRemoteDirectory(activeTab.id, item.path, item)
         } else {
           await openRemoteFileForEdit(activeTab.id, item)
         }
       } catch (err) {
-        setError((err as Error).message)
+        reportError(setError, item.type === 'folder' ? '打开远程文件夹' : '打开远程文件', err, { targetPath: item.path, item })
       } finally {
         setIsBusy(false)
       }
@@ -1223,7 +1286,7 @@ export function App() {
         setIsBusy(true)
         await openRemoteDirectory(activeTab.id, targetPath)
       } catch (err) {
-        setError((err as Error).message)
+        reportError(setError, '打开远程路径', err, { targetPath })
       } finally {
         setIsBusy(false)
       }
@@ -1241,7 +1304,59 @@ export function App() {
         await openLocalDirectory(localPath)
         await openRemoteDirectory(activeTab.id, activeSession.remotePath)
       } catch (err) {
-        setError((err as Error).message)
+        reportError(setError, '刷新工作区', err, { targetPath: activeSession.remotePath })
+      } finally {
+        setIsBusy(false)
+      }
+    })()
+  }
+
+  const handleToggleRemoteFileAccessMode = () => {
+    if (!desktopApi || !activeTab || activeTab.sessionType !== 'ssh' || !activeSession) {
+      return
+    }
+
+    const nextMode = activeSession.fileAccessMode === 'root' ? 'user' : 'root'
+    if (nextMode === 'root') {
+      setRootAccessDialogError(null)
+      setRootAccessDialog({
+        tabId: activeTab.id,
+        sshUser: activeProfile?.type === 'ssh' ? activeProfile.username : undefined,
+        sudoUser: activeSession.sudoUser || 'root'
+      })
+      return
+    }
+
+    void (async () => {
+      try {
+        setIsBusy(true)
+        const snapshot = await desktopApi.setRemoteFileAccessMode(activeTab.id, nextMode)
+        applySnapshot(snapshot)
+      } catch (err) {
+        reportError(setError, '切换到普通视角', err)
+      } finally {
+        setIsBusy(false)
+      }
+    })()
+  }
+
+  const handleConfirmRootAccess = ({ sudoUser, sudoPassword }: { sudoUser: string; sudoPassword: string }) => {
+    if (!desktopApi || !rootAccessDialog) {
+      return
+    }
+
+    void (async () => {
+      try {
+        setIsBusy(true)
+        const snapshot = await desktopApi.setRemoteFileAccessMode(rootAccessDialog.tabId, 'root', {
+          sudoUser,
+          sudoPassword
+        })
+        applySnapshot(snapshot)
+        setRootAccessDialog(null)
+        setRootAccessDialogError(null)
+      } catch (err) {
+        reportError(setRootAccessDialogError, '切换到 root 视角', err)
       } finally {
         setIsBusy(false)
       }
@@ -1258,7 +1373,7 @@ export function App() {
         setIsBusy(true)
         await uploadLocalPaths(items.map((item) => item.path))
       } catch (err) {
-        setError((err as Error).message)
+        reportError(setError, '上传文件', err)
       } finally {
         setIsBusy(false)
       }
@@ -1280,7 +1395,7 @@ export function App() {
         setIsBusy(true)
         await uploadLocalPaths(filePaths)
       } catch (err) {
-        setError((err as Error).message)
+        reportError(setError, '上传文件', err)
       } finally {
         setIsBusy(false)
       }
@@ -1311,7 +1426,7 @@ export function App() {
         }
         await openLocalDirectory(downloadDirectory)
       } catch (err) {
-        setError((err as Error).message)
+        reportError(setError, '下载文件', err, { targetPath: downloadDirectory })
       } finally {
         setIsBusy(false)
       }
@@ -1329,17 +1444,17 @@ export function App() {
           onCreate={openCreateConnection}
           onDeleteProfile={handleDeleteProfile}
           onEditProfile={openEditConnection}
-          onOpenProfile={(profileId) => {
-            if (desktopApi) {
-              void desktopApi.openProfileFromManager(profileId).then(() => {
-                closeCurrentWindow()
-              }).catch((err: Error) => {
-                setError(err.message)
-              })
-              return
-            }
-            void handleOpenProfile(profileId)
-          }}
+              onOpenProfile={(profileId) => {
+                if (desktopApi) {
+                  void desktopApi.openProfileFromManager(profileId).then(() => {
+                    closeCurrentWindow()
+                  }).catch((err: Error) => {
+                    reportError(setError, '从管理器打开连接', err)
+                  })
+                  return
+                }
+                void handleOpenProfile(profileId)
+              }}
           onCreateFolder={(name) => desktopApi?.createFolder(name)}
           onDeleteFolder={(id) => desktopApi?.deleteFolder(id)}
           onUpdateFolder={(id, updates) => desktopApi?.updateFolder(id, updates)}
@@ -1518,7 +1633,19 @@ export function App() {
         </aside>
 
         <main className={`fs-main ${error ? 'has-status' : 'no-status'}`}>
-          {error ? <div className="status-message">{error}</div> : null}
+          {error ? (
+            <div className="status-message" role="alert">
+              <span className="status-message-text">{error}</span>
+              <button
+                aria-label={t.closeTab}
+                className="status-message-close"
+                onClick={() => setError(null)}
+                type="button"
+              >
+                ×
+              </button>
+            </div>
+          ) : null}
           <div className="workspace-stage">
             <WorkspaceStage
               activeLocalTab={activeLocalTab}
@@ -1542,7 +1669,7 @@ export function App() {
               onDropUpload={handleDropUpload}
               onOpenLocalItem={handleOpenLocalItem}
               onOpenLocalPath={(targetPath) => {
-                void openLocalDirectory(targetPath).catch((err: Error) => setError(err.message))
+                void openLocalDirectory(targetPath).catch((err: Error) => reportError(setError, '打开本地路径', err, { targetPath }))
               }}
               onOpenProfile={handleOpenProfile}
               onOpenRemoteItem={handleOpenRemoteItem}
@@ -1553,6 +1680,8 @@ export function App() {
               onRequestNewFolder={requestNewFolder}
               onRequestQuickDelete={handleQuickDelete}
               onRequestRename={requestRename}
+              onToggleRemoteFileAccessMode={handleToggleRemoteFileAccessMode}
+              remoteFileAccessMode={activeSession?.fileAccessMode ?? 'user'}
               onRefresh={handleRefreshWorkspace}
               onUploadFiles={handleUploadFiles}
             />
@@ -1567,17 +1696,30 @@ export function App() {
         />
 
         {showTransfers ? (
-          <TransferPopover
-            transfers={workspace.transfers}
-            onCancelTransfer={(transferId) => {
-              if (!desktopApi) return
-              void desktopApi.cancelTransfer(transferId).then((snapshot) => {
-                applySnapshot(snapshot)
-              }).catch((err: Error) => {
-                setError(err.message)
-              })
+            <TransferPopover
+              transfers={workspace.transfers}
+              onCancelTransfer={(transferId) => {
+                if (!desktopApi) return
+                void desktopApi.cancelTransfer(transferId).then((snapshot) => {
+                  applySnapshot(snapshot)
+                }).catch((err: Error) => {
+                  reportError(setError, '取消传输', err)
+                })
+              }}
+              onClose={() => setShowTransfers(false)}
+            />
+        ) : null}
+
+        {rootAccessDialog ? (
+          <RootAccessModal
+            defaultSshUser={rootAccessDialog.sshUser}
+            defaultSudoUser={rootAccessDialog.sudoUser}
+            errorMessage={rootAccessDialogError}
+            onClose={() => {
+              setRootAccessDialog(null)
+              setRootAccessDialogError(null)
             }}
-            onClose={() => setShowTransfers(false)}
+            onSubmit={handleConfirmRootAccess}
           />
         ) : null}
       </div>

@@ -502,6 +502,33 @@
   gap: 12px;
 }
 
+.root-access-modal {
+  width: min(460px, calc(100vw - 48px));
+  display: grid;
+  gap: 12px;
+}
+
+.root-access-description {
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.root-access-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+}
+
+.root-access-meta strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .file-permission-name {
   font-size: 22px;
   font-weight: 700;

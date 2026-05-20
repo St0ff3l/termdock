@@ -647,10 +647,36 @@
 }
 
 .status-message {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
   padding: 10px 16px;
   border-bottom: 1px solid var(--border-light);
   font-size: 13px;
   font-weight: 500;
+}
+
+.status-message-text {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.status-message-close {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  display: grid;
+  place-items: center;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
 }
 
 .workspace-stage {

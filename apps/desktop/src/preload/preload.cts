@@ -10,6 +10,7 @@ import type {
   FileEditorWindowInput,
   LocalFileItem,
   PermissionChangeOptions,
+  RemoteFileAccessOptions,
   TermdockDesktopApi,
   TerminalDataPayload,
   TerminalStatePayload,
@@ -105,6 +106,8 @@ const api: TermdockDesktopApi = {
     ipcRenderer.invoke('transfer:uploadFile', tabId, localPath, remoteDirectory),
   downloadFile: (tabId: string, remotePath: string, localDirectory: string): Promise<WorkspaceSnapshot> =>
     ipcRenderer.invoke('transfer:downloadFile', tabId, remotePath, localDirectory),
+  setRemoteFileAccessMode: (tabId: string, mode: 'user' | 'root', options?: RemoteFileAccessOptions): Promise<WorkspaceSnapshot> =>
+    ipcRenderer.invoke('remoteFiles:setFileAccessMode', tabId, mode, options),
   writeTerminal: (tabId: string, data: string): Promise<void> =>
     ipcRenderer.invoke('terminal:write', tabId, data),
   resizeTerminal: (tabId: string, cols: number, rows: number): Promise<void> =>

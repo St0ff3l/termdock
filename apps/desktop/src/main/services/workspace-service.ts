@@ -8,6 +8,7 @@ import {
   type ConnectionProfile,
   type CommandExecutionResult,
   type CreateProfileInput,
+  type RemoteFileAccessOptions,
   type SessionSnapshot,
   type PermissionChangeOptions,
   type TransferProgress,
@@ -26,6 +27,7 @@ export class WorkspaceService {
   private readonly transfers = new WorkspaceTransfersState(seedTransfers)
   private readonly transferCancels = new Map<string, () => Promise<void> | void>()
   private readonly transferCanceling = new Set<string>()
+  private readonly privilegedAccess = new Map<string, RemoteFileAccessOptions>()
   private readonly sessionRuntime = new WorkspaceSessionRuntime({
     getSnapshot: () => this.getSnapshot(),
     updateTabStatus: (tabId, status) => {
@@ -167,6 +169,8 @@ export class WorkspaceService {
         controller.type === 'ssh' ? controller.getTerminalTranscript() : undefined,
       remotePath: controller.getRemotePath(),
       remoteFiles: [],
+      fileAccessMode: controller.getFileAccessMode(),
+      sudoUser: profile.type === 'ssh' ? 'root' : undefined,
       connected: false
     }
 
@@ -195,6 +199,7 @@ export class WorkspaceService {
     }
 
     const current = this.sessionRuntime.get(tabId)
+    const controller = this.createController(tabId, profile)
     this.sessionRuntime.set(tabId, {
       profileId: profile.id,
       accessHost: profile.host,
@@ -203,13 +208,17 @@ export class WorkspaceService {
         profile.type === 'ssh' ? current?.terminalTranscript ?? '' : undefined,
       remotePath: current?.remotePath ?? profile.remotePath,
       remoteFiles: current?.remoteFiles ?? [],
+      fileAccessMode: current?.fileAccessMode ?? controller.getFileAccessMode(),
+      sudoUser: current?.sudoUser ?? (profile.type === 'ssh' ? 'root' : undefined),
       connected: false,
       systemMetrics: current?.systemMetrics
     })
     this.tabs.updateStatus(tabId, 'connecting')
     this.tabs.activate(tabId)
 
-    const controller = this.createController(tabId, profile)
+    if (current?.fileAccessMode === 'root') {
+      await controller.setFileAccessMode('root', this.resolvePrivilegedAccess(tabId, current))
+    }
     void this.sessionRuntime.connect(tabId, controller)
     await this.sessionRuntime.emitSnapshot(sender)
     return this.getSnapshot()
@@ -225,6 +234,7 @@ export class WorkspaceService {
 
   async closeTab(tabId: string): Promise<WorkspaceSnapshot> {
     await this.sessionRuntime.teardown(tabId)
+    this.privilegedAccess.delete(tabId)
     this.tabs.remove(tabId)
     return this.getSnapshot()
   }
@@ -300,13 +310,19 @@ export class WorkspaceService {
         void this.updateTransfer(transferId, {
           progress: progress.percent,
           status: 'running',
-          speed: transferTracker(progress)
+          speed: transferTracker(progress),
+          message: progress.message
         }, sender)
       })
       if (transferState.canceled) {
         return this.getSnapshot()
       }
-      await this.updateTransfer(transferId, { progress: 100, status: 'done', speed: undefined }, sender)
+      await this.updateTransfer(transferId, {
+        progress: 100,
+        status: 'done',
+        speed: undefined,
+        message: undefined
+      }, sender)
       await this.refreshRemoteFiles(tabId)
     } catch (error) {
       if (transferState.canceled) {
@@ -344,13 +360,19 @@ export class WorkspaceService {
         void this.updateTransfer(transferId, {
           progress: progress.percent,
           status: 'running',
-          speed: transferTracker(progress)
+          speed: transferTracker(progress),
+          message: progress.message
         }, sender)
       })
       if (transferState.canceled) {
         return this.getSnapshot()
       }
-      await this.updateTransfer(transferId, { progress: 100, status: 'done', speed: undefined }, sender)
+      await this.updateTransfer(transferId, {
+        progress: 100,
+        status: 'done',
+        speed: undefined,
+        message: undefined
+      }, sender)
     } catch (error) {
       if (transferState.canceled) {
         return this.getSnapshot()
@@ -436,8 +458,35 @@ export class WorkspaceService {
     return this.getSnapshot()
   }
 
+  async setRemoteFileAccessMode(tabId: string, mode: 'user' | 'root', options?: RemoteFileAccessOptions): Promise<WorkspaceSnapshot> {
+    const current = this.sessionRuntime.get(tabId)
+    const resolvedOptions = mode === 'root' ? this.resolvePrivilegedAccess(tabId, current, options) : options
+
+    await this.sessionRuntime.setFileAccessMode(tabId, mode, resolvedOptions)
+    if (mode === 'root' && resolvedOptions) {
+      this.privilegedAccess.set(tabId, resolvedOptions)
+    }
+    return this.getSnapshot()
+  }
+
   private createController(tabId: string, profile: ConnectionProfile) {
     return this.sessionRuntime.createController(tabId, profile)
+  }
+
+  private resolvePrivilegedAccess(
+    tabId: string,
+    current?: SessionSnapshot,
+    next?: RemoteFileAccessOptions
+  ): RemoteFileAccessOptions | undefined {
+    const cached = this.privilegedAccess.get(tabId)
+    const sudoUser = next?.sudoUser?.trim() || cached?.sudoUser?.trim() || current?.sudoUser?.trim() || 'root'
+    const hasPassword = next && 'sudoPassword' in next
+    const sudoPassword = hasPassword ? next.sudoPassword : cached?.sudoPassword
+
+    return {
+      sudoUser,
+      ...(sudoPassword !== undefined ? { sudoPassword } : {})
+    }
   }
 
   private async uploadLocalEntry(
@@ -507,7 +556,15 @@ export class WorkspaceService {
       size: number
     }>
   }> {
-    const entries = await readdir(currentPath, { withFileTypes: true })
+    let entries
+    try {
+      entries = await readdir(currentPath, { withFileTypes: true })
+    } catch (error) {
+      if (currentPath !== rootPath && isSkippableLocalReadError(error)) {
+        return { directories: [], files: [] }
+      }
+      throw error
+    }
     const directories: string[] = []
     const files: Array<{ fullPath: string; relativePath: string; size: number }> = []
 
@@ -526,7 +583,15 @@ export class WorkspaceService {
         continue
       }
 
-      const info = await stat(fullPath)
+      let info
+      try {
+        info = await stat(fullPath)
+      } catch (error) {
+        if (isSkippableLocalReadError(error)) {
+          continue
+        }
+        throw error
+      }
       files.push({
         fullPath,
         relativePath: path.relative(rootPath, fullPath),
@@ -565,6 +630,15 @@ export class WorkspaceService {
     this.transfers.update(transferId, patch)
     await this.sessionRuntime.emitSnapshot(sender)
   }
+}
+
+function isSkippableLocalReadError(error: unknown) {
+  return Boolean(
+    error
+    && typeof error === 'object'
+    && 'code' in error
+    && (((error as { code?: string }).code === 'EACCES') || ((error as { code?: string }).code === 'EPERM'))
+  )
 }
 
 function createTransferSpeedTracker() {

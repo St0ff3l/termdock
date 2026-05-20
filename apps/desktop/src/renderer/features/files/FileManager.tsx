@@ -49,7 +49,9 @@ export function FileManager({
   onRequestNewFile,
   onRequestNewFolder,
   onRequestQuickDelete,
-  onRequestRename
+  onRequestRename,
+  onToggleRemoteFileAccessMode,
+  remoteFileAccessMode
 }: {
   activeSession: SessionSnapshot
   activeTab: WorkspaceTab | null
@@ -76,6 +78,8 @@ export function FileManager({
   onRequestNewFolder(pane: 'local' | 'remote', directoryPath: string): void
   onRequestQuickDelete(pane: 'local' | 'remote', item: LocalFileItem | RemoteFileItem): void
   onRequestRename(pane: 'local' | 'remote', item: LocalFileItem | RemoteFileItem): void
+  onToggleRemoteFileAccessMode(): void
+  remoteFileAccessMode: 'user' | 'root'
 }) {
   const [activeView, setActiveView] = useState<'file' | 'command'>('file')
   const [localPaneWidth, setLocalPaneWidth] = useState(230)
@@ -89,7 +93,7 @@ export function FileManager({
     pane: 'local' | 'remote'
     x: number
     y: number
-    path: string
+    path: string | null
   } | null>(null)
   const splitRef = useRef<HTMLDivElement | null>(null)
   const isResizingFileSplit = useRef(false)
@@ -98,8 +102,8 @@ export function FileManager({
   const didDragSelect = useRef(false)
   const suppressNextSelectionClick = useRef(false)
   const suppressNextClearClick = useRef(false)
-  const localDragSelection = useRef<{ basePaths: string[]; startPath: string } | null>(null)
-  const remoteDragSelection = useRef<{ basePaths: string[]; startPath: string } | null>(null)
+  const localDragSelection = useRef<{ basePaths: string[]; startPath: string | null } | null>(null)
+  const remoteDragSelection = useRef<{ basePaths: string[]; startPath: string | null } | null>(null)
 
   useEffect(() => {
     setLocalPathInput(localPath)
@@ -200,6 +204,12 @@ export function FileManager({
     const session = localDragSelection.current
     if (!isSelectingLocal.current || !session) return
     didDragSelect.current = true
+    if (!session.startPath) {
+      session.startPath = item.path
+      setSelectedLocalPaths(mergeUnique([...session.basePaths, item.path]))
+      setLocalAnchorPath(item.path)
+      return
+    }
     setSelectedLocalPaths(mergeUnique([
       ...session.basePaths,
       ...rangePaths(localItems, session.startPath, item.path)
@@ -210,6 +220,12 @@ export function FileManager({
     const session = remoteDragSelection.current
     if (!isSelectingRemote.current || !session) return
     didDragSelect.current = true
+    if (!session.startPath) {
+      session.startPath = item.path
+      setSelectedRemotePaths(mergeUnique([...session.basePaths, item.path]))
+      setRemoteAnchorPath(item.path)
+      return
+    }
     setSelectedRemotePaths(mergeUnique([
       ...session.basePaths,
       ...rangePaths(activeSession.remoteFiles, session.startPath, item.path)
@@ -282,6 +298,17 @@ export function FileManager({
         {activeView === 'file' ? (
           <div className="file-tab-actions">
             <button title={t.refresh} type="button" onClick={onRefresh}><AppIcon name="refresh" /></button>
+            {activeTab?.sessionType === 'ssh' ? (
+              <button
+                aria-pressed={remoteFileAccessMode === 'root'}
+                className={remoteFileAccessMode === 'root' ? 'active' : ''}
+                title={`${remoteFileAccessMode === 'root' ? t.fileRootView : t.fileUserView} - ${t.fileRootViewHint}`}
+                type="button"
+                onClick={onToggleRemoteFileAccessMode}
+              >
+                {remoteFileAccessMode === 'root' ? 'root' : 'user'}
+              </button>
+            ) : null}
             <button title={t.downloadTo} type="button" disabled={!selectedRemoteFileItems.length} onClick={() => onDownloadFiles(selectedRemoteFileItems)}>
               <AppIcon name="download" />
             </button>
@@ -321,6 +348,23 @@ export function FileManager({
           <PanePathBar label={t.localComputer} value={localPathInput} onChange={setLocalPathInput} onSubmit={submitLocalPath} />
           <div
             className="file-table-shell"
+            onContextMenu={(event) => {
+              if (event.target !== event.currentTarget) return
+              event.preventDefault()
+              event.stopPropagation()
+              setSelectedLocalPaths([])
+              setLocalAnchorPath(null)
+              setContextMenu({ pane: 'local', x: event.clientX, y: event.clientY, path: null })
+            }}
+            onMouseDown={(event) => {
+              if (event.target !== event.currentTarget || event.button !== 0) return
+              isSelectingLocal.current = true
+              didDragSelect.current = false
+              localDragSelection.current = {
+                basePaths: event.metaKey || event.ctrlKey ? selectedLocalPaths : [],
+                startPath: null
+              }
+            }}
             onClick={(event) => {
               if (event.target !== event.currentTarget) return
               if (suppressNextClearClick.current) {
@@ -408,6 +452,23 @@ export function FileManager({
           <PanePathBar hint={t.dragUpload} label={t.remoteHost} value={remotePathInput} onChange={setRemotePathInput} onSubmit={submitRemotePath} />
           <div
             className="file-table-shell"
+            onContextMenu={(event) => {
+              if (event.target !== event.currentTarget) return
+              event.preventDefault()
+              event.stopPropagation()
+              setSelectedRemotePaths([])
+              setRemoteAnchorPath(null)
+              setContextMenu({ pane: 'remote', x: event.clientX, y: event.clientY, path: null })
+            }}
+            onMouseDown={(event) => {
+              if (event.target !== event.currentTarget || event.button !== 0) return
+              isSelectingRemote.current = true
+              didDragSelect.current = false
+              remoteDragSelection.current = {
+                basePaths: event.metaKey || event.ctrlKey ? selectedRemotePaths : [],
+                startPath: null
+              }
+            }}
             onClick={(event) => {
               if (event.target !== event.currentTarget) return
               if (suppressNextClearClick.current) {

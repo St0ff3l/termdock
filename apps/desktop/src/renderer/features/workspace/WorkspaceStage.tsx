@@ -48,6 +48,8 @@ export function WorkspaceStage({
   onRequestNewFolder,
   onRequestQuickDelete,
   onRequestRename,
+  onToggleRemoteFileAccessMode,
+  remoteFileAccessMode,
   onRefresh,
   onUploadFiles
 }: {
@@ -79,6 +81,8 @@ export function WorkspaceStage({
   onRequestNewFolder(pane: 'local' | 'remote', directoryPath: string): void
   onRequestQuickDelete(pane: 'local' | 'remote', item: LocalFileItem | RemoteFileItem): void
   onRequestRename(pane: 'local' | 'remote', item: LocalFileItem | RemoteFileItem): void
+  onToggleRemoteFileAccessMode(): void
+  remoteFileAccessMode: 'user' | 'root'
   onRefresh(): void
   onUploadFiles(items: LocalFileItem[]): void
 }) {
@@ -112,6 +116,8 @@ export function WorkspaceStage({
         onRequestNewFolder={onRequestNewFolder}
         onRequestQuickDelete={onRequestQuickDelete}
         onRequestRename={onRequestRename}
+        onToggleRemoteFileAccessMode={onToggleRemoteFileAccessMode}
+        remoteFileAccessMode={remoteFileAccessMode}
         onRefresh={onRefresh}
         onUploadFiles={onUploadFiles}
       />
