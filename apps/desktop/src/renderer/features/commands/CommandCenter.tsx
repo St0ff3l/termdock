@@ -7,6 +7,7 @@ import type {
 } from '@termdock/core'
 import { t } from '../../i18n'
 import { AppIcon } from '../common/AppIcon'
+import { handleHorizontalWheelScroll } from '../common/horizontal-scroll'
 import { extractCommandParams, groupCommands, sortByOrder } from './command-utils'
 
 type SendScope = 'current' | 'all-ssh'
@@ -101,7 +102,10 @@ export function CommandCenter({
       <div className="command-center-body">
         <section className="command-pane command-pane-list">
           <div className="command-folder-bar">
-            <div className="command-folder-tabs">
+            <div
+              className="command-folder-tabs"
+              onWheel={handleHorizontalWheelScroll}
+            >
               <button
                 className={activeFolderId === 'all' ? 'active' : ''}
                 type="button"

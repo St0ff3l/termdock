@@ -197,6 +197,7 @@ export const defaultForm: CreateProfileInput = {
   password: '',
   privateKeyPath: '',
   passphrase: '',
+  trustedHostFingerprint: '',
   authType: 'password',
   encoding: 'UTF-8',
   backspaceKey: 'ASCII',
@@ -216,6 +217,7 @@ export function profileToForm(profile: ConnectionProfile): CreateProfileInput {
     remotePath: profile.remotePath,
     note: profile.note ?? '',
     password: profile.password ?? '',
+    trustedHostFingerprint: profile.type === 'ssh' ? profile.trustedHostFingerprint ?? '' : '',
     authType: profile.type === 'ssh'
       ? (profile.authType === 'system' ? 'password' : profile.authType)
       : 'password',

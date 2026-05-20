@@ -6,6 +6,7 @@ import { t } from '../../i18n'
 import type { ThemeMode } from '../../hooks/useThemeMode'
 import { AppIcon } from '../common/AppIcon'
 import { ContextMenu } from '../common/ContextMenu'
+import { handleHorizontalWheelScroll } from '../common/horizontal-scroll'
 
 export type OrderedTabEntry =
   | { key: string; kind: 'local'; id: string; title: string; tabKind: 'home' | 'system' }
@@ -65,7 +66,10 @@ export function TabBar({
         <button aria-label={t.connectionManager} className="tabbar-folder-button" onClick={onOpenConnectionManager} title={t.connectionManager} type="button">
           <AppIcon name="connections" size={16} />
         </button>
-        <div className="fs-tabs">
+        <div
+          className="fs-tabs"
+          onWheel={handleHorizontalWheelScroll}
+        >
           {orderedTabs.map((entry, index) => (
             entry.kind === 'local' ? (
               <div

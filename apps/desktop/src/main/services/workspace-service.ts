@@ -9,6 +9,7 @@ import {
   type CommandExecutionResult,
   type CreateProfileInput,
   type RemoteFileAccessOptions,
+  type SshInteractionResponse,
   type SessionSnapshot,
   type PermissionChangeOptions,
   type TransferProgress,
@@ -34,7 +35,8 @@ export class WorkspaceService {
     updateTabStatus: (tabId, status) => {
       this.tabs.updateStatus(tabId, status)
     },
-    getTabStatus: (tabId) => this.tabs.getById(tabId)?.status
+    getTabStatus: (tabId) => this.tabs.getById(tabId)?.status,
+    rememberTrustedHostFingerprint: (profileId, fingerprint) => this.rememberTrustedHostFingerprint(profileId, fingerprint)
   })
 
   constructor(profileRepository: ProfileRepository) {
@@ -172,6 +174,7 @@ export class WorkspaceService {
       remoteFiles: [],
       fileAccessMode: controller.getFileAccessMode(),
       sudoUser: profile.type === 'ssh' ? 'root' : undefined,
+      hasReusableSudoAuth: controller.type === 'ssh' ? controller.hasReusableSudoAuth() : false,
       connected: false
     }
 
@@ -211,6 +214,7 @@ export class WorkspaceService {
       remoteFiles: current?.remoteFiles ?? [],
       fileAccessMode: current?.fileAccessMode ?? controller.getFileAccessMode(),
       sudoUser: current?.sudoUser ?? (profile.type === 'ssh' ? 'root' : undefined),
+      hasReusableSudoAuth: current?.hasReusableSudoAuth ?? (controller.type === 'ssh' ? controller.hasReusableSudoAuth() : false),
       connected: false,
       systemMetrics: current?.systemMetrics
     })
@@ -256,6 +260,14 @@ export class WorkspaceService {
     this.tabs.updateStatus(tabId, 'closed')
     await this.sessionRuntime.emitSnapshotForTab(tabId)
     return this.getSnapshot()
+  }
+
+  async resolveSshInteraction(requestId: string, response: SshInteractionResponse): Promise<void> {
+    this.sessionRuntime.resolveSshInteraction(requestId, response)
+  }
+
+  async rememberTrustedHostFingerprint(profileId: string, fingerprint: string): Promise<void> {
+    await this.profileRepository.updateTrustedHostFingerprint?.(profileId, fingerprint)
   }
 
   async queueUpload(fileNames: string[]): Promise<WorkspaceSnapshot> {

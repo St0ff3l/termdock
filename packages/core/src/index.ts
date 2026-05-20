@@ -42,6 +42,7 @@ export interface SshProfile extends BaseProfile {
   password?: string
   privateKeyPath?: string
   passphrase?: string
+  trustedHostFingerprint?: string
   sftpEnabled: boolean
   remotePath: string
   encoding?: string
@@ -248,6 +249,7 @@ export interface SessionSnapshot {
   remoteFiles: RemoteFileItem[]
   fileAccessMode?: 'user' | 'root'
   sudoUser?: string
+  hasReusableSudoAuth?: boolean
   connected?: boolean
   systemMetrics?: SystemMetrics
 }
@@ -276,12 +278,60 @@ export interface CreateProfileInput {
   privateKeyPath?: string
   passphrase?: string
   authType?: 'password' | 'privateKey' | 'system'
+  trustedHostFingerprint?: string
   secure?: boolean
   encoding?: string
   backspaceKey?: string
   deleteKey?: string
   enableExecChannel?: boolean
 }
+
+export interface SshHostVerificationRequest {
+  requestId: string
+  tabId: string
+  kind: 'host-verification'
+  profileId: string
+  host: string
+  port: number
+  fingerprint: string
+  knownFingerprint?: string
+}
+
+export interface SshCredentialsPromptRequest {
+  requestId: string
+  tabId: string
+  kind: 'credentials'
+  profileId: string
+  host: string
+  port: number
+  username?: string
+  passwordRequired: boolean
+  reason: 'missing-username' | 'missing-password'
+}
+
+export type SshInteractionRequest = SshHostVerificationRequest | SshCredentialsPromptRequest
+export type SshInteractionDraft =
+  | Omit<SshHostVerificationRequest, 'requestId' | 'tabId' | 'profileId'>
+  | Omit<SshCredentialsPromptRequest, 'requestId' | 'tabId' | 'profileId'>
+
+export type SshHostVerificationResponse = {
+  kind: 'host-verification'
+  decision: 'accept-once' | 'accept-and-save' | 'cancel'
+}
+
+export type SshCredentialsPromptResponse =
+  | {
+      kind: 'credentials'
+      canceled: true
+    }
+  | {
+      kind: 'credentials'
+      canceled: false
+      username: string
+      password: string
+    }
+
+export type SshInteractionResponse = SshHostVerificationResponse | SshCredentialsPromptResponse
 
 export interface CommandTemplateInput {
   name: string
@@ -378,10 +428,12 @@ export interface TermdockDesktopApi {
   createRemoteFile(tabId: string, parentPath: string, name: string): Promise<WorkspaceSnapshot>
   renameRemotePath(tabId: string, targetPath: string, newName: string): Promise<WorkspaceSnapshot>
   deleteRemotePath(tabId: string, targetPath: string, targetType: RemoteFileItem['type']): Promise<WorkspaceSnapshot>
+  resolveSshInteraction(requestId: string, response: SshInteractionResponse): Promise<void>
   changeRemotePermissions(tabId: string, targetPath: string, options: PermissionChangeOptions): Promise<WorkspaceSnapshot>
   onTerminalData(listener: (payload: TerminalDataPayload) => void): () => void
   onTerminalState(listener: (payload: TerminalStatePayload) => void): () => void
   onWorkspaceSnapshot(listener: (snapshot: WorkspaceSnapshot) => void): () => void
+  onSshInteraction(listener: (request: SshInteractionRequest) => void): () => void
 }
 
 export interface SessionController {
@@ -402,6 +454,7 @@ export interface ShellSessionController extends SessionController {
 export interface FileSessionController extends SessionController {
   getRemotePath(): string
   getFileAccessMode(): 'user' | 'root'
+  hasReusableSudoAuth(): boolean
   setFileAccessMode(mode: 'user' | 'root', options?: RemoteFileAccessOptions): Promise<void>
   listRemoteFiles(): Promise<RemoteFileItem[]>
   openRemotePath(path: string): Promise<RemoteFileItem[]>

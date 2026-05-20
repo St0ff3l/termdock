@@ -7,6 +7,7 @@ export function ConnectionModal({
   mode,
   form,
   setForm,
+  onClearHostFingerprint,
   onSubmit,
   onClose,
   standalone = false
@@ -15,6 +16,7 @@ export function ConnectionModal({
   mode: ConnectionFormMode
   form: CreateProfileInput
   setForm(value: CreateProfileInput | ((prev: CreateProfileInput) => CreateProfileInput)): void
+  onClearHostFingerprint?(): void
   onSubmit(event: FormEvent<HTMLFormElement>): void
   onClose(): void
   standalone?: boolean
@@ -91,6 +93,13 @@ export function ConnectionModal({
                       <span>{t.useFtps}</span>
                     </label> : null
                   )}
+                  {form.type === 'ssh' && mode === 'edit' && form.trustedHostFingerprint ? (
+                    <div className="span-2 ssh-inline-action">
+                      <button className="flat-button compact" onClick={onClearHostFingerprint} type="button">
+                        {t.clearSavedFingerprint}
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               </fieldset>
               {form.type === 'ssh' ? <fieldset className="ssh-fieldset">
@@ -99,6 +108,7 @@ export function ConnectionModal({
                   <input checked={Boolean(form.enableExecChannel)} type="checkbox" onChange={(event) => setForm((prev) => ({ ...prev, enableExecChannel: event.target.checked }))} />
                   <span>{t.enableExecChannel}</span>
                 </label>
+                <div className="ssh-field-hint">{t.enableExecChannelHint}</div>
               </fieldset> : null}
             </div>
           ) : null}

@@ -64,6 +64,29 @@ export class FileProfileRepository implements ProfileRepository {
     return profiles.find((profile) => profile.id === id) ?? null
   }
 
+  async updateTrustedHostFingerprint(id: string, fingerprint: string): Promise<ConnectionProfile | null> {
+    const profiles = await this.readProfiles()
+    let updatedProfile: ConnectionProfile | null = null
+    const nextProfiles = profiles.map((profile) => {
+      if (profile.id !== id || profile.type !== 'ssh') {
+        return profile
+      }
+
+      updatedProfile = {
+        ...profile,
+        trustedHostFingerprint: fingerprint
+      }
+      return updatedProfile
+    })
+
+    if (!updatedProfile) {
+      return null
+    }
+
+    await this.writeProfiles(nextProfiles)
+    return updatedProfile
+  }
+
   async delete(id: string): Promise<void> {
     const profiles = await this.readProfiles()
     const nextProfiles = profiles.filter((profile) => profile.id !== id)
@@ -310,6 +333,7 @@ function toProfile(id: string, input: CreateProfileInput): ConnectionProfile {
         password: input.password,
         privateKeyPath: input.privateKeyPath,
         passphrase: input.passphrase,
+        trustedHostFingerprint: input.trustedHostFingerprint,
         group: input.group,
         sftpEnabled: true,
         remotePath: input.remotePath,

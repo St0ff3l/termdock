@@ -38,21 +38,26 @@
 .sys-card-empty {
   display: flex;
   flex: 1;
+  grid-row: 1 / -1;
   height: 100%;
   min-height: 0;
   padding: 18px 14px;
   border-bottom: 0;
+  align-items: center;
+  justify-content: center;
 }
 
 .sidebar-empty-state {
   display: flex;
   flex: 1;
   flex-direction: column;
+  align-items: center;
   justify-content: center;
   gap: 10px;
   border-radius: 8px;
   padding: 18px 16px;
   text-align: center;
+  max-width: 300px;
 }
 
 .sidebar-empty-state strong {
@@ -80,6 +85,10 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.transfer-strip.full-width {
+  grid-column: 1 / -1;
 }
 
 .sync-row {
@@ -460,6 +469,10 @@
   height: auto;
 }
 
+.fs-main.full-width {
+  grid-column: 1 / -1;
+}
+
 .fs-main.no-status {
   grid-template-rows: minmax(0, 1fr);
 }
@@ -531,6 +544,7 @@
 .tabbar-folder-button,
 .add-tab,
 .window-tools span,
+.window-tools button,
 .flat-button,
 .file-toolbar button,
 .terminal-tools button,
@@ -538,6 +552,8 @@
 .row-delete,
 .icon-button {
   border: 1px solid var(--border-light);
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .tabbar-folder-button {
@@ -554,6 +570,8 @@
   display: flex;
   align-items: flex-end;
   min-width: 0;
+  width: 100%;
+  flex: 1 1 auto;
   padding-left: 12px;
   gap: 4px;
   position: relative;
@@ -561,10 +579,20 @@
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
+  touch-action: pan-x;
+  overscroll-behavior-x: contain;
+  -webkit-app-region: drag;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .fs-tabs::-webkit-scrollbar {
   display: none;
+}
+
+.fs-tabs:active {
+  cursor: grabbing;
 }
 
 .fs-tab {
@@ -581,6 +609,8 @@
   font-size: 13px;
   font-weight: 500;
   -webkit-app-region: no-drag;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .fs-tab strong {

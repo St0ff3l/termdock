@@ -37,6 +37,10 @@ export abstract class BaseFileSessionController implements FileSessionController
     return 'user'
   }
 
+  hasReusableSudoAuth(): boolean {
+    return false
+  }
+
   async setFileAccessMode(_mode: 'user' | 'root', _options?: RemoteFileAccessOptions): Promise<void> {
     return
   }

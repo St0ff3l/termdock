@@ -75,6 +75,7 @@
 .command-manager-list,
 .command-manager-editor {
   min-height: 0;
+  min-width: 0;
 }
 
 .command-pane,
@@ -108,6 +109,7 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
+  overflow: hidden;
   padding: 0 12px;
   border-bottom: 1px solid var(--border-light);
   height: 32px;
@@ -121,16 +123,25 @@
   flex-direction: row;
   align-items: flex-end;
   min-width: 0;
+  width: 100%;
+  flex: 1 1 auto;
   gap: 4px;
   overflow-x: auto;
   overflow-y: hidden;
   flex-shrink: 0;
   scrollbar-width: none;
   -ms-overflow-style: none;
+  touch-action: pan-x;
+  overscroll-behavior-x: contain;
+  cursor: grab;
 }
 
 .command-folder-tabs::-webkit-scrollbar {
   display: none;
+}
+
+.command-folder-tabs:active {
+  cursor: grabbing;
 }
 
 .command-folder-tabs button {

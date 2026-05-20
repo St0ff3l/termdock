@@ -12,6 +12,7 @@ export interface ProfileRepository {
   listFolders(): Promise<ConnectionFolder[]>
   create(input: CreateProfileInput): Promise<ConnectionProfile>
   update(id: string, input: CreateProfileInput): Promise<ConnectionProfile>
+  updateTrustedHostFingerprint?(id: string, fingerprint: string): Promise<ConnectionProfile | null>
   getById(id: string): Promise<ConnectionProfile | null>
   delete(id: string): Promise<void>
   
@@ -63,6 +64,23 @@ export class MemoryProfileRepository implements ProfileRepository {
 
   async getById(id: string): Promise<ConnectionProfile | null> {
     return this.profiles.find((profile) => profile.id === id) ?? null
+  }
+
+  async updateTrustedHostFingerprint(id: string, fingerprint: string): Promise<ConnectionProfile | null> {
+    let updatedProfile: ConnectionProfile | null = null
+    this.profiles = this.profiles.map((profile) => {
+      if (profile.id !== id || profile.type !== 'ssh') {
+        return profile
+      }
+
+      updatedProfile = {
+        ...profile,
+        trustedHostFingerprint: fingerprint
+      }
+      return updatedProfile
+    })
+
+    return updatedProfile
   }
 
   async delete(id: string): Promise<void> {
@@ -185,6 +203,7 @@ function toProfile(id: string, input: CreateProfileInput): ConnectionProfile {
         password: input.password,
         privateKeyPath: input.privateKeyPath,
         passphrase: input.passphrase,
+        trustedHostFingerprint: input.trustedHostFingerprint,
         group: input.group,
         sftpEnabled: true,
         remotePath: input.remotePath,

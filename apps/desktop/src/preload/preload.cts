@@ -11,6 +11,8 @@ import type {
   LocalFileItem,
   PermissionChangeOptions,
   RemoteFileAccessOptions,
+  SshInteractionRequest,
+  SshInteractionResponse,
   TransferTargetOptions,
   TermdockDesktopApi,
   TerminalDataPayload,
@@ -127,6 +129,8 @@ const api: TermdockDesktopApi = {
     ipcRenderer.invoke('remoteFiles:renamePath', tabId, targetPath, newName),
   deleteRemotePath: (tabId: string, targetPath: string, targetType: 'file' | 'folder'): Promise<WorkspaceSnapshot> =>
     ipcRenderer.invoke('remoteFiles:deletePath', tabId, targetPath, targetType),
+  resolveSshInteraction: (requestId: string, response: SshInteractionResponse): Promise<void> =>
+    ipcRenderer.invoke('ssh:resolveInteraction', requestId, response),
   changeRemotePermissions: (tabId: string, targetPath: string, options: PermissionChangeOptions): Promise<WorkspaceSnapshot> =>
     ipcRenderer.invoke('remoteFiles:changePermissions', tabId, targetPath, options),
   onTerminalData: (listener: (payload: TerminalDataPayload) => void) => {
@@ -143,6 +147,11 @@ const api: TermdockDesktopApi = {
     const wrapped = (_event: unknown, snapshot: WorkspaceSnapshot) => listener(snapshot)
     ipcRenderer.on('workspace:snapshot', wrapped)
     return () => ipcRenderer.off('workspace:snapshot', wrapped)
+  },
+  onSshInteraction: (listener: (request: SshInteractionRequest) => void) => {
+    const wrapped = (_event: unknown, request: SshInteractionRequest) => listener(request)
+    ipcRenderer.on('ssh:interaction', wrapped)
+    return () => ipcRenderer.off('ssh:interaction', wrapped)
   }
 }
 

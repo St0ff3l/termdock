@@ -5,6 +5,7 @@ import { WorkspaceService, seedCommandFolders, seedCommandTemplates, seedProfile
 import { registerAppHandlers } from './app-handlers.js'
 import { registerLocalFilesHandlers } from './local-files-handlers.js'
 import { registerRemoteFilesHandlers } from './remote-files-handlers.js'
+import { registerSshInteractionHandlers } from './ssh-interaction-handlers.js'
 import { registerTerminalHandlers } from './terminal-handlers.js'
 import { registerTransferHandlers } from './transfer-handlers.js'
 import type { IpcServices, IpcWindowOptions } from './types.js'
@@ -37,4 +38,5 @@ export function registerIpcHandlers(userDataPath: string, options: IpcWindowOpti
   registerTransferHandlers(services)
   registerTerminalHandlers(services)
   registerRemoteFilesHandlers(services)
+  registerSshInteractionHandlers(services)
 }

@@ -1,8 +1,12 @@
+import { randomUUID } from 'node:crypto'
 import type { WebContents } from 'electron'
 import type {
   ConnectionProfile,
   RemoteFileAccessOptions,
   SessionSnapshot,
+  SshInteractionDraft,
+  SshInteractionRequest,
+  SshInteractionResponse,
   WorkspaceSnapshot,
   WorkspaceTab
 } from '@termdock/core'
@@ -19,12 +23,18 @@ export class WorkspaceSessionRuntime {
   private readonly metricsRefreshInFlight = new Set<string>()
   private readonly tabSenders = new Map<string, WebContents>()
   private readonly invalidSenders = new WeakSet<WebContents>()
+  private readonly pendingSshInteractions = new Map<string, {
+    tabId: string
+    resolve(response: SshInteractionResponse): void
+    reject(error: Error): void
+  }>()
 
   constructor(
     private readonly options: {
       getSnapshot(): Promise<WorkspaceSnapshot>
       updateTabStatus(tabId: string, status: WorkspaceTab['status']): void
       getTabStatus(tabId: string): WorkspaceTab['status'] | undefined
+      rememberTrustedHostFingerprint(profileId: string, fingerprint: string): Promise<void>
     }
   ) {}
 
@@ -78,11 +88,23 @@ export class WorkspaceSessionRuntime {
     return this.liveControllers.get(tabId)
   }
 
+  resolveSshInteraction(requestId: string, response: SshInteractionResponse) {
+    const pending = this.pendingSshInteractions.get(requestId)
+    if (!pending) {
+      throw new Error(`SSH interaction request not found: ${requestId}`)
+    }
+
+    this.pendingSshInteractions.delete(requestId)
+    pending.resolve(response)
+  }
+
   createController(tabId: string, profile: ConnectionProfile): LiveSessionController {
-    return profile.type === 'ssh'
-      ? new LiveSshSessionController(
+    if (profile.type === 'ssh') {
+      const sshController = new LiveSshSessionController(
           tabId,
           profile,
+          (request) => this.requestSshInteraction(tabId, profile, request),
+          (fingerprint) => this.options.rememberTrustedHostFingerprint(profile.id, fingerprint),
           (chunk) => {
             const current = this.sessions.get(tabId)
             if (current) {
@@ -103,6 +125,7 @@ export class WorkspaceSessionRuntime {
               ...current,
               summary,
               terminalTranscript: transcript,
+              hasReusableSudoAuth: sshController.hasReusableSudoAuth(),
               connected
             })
             this.options.updateTabStatus(
@@ -118,7 +141,10 @@ export class WorkspaceSessionRuntime {
             void this.emitSnapshotForTab(tabId)
           }
         )
-      : new LiveFtpSessionController(tabId, profile)
+      return sshController
+    }
+
+    return new LiveFtpSessionController(tabId, profile)
   }
 
   async connect(tabId: string, controller: LiveSessionController) {
@@ -138,6 +164,7 @@ export class WorkspaceSessionRuntime {
           controller.type === 'ssh' ? controller.getTerminalTranscript() : undefined,
         remotePath: controller.getRemotePath(),
         fileAccessMode: controller.getFileAccessMode(),
+        hasReusableSudoAuth: controller.type === 'ssh' ? controller.hasReusableSudoAuth() : false,
         connected: true,
         remoteFiles: current.remoteFiles,
         systemMetrics: current.systemMetrics
@@ -154,6 +181,7 @@ export class WorkspaceSessionRuntime {
             ...latest,
             remotePath: controller.getRemotePath(),
             fileAccessMode: controller.getFileAccessMode(),
+            hasReusableSudoAuth: controller.type === 'ssh' ? controller.hasReusableSudoAuth() : false,
             remoteFiles: files
           })
           await this.emitSnapshotForTab(tabId)
@@ -239,6 +267,7 @@ export class WorkspaceSessionRuntime {
         ...current,
         fileAccessMode: controller.getFileAccessMode(),
         sudoUser: nextSudoUser,
+        hasReusableSudoAuth: controller.type === 'ssh' ? controller.hasReusableSudoAuth() : false,
         remotePath: controller.getRemotePath(),
         remoteFiles
       })
@@ -413,7 +442,57 @@ export class WorkspaceSessionRuntime {
       if (candidate === sender) {
         this.tabSenders.delete(tabId)
         this.stopMetricsPolling(tabId)
+        this.rejectPendingSshInteractionsForTab(tabId, new Error('SSH interaction window was closed'))
       }
+    }
+  }
+
+  private requestSshInteraction(
+    tabId: string,
+    profile: ConnectionProfile,
+    request: SshInteractionDraft
+  ): Promise<SshInteractionResponse> {
+    if (profile.type !== 'ssh') {
+      return Promise.reject(new Error('SSH interaction is only available for SSH profiles'))
+    }
+
+    const sender = this.tabSenders.get(tabId)
+    if (!sender || !this.canSendToSender(sender)) {
+      return Promise.reject(new Error('SSH interaction target window is unavailable'))
+    }
+
+    const requestId = randomUUID()
+    return new Promise<SshInteractionResponse>((resolve, reject) => {
+      this.pendingSshInteractions.set(requestId, {
+        tabId,
+        resolve,
+        reject
+      })
+
+      const payload: SshInteractionRequest = {
+        ...request,
+        requestId,
+        tabId,
+        profileId: profile.id
+      }
+
+      const didSend = this.trySend(sender, 'ssh:interaction', payload)
+
+      if (!didSend) {
+        this.pendingSshInteractions.delete(requestId)
+        reject(new Error('SSH interaction target window is unavailable'))
+      }
+    })
+  }
+
+  private rejectPendingSshInteractionsForTab(tabId: string, error: Error) {
+    for (const [requestId, pending] of this.pendingSshInteractions.entries()) {
+      if (pending.tabId !== tabId) {
+        continue
+      }
+
+      this.pendingSshInteractions.delete(requestId)
+      pending.reject(error)
     }
   }
 

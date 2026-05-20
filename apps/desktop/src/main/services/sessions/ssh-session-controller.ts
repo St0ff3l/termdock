@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
 import { readFile, stat, writeFile } from 'node:fs/promises'
@@ -8,6 +9,8 @@ import type {
   PermissionChangeOptions,
   RemoteFileAccessOptions,
   RemoteFileItem,
+  SshInteractionDraft,
+  SshInteractionResponse,
   SystemMetrics,
   SshProfile,
   SshSessionController,
@@ -40,11 +43,16 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
   private fileAccessMode: 'user' | 'root' = 'user'
   private sudoUser = 'root'
   private sudoPassword?: string
+  private awaitingSudoPasswordInput = false
+  private pendingSudoPasswordInput = ''
   private metrics?: SystemMetrics
+  private readonly acceptedHostFingerprints = new Set<string>()
 
   constructor(
     id: string,
     profile: SshProfile,
+    private readonly requestInteraction: (request: SshInteractionDraft) => Promise<SshInteractionResponse>,
+    private readonly rememberTrustedHostFingerprint: (fingerprint: string) => Promise<void>,
     private readonly onData: (chunk: string) => void,
     private readonly onStateChange: (summary: string, transcript: string, connected: boolean) => void
   ) {
@@ -54,7 +62,7 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
   }
 
   override async connect(): Promise<void> {
-    const profile = this.profile as SshProfile
+    const profile = await this.resolveConnectionProfile(this.profile as SshProfile)
     const authConfig = await resolveSshAuthConfig(profile)
     const shouldTryKeyboard = profile.authType === 'password' && Boolean(profile.password)
     const username = profile.username || os.userInfo().username
@@ -65,6 +73,14 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
       ...authConfig,
       readyTimeout: 15000,
       tryKeyboard: shouldTryKeyboard,
+      hostVerifier: (key: Buffer | string, verify: (accepted: boolean) => void) => {
+        void this.verifyHostFingerprint(profile, key)
+          .then(verify)
+          .catch((error) => {
+            this.sshDebug.log('main', `主机密钥校验失败: ${error instanceof Error ? error.message : String(error)}`)
+            verify(false)
+          })
+      },
       ...(this.sshDebug.enabled
         ? { debug: (message: string) => this.sshDebug.handle('main', message) }
         : {})
@@ -115,6 +131,7 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
               stream.on('data', (chunk: Buffer) => {
                 const text = chunk.toString('utf8')
                 this.transcript = trimTranscript(`${this.transcript}${text}`, LiveSshSessionController.TRANSCRIPT_LIMIT)
+                this.trackSudoPromptFromTerminal(text)
                 this.onData(text)
               })
               stream.on('close', () => {
@@ -149,6 +166,100 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
     })
   }
 
+  private async resolveConnectionProfile(profile: SshProfile): Promise<SshProfile> {
+    if (profile.authType !== 'password') {
+      return profile
+    }
+
+    if (!profile.username?.trim()) {
+      const response = await this.requestInteraction({
+        kind: 'credentials',
+        host: profile.host,
+        port: profile.port,
+        username: '',
+        passwordRequired: true,
+        reason: 'missing-username'
+      })
+
+      if (response.kind !== 'credentials' || response.canceled) {
+        throw new Error('SSH 登录已取消')
+      }
+
+      return {
+        ...profile,
+        username: response.username.trim(),
+        password: response.password
+      }
+    }
+
+    if (!profile.password) {
+      const hasSystemAuth = await hasSystemSshAuthAvailable()
+      if (hasSystemAuth) {
+        return profile
+      }
+
+      const response = await this.requestInteraction({
+        kind: 'credentials',
+        host: profile.host,
+        port: profile.port,
+        username: profile.username,
+        passwordRequired: true,
+        reason: 'missing-password'
+      })
+
+      if (response.kind !== 'credentials' || response.canceled) {
+        throw new Error('SSH 登录已取消')
+      }
+
+      return {
+        ...profile,
+        username: response.username.trim(),
+        password: response.password
+      }
+    }
+
+    return profile
+  }
+
+  private async verifyHostFingerprint(profile: SshProfile, key: Buffer | string): Promise<boolean> {
+    const fingerprint = computeHostFingerprint(key)
+    if (this.acceptedHostFingerprints.has(fingerprint)) {
+      return true
+    }
+
+    if (profile.trustedHostFingerprint && profile.trustedHostFingerprint === fingerprint) {
+      this.acceptedHostFingerprints.add(fingerprint)
+      return true
+    }
+
+    const response = await this.requestInteraction({
+      kind: 'host-verification',
+      host: profile.host,
+      port: profile.port,
+      fingerprint,
+      ...(profile.trustedHostFingerprint ? { knownFingerprint: profile.trustedHostFingerprint } : {})
+    })
+
+    if (response.kind !== 'host-verification') {
+      return false
+    }
+
+    if (response.decision === 'accept-and-save') {
+      await this.rememberTrustedHostFingerprint(fingerprint)
+      profile.trustedHostFingerprint = fingerprint
+      ;(this.profile as SshProfile).trustedHostFingerprint = fingerprint
+      this.acceptedHostFingerprints.add(fingerprint)
+      return true
+    }
+
+    if (response.decision === 'accept-once') {
+      this.acceptedHostFingerprints.add(fingerprint)
+      return true
+    }
+
+    return false
+  }
+
   override async disconnect(): Promise<void> {
     this.shellStream?.end()
     this.closeSftpSession()
@@ -167,6 +278,10 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
 
   override getFileAccessMode(): 'user' | 'root' {
     return this.fileAccessMode
+  }
+
+  override hasReusableSudoAuth(): boolean {
+    return Boolean(this.sudoPassword)
   }
 
   override async setFileAccessMode(mode: 'user' | 'root', options?: RemoteFileAccessOptions): Promise<void> {
@@ -204,6 +319,7 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
   }
 
   async write(data: string): Promise<void> {
+    this.captureSudoPasswordInput(data)
     this.shellStream?.write(data)
   }
 
@@ -872,6 +988,47 @@ done
     await this.execShellFileCommand('true', undefined, true)
   }
 
+  private trackSudoPromptFromTerminal(text: string) {
+    const normalized = text.replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, '')
+    if (/\[sudo\][^\r\n]*password for .*:|sudo[^\r\n]*密码[:：]?/i.test(normalized)) {
+      this.awaitingSudoPasswordInput = true
+      this.pendingSudoPasswordInput = ''
+    }
+  }
+
+  private captureSudoPasswordInput(data: string) {
+    if (!this.awaitingSudoPasswordInput) {
+      return
+    }
+
+    for (const char of data) {
+      if (char === '\u0003' || char === '\u001b') {
+        this.awaitingSudoPasswordInput = false
+        this.pendingSudoPasswordInput = ''
+        return
+      }
+
+      if (char === '\r' || char === '\n') {
+        if (this.pendingSudoPasswordInput) {
+          this.sudoPassword = this.pendingSudoPasswordInput
+          this.onStateChange(this.getSummary(), this.transcript, this.connected)
+        }
+        this.awaitingSudoPasswordInput = false
+        this.pendingSudoPasswordInput = ''
+        return
+      }
+
+      if (char === '\u007f' || char === '\b') {
+        this.pendingSudoPasswordInput = this.pendingSudoPasswordInput.slice(0, -1)
+        continue
+      }
+
+      if (char >= ' ') {
+        this.pendingSudoPasswordInput += char
+      }
+    }
+  }
+
   private async execCommand(
     command: string,
     options?: { allowNonZeroWithStdout?: boolean },
@@ -905,7 +1062,7 @@ done
           }
           if (code && code !== 0 && stderr.trim()) {
             if (privileged && /password is required|a password is required|no tty present|a terminal is required|sorry, you must have a tty|需要密码|必须输入密码/i.test(stderr)) {
-              reject(new Error('root 视角需要可用的 sudo 凭据。请先在终端里运行 `sudo -v` 或 `sudo -i`。'))
+              reject(new Error('当前这次 root 切换没有拿到可复用的 sudo 授权，请直接输入 sudo 密码后重试。终端里先执行 `sudo -i` 或 `sudo -v`，这里也不一定能复用。'))
               return
             }
             if (privileged && /incorrect password|authentication failure|3 incorrect password attempts|sorry, try again|no password was provided|密码错误|认证失败|对不起，请重试|未提供密码/i.test(stderr)) {
@@ -987,6 +1144,16 @@ async function resolveSystemSshAuthConfig(profile: SshProfile): Promise<Pick<Con
   }
 }
 
+async function hasSystemSshAuthAvailable(): Promise<boolean> {
+  const agent = process.env.SSH_AUTH_SOCK
+  if (agent) {
+    return true
+  }
+
+  const privateKey = await readDefaultPrivateKey()
+  return Boolean(privateKey)
+}
+
 function registerKeyboardInteractiveHandler(client: Client, profile: SshProfile, onEvent: (message: string) => void) {
   if (!profile.password) {
     return
@@ -1038,6 +1205,11 @@ async function readDefaultPrivateKey(): Promise<string | undefined> {
   }
 
   return undefined
+}
+
+function computeHostFingerprint(key: Buffer | string) {
+  const payload = Buffer.isBuffer(key) ? key : Buffer.from(key)
+  return `SHA256:${createHash('sha256').update(payload).digest('base64').replace(/=+$/g, '')}`
 }
 
 function shellQuote(value: string) {

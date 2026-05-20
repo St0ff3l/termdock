@@ -65,7 +65,10 @@ export function RootAccessModal({
           />
         </label>
 
-        <div className="file-action-hint">{t.fileRootAccessPasswordHint}</div>
+        <div className="root-access-note" role="note">
+          <div className="root-access-note-title">{t.fileRootAccessPasswordHint}</div>
+          <div className="root-access-note-body">{t.fileRootAccessPasswordHintDetail}</div>
+        </div>
         {errorMessage ? <div className="modal-error">{errorMessage}</div> : null}
 
         <div className="form-actions">

@@ -103,6 +103,19 @@ function createNativeChildWindow(options: {
   })
 }
 
+function centerChildWindowToParent(parent: BrowserWindow | null, child: BrowserWindow) {
+  if (!parent || parent.isDestroyed()) {
+    child.center()
+    return
+  }
+
+  const parentBounds = parent.getBounds()
+  const childBounds = child.getBounds()
+  const x = Math.round(parentBounds.x + (parentBounds.width - childBounds.width) / 2)
+  const y = Math.round(parentBounds.y + (parentBounds.height - childBounds.height) / 2)
+  child.setPosition(x, y)
+}
+
 function openConnectionManagerWindow(parent: BrowserWindow) {
   void parent
   if (connectionManagerWindow && !connectionManagerWindow.isDestroyed()) {
@@ -160,7 +173,6 @@ function openCommandManagerWindow(parent: BrowserWindow) {
 }
 
 function openConnectionFormWindow(parent: BrowserWindow, mode: 'create' | 'edit', profileId?: string) {
-  void parent
   if (connectionFormWindow && !connectionFormWindow.isDestroyed()) {
     connectionFormWindow.close()
   }
@@ -175,6 +187,7 @@ function openConnectionFormWindow(parent: BrowserWindow, mode: 'create' | 'edit'
 
   connectionFormWindow = win
   win.once('ready-to-show', () => {
+    centerChildWindowToParent(parent, win)
     win.show()
   })
   win.on('closed', () => {

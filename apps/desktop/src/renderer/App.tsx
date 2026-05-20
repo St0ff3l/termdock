@@ -9,6 +9,10 @@ import type {
   LocalFileItem,
   PermissionChangeOptions,
   RemoteFileItem,
+  SshCredentialsPromptRequest,
+  SshHostVerificationRequest,
+  SshInteractionRequest,
+  SshInteractionResponse,
   WorkspaceSnapshot,
   WorkspaceTab
 } from '@termdock/core'
@@ -18,6 +22,8 @@ import { CommandEditorModal, emptyCommandForm, toCommandTemplateInput } from './
 import { CommandManagerModal } from './features/commands/CommandManagerModal'
 import { ConnectionManagerModal } from './features/connections/ConnectionManagerModal'
 import { ConnectionModal } from './features/connections/ConnectionModal'
+import { SshCredentialsModal } from './features/connections/SshCredentialsModal'
+import { SshHostVerificationModal } from './features/connections/SshHostVerificationModal'
 import { FileActionModal } from './features/files/FileActionModal'
 import { FileEditorModal } from './features/files/FileEditorModal'
 import { FilePermissionModal } from './features/files/FilePermissionModal'
@@ -138,6 +144,8 @@ export function App() {
     sudoUser: string
   } | null>(null)
   const [rootAccessDialogError, setRootAccessDialogError] = useState<string | null>(null)
+  const [sshInteraction, setSshInteraction] = useState<SshInteractionRequest | null>(null)
+  const [sshInteractionError, setSshInteractionError] = useState<string | null>(null)
   const [showTransfers, setShowTransfers] = useState(false)
   const [themeMode, setThemeMode] = useState<ThemeMode>('default-dark')
   const [locale, setLocaleState] = useState<AppLocale>(() => readStoredLocale())
@@ -232,6 +240,17 @@ export function App() {
       offSnapshot()
     }
   }, [desktopApi, isCommandFormWindow, isCommandManagerWindow, isConnectionFormWindow, isConnectionManagerWindow, isFileEditorWindow])
+
+  useEffect(() => {
+    if (!desktopApi) {
+      return
+    }
+
+    return desktopApi.onSshInteraction((request) => {
+      setSshInteraction(request)
+      setSshInteractionError(null)
+    })
+  }, [desktopApi])
 
   useEffect(() => {
     if (!desktopApi || !isFileEditorWindow || !fileEditorWindowSource || !fileEditorWindowPath || !fileEditorWindowName) {
@@ -360,6 +379,7 @@ export function App() {
   }, [error])
 
   const activeLocalTab = activeLocalTabId ? localTabs.find((tab) => tab.id === activeLocalTabId) ?? null : null
+  const showSidebar = activeLocalTab?.kind !== 'home'
   const displayedSessionTabId = activeLocalTab
     ? activeLocalTab.kind === 'system' ? activeLocalTab.sessionTabId : null
     : workspace.activeTabId
@@ -400,6 +420,11 @@ export function App() {
   const reportError = (setter: (message: string) => void, scope: string, err: unknown, details?: ErrorDetails) => {
     console.error(`[TermDock] ${scope}`, err)
     setter(formatAppError(scope, err, details))
+  }
+
+  const shouldPromptForRootAccess = (err: unknown) => {
+    const message = normalizeErrorMessage(err)
+    return /root 视角需要可用的 sudo 凭据|sudo 密码无效|sudo credentials|incorrect password|authentication failure/i.test(message)
   }
 
   const applySnapshot = (snapshot: WorkspaceSnapshot) => {
@@ -673,6 +698,59 @@ export function App() {
     } finally {
       setIsBusy(false)
     }
+  }
+
+  const handleClearHostFingerprint = async (profile: ConnectionProfile) => {
+    if (!desktopApi || profile.type !== 'ssh') {
+      return
+    }
+
+    try {
+      setIsBusy(true)
+      const nextInput: CreateProfileInput = {
+        ...profileToForm(profile),
+        trustedHostFingerprint: ''
+      }
+      const snapshot = await desktopApi.updateProfile(profile.id, nextInput)
+      applySnapshot(snapshot)
+      setError(null)
+    } catch (err) {
+      reportError(setError, '清除主机指纹', err)
+    } finally {
+      setIsBusy(false)
+    }
+  }
+
+  const resolveSshInteraction = async (requestId: string, response: SshInteractionResponse) => {
+    if (!desktopApi) {
+      return
+    }
+
+    try {
+      await desktopApi.resolveSshInteraction(requestId, response)
+    } catch (err) {
+      reportError(setError, '响应 SSH 交互', err)
+    } finally {
+      setSshInteraction((current) => current?.requestId === requestId ? null : current)
+      setSshInteractionError(null)
+    }
+  }
+
+  const handleSubmitSshCredentials = (request: SshCredentialsPromptRequest, input: { username: string; password: string }) => {
+    const username = input.username.trim()
+    const password = input.password
+
+    if (!username || !password) {
+      setSshInteractionError(t.sshAuthPromptFillRequired)
+      return
+    }
+
+    void resolveSshInteraction(request.requestId, {
+      kind: 'credentials',
+      canceled: false,
+      username,
+      password
+    })
   }
 
   const handleActivateTab = async (tabId: string) => {
@@ -1357,12 +1435,37 @@ export function App() {
 
     const nextMode = activeSession.fileAccessMode === 'root' ? 'user' : 'root'
     if (nextMode === 'root') {
-      setRootAccessDialogError(null)
-      setRootAccessDialog({
-        tabId: activeTab.id,
-        sshUser: activeProfile?.type === 'ssh' ? activeProfile.username : undefined,
-        sudoUser: activeSession.sudoUser || 'root'
-      })
+      if (!activeSession.hasReusableSudoAuth) {
+        setRootAccessDialogError(null)
+        setRootAccessDialog({
+          tabId: activeTab.id,
+          sshUser: activeProfile?.type === 'ssh' ? activeProfile.username : undefined,
+          sudoUser: activeSession.sudoUser || 'root'
+        })
+        return
+      }
+
+      void (async () => {
+        try {
+          setIsBusy(true)
+          setRootAccessDialogError(null)
+          const snapshot = await desktopApi.setRemoteFileAccessMode(activeTab.id, nextMode)
+          applySnapshot(snapshot)
+        } catch (err) {
+          if (shouldPromptForRootAccess(err)) {
+            setRootAccessDialog({
+              tabId: activeTab.id,
+              sshUser: activeProfile?.type === 'ssh' ? activeProfile.username : undefined,
+              sudoUser: activeSession.sudoUser || 'root'
+            })
+            setRootAccessDialogError(normalizeErrorMessage(err))
+            return
+          }
+          reportError(setError, '切换到 root 视角', err)
+        } finally {
+          setIsBusy(false)
+        }
+      })()
       return
     }
 
@@ -1505,6 +1608,15 @@ export function App() {
             mode={editingProfileId ? 'edit' : 'create'}
             form={form}
             setForm={updateForm}
+            onClearHostFingerprint={() => {
+              const editingProfile = editingProfileId
+                ? workspace.profiles.find((profile) => profile.id === editingProfileId) ?? null
+                : null
+              if (editingProfile) {
+                void handleClearHostFingerprint(editingProfile)
+                setForm((prev) => ({ ...prev, trustedHostFingerprint: '' }))
+              }
+            }}
             onSubmit={handleSaveProfile}
             onClose={() => {
               setShowForm(false)
@@ -1575,14 +1687,23 @@ export function App() {
 
   if (isConnectionFormWindow) {
     return (
-      <ConnectionModal
-        errorMessage={formError}
-        mode={editingProfileId ? 'edit' : formWindowMode}
-        form={form}
-        setForm={updateForm}
-        standalone
-        onSubmit={handleSaveProfile}
-        onClose={closeCurrentWindow}
+        <ConnectionModal
+          errorMessage={formError}
+          mode={editingProfileId ? 'edit' : formWindowMode}
+          form={form}
+          setForm={updateForm}
+          onClearHostFingerprint={() => {
+            const editingProfile = editingProfileId
+              ? workspace.profiles.find((profile) => profile.id === editingProfileId) ?? null
+              : null
+            if (editingProfile) {
+              void handleClearHostFingerprint(editingProfile)
+              setForm((prev) => ({ ...prev, trustedHostFingerprint: '' }))
+            }
+          }}
+          standalone
+          onSubmit={handleSaveProfile}
+          onClose={closeCurrentWindow}
       />
     )
   }
@@ -1661,17 +1782,19 @@ export function App() {
           theme={themeMode}
         />
 
-        <aside className="fs-sidebar" style={{ position: 'relative' }}>
-          <SystemSidebar activeProfile={activeProfile} activeSession={activeSession} onOpenSystemInfo={handleOpenSystemInfo} />
-          <div
-            aria-label={t.resizeSidebar}
-            className={`sidebar-resizer ${isResizingSidebar ? 'is-active' : ''}`}
-            onMouseDown={() => setIsResizingSidebar(true)}
-            role="separator"
-          />
-        </aside>
+        {showSidebar ? (
+          <aside className="fs-sidebar" style={{ position: 'relative' }}>
+            <SystemSidebar activeProfile={activeProfile} activeSession={activeSession} onOpenSystemInfo={handleOpenSystemInfo} />
+            <div
+              aria-label={t.resizeSidebar}
+              className={`sidebar-resizer ${isResizingSidebar ? 'is-active' : ''}`}
+              onMouseDown={() => setIsResizingSidebar(true)}
+              role="separator"
+            />
+          </aside>
+        ) : null}
 
-        <main className={`fs-main ${error ? 'has-status' : 'no-status'}`}>
+        <main className={`fs-main ${error ? 'has-status' : 'no-status'} ${showSidebar ? '' : 'full-width'}`}>
           {error ? (
             <div className="status-message" role="alert">
               <span className="status-message-text">{error}</span>
@@ -1729,6 +1852,7 @@ export function App() {
 
         <TransferBar
           activeCount={activeTransferCount}
+          fullWidth={!showSidebar}
           isPending={isBusy}
           onOpen={() => setShowTransfers((prev) => !prev)}
           transfers={workspace.transfers}
@@ -1759,6 +1883,44 @@ export function App() {
               setRootAccessDialogError(null)
             }}
             onSubmit={handleConfirmRootAccess}
+          />
+        ) : null}
+
+        {sshInteraction?.kind === 'credentials' ? (
+          <SshCredentialsModal
+            errorMessage={sshInteractionError}
+            request={sshInteraction}
+            onCancel={() => {
+              void resolveSshInteraction(sshInteraction.requestId, {
+                kind: 'credentials',
+                canceled: true
+              })
+            }}
+            onSubmit={(input) => handleSubmitSshCredentials(sshInteraction, input)}
+          />
+        ) : null}
+
+        {sshInteraction?.kind === 'host-verification' ? (
+          <SshHostVerificationModal
+            request={sshInteraction}
+            onReject={() => {
+              void resolveSshInteraction(sshInteraction.requestId, {
+                kind: 'host-verification',
+                decision: 'cancel'
+              })
+            }}
+            onAcceptOnce={() => {
+              void resolveSshInteraction(sshInteraction.requestId, {
+                kind: 'host-verification',
+                decision: 'accept-once'
+              })
+            }}
+            onAcceptAndSave={() => {
+              void resolveSshInteraction(sshInteraction.requestId, {
+                kind: 'host-verification',
+                decision: 'accept-and-save'
+              })
+            }}
           />
         ) : null}
       </div>
@@ -1840,6 +2002,15 @@ export function App() {
           mode={editingProfileId ? 'edit' : 'create'}
           form={form}
           setForm={updateForm}
+          onClearHostFingerprint={() => {
+            const editingProfile = editingProfileId
+              ? workspace.profiles.find((profile) => profile.id === editingProfileId) ?? null
+              : null
+            if (editingProfile) {
+              void handleClearHostFingerprint(editingProfile)
+              setForm((prev) => ({ ...prev, trustedHostFingerprint: '' }))
+            }
+          }}
           onSubmit={handleSaveProfile}
           onClose={() => {
             setShowForm(false)

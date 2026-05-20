@@ -23,7 +23,9 @@
 
 .connection-form-window {
   min-height: 100vh;
-  padding: 12px;
+  padding: 0;
+  overflow: auto;
+  -webkit-app-region: drag;
 }
 
 .connection-form-window,
@@ -32,10 +34,14 @@
 }
 
 .modal-card.ssh-modal.standalone {
+  position: relative;
   width: 100%;
-  min-height: calc(100vh - 24px);
+  min-height: 100vh;
+  padding: 46px 20px 20px;
   border: 0;
   border-radius: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .modal-header {
@@ -51,6 +57,22 @@
 .modal-card.manager-modal.standalone .modal-header,
 .modal-card.ssh-modal.standalone .modal-header {
   -webkit-app-region: drag;
+}
+
+.modal-card.ssh-modal.standalone .modal-header {
+  position: absolute;
+  top: 14px;
+  left: 0;
+  width: 100%;
+  padding: 0 max(76px, env(safe-area-inset-left, 0px) + 76px) 0 max(76px, env(safe-area-inset-right, 0px) + 76px);
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.modal-card.ssh-modal.standalone .modal-header span {
+  pointer-events: auto;
 }
 
 .modal-card.manager-modal.standalone .modal-header button,
@@ -79,6 +101,7 @@
   display: grid;
   grid-template-columns: 190px minmax(0, 1fr);
   gap: 14px;
+  min-height: 0;
 }
 
 .ssh-modal-nav {
@@ -104,12 +127,29 @@
 .ssh-form-shell {
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
+  min-height: 0;
 }
 
 .ssh-form-page {
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+.modal-card.ssh-modal.standalone .ssh-modal-body {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.modal-card.ssh-modal.standalone .ssh-form-shell {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.modal-card.ssh-modal.standalone .ssh-form-page {
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 8px;
 }
 
 .ssh-fieldset {
@@ -198,6 +238,18 @@
   font-size: 13px;
 }
 
+.ssh-inline-action {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.ssh-field-hint {
+  margin-top: 10px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
 .ssh-placeholder {
   display: grid;
   place-items: center;
@@ -210,6 +262,16 @@
   padding: 9px 10px;
   border-radius: var(--radius-md);
   font-size: 13px;
+}
+
+.ssh-auth-hint {
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--border-light) 86%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--bg-elevated) 72%, transparent);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-secondary);
 }
 
 .ssh-actions {
