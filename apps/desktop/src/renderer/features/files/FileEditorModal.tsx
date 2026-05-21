@@ -213,7 +213,7 @@ export function FileEditorModal({
     }
   }
 
-  const frameClassName = `modal-card file-editor-modal file-editor-modal--dark ${standalone ? 'standalone' : ''}`
+  const frameClassName = `modal-card file-editor-modal ${themeMode === 'default-dark' ? 'file-editor-modal--dark' : ''} ${standalone ? 'standalone' : ''}`
   const contentNode = (
     <div className={frameClassName} onClick={handleShellClick} onKeyDown={handleKeyDown} ref={shellRef}>
       <div className="modal-header">

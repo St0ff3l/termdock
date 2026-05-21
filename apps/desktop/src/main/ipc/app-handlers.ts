@@ -3,6 +3,12 @@ import type { ConnectionFormMode, FileEditorWindowInput } from '@termdock/core'
 import type { IpcWindowOptions } from './types.js'
 
 export function registerAppHandlers(options: IpcWindowOptions) {
+  ipcMain.handle('app:getUiPreferences', () => options.getUiPreferences())
+
+  ipcMain.handle('app:setUiPreferences', (_event, input: Partial<{ theme: 'default-dark' | 'default-light'; locale: 'zhCN' | 'enUS' }>) => {
+    return options.setUiPreferences(input)
+  })
+
   ipcMain.handle('app:openConnectionManagerWindow', (event) => {
     const senderWindow = BrowserWindow.fromWebContents(event.sender) ?? options.getMainWindow()
     if (senderWindow) {

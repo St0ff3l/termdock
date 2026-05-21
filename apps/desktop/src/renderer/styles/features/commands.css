@@ -689,7 +689,7 @@
 .command-editor-window,
 .standalone-shell {
   min-height: 100vh;
-  background: #1b1b1b;
+  background: var(--bg-main);
   display: flex;
   flex-direction: column;
 }
@@ -727,7 +727,7 @@
 .command-manager-modal.standalone .modal-header span {
   font-size: 13px;
   font-weight: 600;
-  color: #999;
+  color: var(--text-muted);
   pointer-events: auto;
 }
 
@@ -954,7 +954,6 @@
 }
 
 @media (max-width: 1180px) {
-  .command-center-body,
   .command-manager-body {
     grid-template-columns: 1fr;
   }

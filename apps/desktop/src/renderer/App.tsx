@@ -40,6 +40,7 @@ import { defaultLocale, setLocale, t, type AppLocale } from './i18n'
 const TERMINAL_TRANSCRIPT_LIMIT = 200_000
 const STATUS_MESSAGE_TIMEOUT_MS = 15_000
 const REMOTE_METHOD_ERROR_PREFIX = /Error invoking remote method '[^']+':\s*/i
+const THEME_STORAGE_KEY = 'termdock.theme'
 const LOCALE_STORAGE_KEY = 'termdock.locale'
 
 type ErrorDetails = {
@@ -73,8 +74,39 @@ function readStoredLocale(): AppLocale {
     return defaultLocale
   }
 
-  const nextLocale = window.localStorage.getItem(LOCALE_STORAGE_KEY)
-  return nextLocale === 'enUS' || nextLocale === 'zhCN' ? nextLocale : defaultLocale
+  try {
+    const nextLocale = window.localStorage.getItem(LOCALE_STORAGE_KEY)
+    return nextLocale === 'enUS' || nextLocale === 'zhCN' ? nextLocale : defaultLocale
+  } catch {
+    return defaultLocale
+  }
+}
+
+function readInitialTheme(searchParams: URLSearchParams): ThemeMode {
+  const queryTheme = searchParams.get('theme')
+  if (queryTheme === 'default-light' || queryTheme === 'default-dark') {
+    return queryTheme
+  }
+
+  if (typeof window === 'undefined') {
+    return 'default-dark'
+  }
+
+  try {
+    const nextTheme = window.localStorage.getItem(THEME_STORAGE_KEY)
+    return nextTheme === 'default-light' || nextTheme === 'default-dark' ? nextTheme : 'default-dark'
+  } catch {
+    return 'default-dark'
+  }
+}
+
+function readInitialLocale(searchParams: URLSearchParams): AppLocale {
+  const queryLocale = searchParams.get('locale')
+  if (queryLocale === 'enUS' || queryLocale === 'zhCN') {
+    return queryLocale
+  }
+
+  return readStoredLocale()
 }
 
 export function App() {
@@ -147,8 +179,8 @@ export function App() {
   const [sshInteraction, setSshInteraction] = useState<SshInteractionRequest | null>(null)
   const [sshInteractionError, setSshInteractionError] = useState<string | null>(null)
   const [showTransfers, setShowTransfers] = useState(false)
-  const [themeMode, setThemeMode] = useState<ThemeMode>('default-dark')
-  const [locale, setLocaleState] = useState<AppLocale>(() => readStoredLocale())
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => readInitialTheme(searchParams))
+  const [locale, setLocaleState] = useState<AppLocale>(() => readInitialLocale(searchParams))
 
   useThemeMode(themeMode)
 
@@ -162,8 +194,14 @@ export function App() {
   }, [localTabs])
 
   useEffect(() => {
+    window.localStorage.setItem(THEME_STORAGE_KEY, themeMode)
+    void desktopApi?.setUiPreferences({ theme: themeMode })
+  }, [themeMode])
+
+  useEffect(() => {
     setLocale(locale)
     window.localStorage.setItem(LOCALE_STORAGE_KEY, locale)
+    void desktopApi?.setUiPreferences({ locale })
     setLocalTabs((prev) => prev.map((tab) => {
       if (tab.kind === 'home') {
         return { ...tab, title: t.untitledTab }
@@ -176,6 +214,27 @@ export function App() {
       }
     }))
   }, [locale, workspace.tabs])
+
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === THEME_STORAGE_KEY) {
+        const nextTheme = event.newValue
+        if (nextTheme === 'default-dark' || nextTheme === 'default-light') {
+          setThemeMode(nextTheme)
+        }
+      }
+
+      if (event.key === LOCALE_STORAGE_KEY) {
+        const nextLocale = event.newValue
+        if (nextLocale === 'zhCN' || nextLocale === 'enUS') {
+          setLocaleState(nextLocale)
+        }
+      }
+    }
+
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
 
   useEffect(() => {
     if (!desktopApi) {
@@ -1728,7 +1787,7 @@ export function App() {
   if (isFileEditorWindow) {
     return (
       <div className="standalone-shell file-editor-window">
-        <div className="modal-card file-editor-modal file-editor-modal--dark standalone">
+        <div className={`modal-card file-editor-modal ${themeMode === 'default-dark' ? 'file-editor-modal--dark' : ''} standalone`}>
           <div className="modal-header">
             <div className="file-editor-title">
               <span>{fileEditorWindowSource === 'remote' ? t.editRemoteFile : t.editLocalFile}</span>

@@ -1,4 +1,5 @@
 import { app, BrowserWindow } from 'electron'
+import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { registerIpcHandlers } from './ipc/index.js'
@@ -13,11 +14,70 @@ let commandFormWindow: BrowserWindow | null = null
 let fileEditorWindow: BrowserWindow | null = null
 
 const isMac = process.platform === 'darwin'
+const DEFAULT_UI_PREFERENCES = {
+  theme: 'default-dark',
+  locale: 'zhCN'
+} as const
 
-function loadAppWindow(win: BrowserWindow, searchParams?: Record<string, string>) {
+type UiPreferences = {
+  theme: 'default-dark' | 'default-light'
+  locale: 'zhCN' | 'enUS'
+}
+
+let uiPreferences: UiPreferences = { ...DEFAULT_UI_PREFERENCES }
+
+function getUiPreferencesPath() {
+  return path.join(app.getPath('userData'), 'ui-preferences.json')
+}
+
+function normalizeUiPreferences(input?: Partial<UiPreferences> | null): UiPreferences {
+  return {
+    theme: input?.theme === 'default-light' ? 'default-light' : 'default-dark',
+    locale: input?.locale === 'enUS' ? 'enUS' : 'zhCN'
+  }
+}
+
+function readUiPreferences() {
+  try {
+    const raw = fs.readFileSync(getUiPreferencesPath(), 'utf-8')
+    uiPreferences = normalizeUiPreferences(JSON.parse(raw) as Partial<UiPreferences>)
+  } catch {
+    uiPreferences = { ...DEFAULT_UI_PREFERENCES }
+  }
+}
+
+function writeUiPreferences(next: UiPreferences) {
+  uiPreferences = next
+  try {
+    fs.writeFileSync(getUiPreferencesPath(), JSON.stringify(next, null, 2), 'utf-8')
+  } catch (error) {
+    console.error('[TermDock] failed to persist ui preferences', error)
+  }
+}
+
+function updateUiPreferences(input: Partial<UiPreferences>) {
+  const next = normalizeUiPreferences({
+    ...uiPreferences,
+    ...input
+  })
+  writeUiPreferences(next)
+  return next
+}
+
+function getWindowBackgroundColor(theme: UiPreferences['theme']) {
+  return theme === 'default-light' ? '#f8fafc' : '#151515'
+}
+
+function loadAppWindow(win: BrowserWindow, searchParams?: Record<string, string>, preferences: UiPreferences = uiPreferences) {
+  const query = {
+    ...(searchParams ?? {}),
+    theme: preferences.theme,
+    locale: preferences.locale
+  }
+
   if (!app.isPackaged) {
     const url = new URL('http://localhost:5188')
-    Object.entries(searchParams ?? {}).forEach(([key, value]) => {
+    Object.entries(query).forEach(([key, value]) => {
       url.searchParams.set(key, value)
     })
     win.loadURL(url.toString())
@@ -25,7 +85,7 @@ function loadAppWindow(win: BrowserWindow, searchParams?: Record<string, string>
   }
 
   win.loadFile(path.join(__dirname, '../../dist/index.html'), {
-    query: searchParams
+    query
   })
 }
 
@@ -38,7 +98,7 @@ function createMainWindow() {
     title: 'TermDock',
     titleBarStyle: isMac ? 'hiddenInset' : 'default',
     trafficLightPosition: isMac ? { x: 20, y: 18 } : undefined,
-    backgroundColor: '#151515',
+    backgroundColor: getWindowBackgroundColor(uiPreferences.theme),
     webPreferences: {
       preload: path.join(__dirname, '../preload/preload.cjs'),
       contextIsolation: true,
@@ -55,7 +115,7 @@ function createMainWindow() {
   })
 
   if (!app.isPackaged) {
-    loadAppWindow(win)
+    loadAppWindow(win, undefined, uiPreferences)
     win.webContents.on('did-finish-load', async () => {
       try {
         const hasDesktopApi = await win.webContents.executeJavaScript('Boolean(window.termdock?.isDesktop)')
@@ -68,7 +128,7 @@ function createMainWindow() {
     return win
   }
 
-  loadAppWindow(win)
+  loadAppWindow(win, undefined, uiPreferences)
   return win
 }
 
@@ -87,7 +147,7 @@ function createNativeChildWindow(options: {
     minHeight: options.minHeight,
     show: false,
     title: options.title,
-    backgroundColor: options.backgroundColor ?? '#1b1b1b',
+    backgroundColor: options.backgroundColor ?? getWindowBackgroundColor(uiPreferences.theme),
     autoHideMenuBar: true,
     titleBarStyle: isMac ? 'hiddenInset' : 'default',
     trafficLightPosition: isMac ? { x: 16, y: 14 } : undefined,
@@ -141,7 +201,7 @@ function openConnectionManagerWindow(parent: BrowserWindow) {
     }
   })
 
-  loadAppWindow(win, { window: 'connection-manager' })
+  loadAppWindow(win, { window: 'connection-manager' }, uiPreferences)
 }
 
 function openCommandManagerWindow(parent: BrowserWindow) {
@@ -169,7 +229,7 @@ function openCommandManagerWindow(parent: BrowserWindow) {
     }
   })
 
-  loadAppWindow(win, { window: 'command-manager' })
+  loadAppWindow(win, { window: 'command-manager' }, uiPreferences)
 }
 
 function openConnectionFormWindow(parent: BrowserWindow, mode: 'create' | 'edit', profileId?: string) {
@@ -200,7 +260,7 @@ function openConnectionFormWindow(parent: BrowserWindow, mode: 'create' | 'edit'
     window: 'connection-form',
     mode,
     ...(profileId ? { profileId } : {})
-  })
+  }, uiPreferences)
 }
 
 function openCommandFormWindow(parent: BrowserWindow, mode: 'create' | 'edit', commandId?: string, folderId?: string) {
@@ -232,7 +292,7 @@ function openCommandFormWindow(parent: BrowserWindow, mode: 'create' | 'edit', c
     mode,
     ...(commandId ? { commandId } : {}),
     ...(folderId ? { folderId } : {})
-  })
+  }, uiPreferences)
 }
 
 function openFileEditorWindow(parent: BrowserWindow, input: {
@@ -253,7 +313,7 @@ function openFileEditorWindow(parent: BrowserWindow, input: {
     height: 460,
     minWidth: 920,
     minHeight: 400,
-    backgroundColor: '#171b20'
+    backgroundColor: uiPreferences.theme === 'default-light' ? '#f8fafc' : '#171b20'
   })
 
   fileEditorWindow = win
@@ -274,12 +334,23 @@ function openFileEditorWindow(parent: BrowserWindow, input: {
     name: input.name,
     ...(input.tabId ? { tabId: input.tabId } : {}),
     ...(input.encoding ? { encoding: input.encoding } : {})
-  })
+  }, uiPreferences)
 }
 
 app.whenReady().then(() => {
+  readUiPreferences()
   registerIpcHandlers(app.getPath('userData'), {
     getMainWindow: () => mainWindow,
+    getUiPreferences: () => uiPreferences,
+    setUiPreferences: (input) => {
+      const next = updateUiPreferences(input)
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed()) {
+          window.setBackgroundColor(getWindowBackgroundColor(next.theme))
+        }
+      }
+      return next
+    },
     openConnectionManagerWindow,
     openCommandManagerWindow,
     openConnectionFormWindow,

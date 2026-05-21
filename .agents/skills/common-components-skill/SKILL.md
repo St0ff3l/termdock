@@ -1,204 +1,385 @@
 # TermDock 通用组件技能指南
 
-## 一、项目结构概述
+## 概述
 
-TermDock 是一个基于 **Electron + React + TypeScript** 的桌面远程工作台应用，采用 Monorepo 结构。
-
-```
-termdock/
-├── apps/           # 应用层（可执行应用）
-│   └── desktop/    # 桌面应用主目录
-├── packages/       # 共享包（可复用模块）
-│   ├── core/       # 领域模型的唯一数据源
-│   ├── shared/     # 共享常量和轻量工具函数
-│   └── storage/    # 存储抽象层
-└── docs/           # 文档目录
-```
-
-### 核心技术栈
-
-| 层级 | 技术 | 说明 |
-|------|------|------|
-| 框架 | Electron 28+ | 桌面应用容器 |
-| 前端 | React 18 + TypeScript | UI 框架 |
-| 构建 | Vite | 构建工具 |
-| 终端 | xterm.js | 终端组件 |
+本指南详细介绍 TermDock 项目中的通用组件架构、CSS 主题系统，以及独立窗口在亮暗主题下的落地方式。
 
 ---
 
-## 二、前端代码结构
+## 一、通用组件架构
 
-前端代码位于 `apps/desktop/src/renderer/`，采用功能模块划分：
-
-### 2.1 Renderer 层结构
+### 1.1 组件目录结构
 
 ```
 renderer/
-├── components/     # 通用组件
-├── features/       # 业务功能模块
-│   ├── connections/    # 连接管理
-│   ├── files/          # 文件管理
-│   ├── commands/       # 命令面板
-│   ├── transfers/      # 文件传输
-│   ├── layout/         # 布局组件
-│   ├── system/         # 系统信息
-│   ├── workspace/      # 工作区
-│   └── common/         # 通用功能组件
-├── hooks/          # 自定义 Hooks
-├── styles/         # 样式文件
-├── App.tsx         # 根组件
-└── main.tsx        # 入口文件
+├── components/           # 核心通用组件
+│   └── TerminalView.tsx  # 终端视图组件
+└── features/
+    └── common/           # 通用功能组件
+        ├── AppIcon.tsx           # 图标组件
+        ├── ContextMenu.tsx       # 右键菜单组件
+        └── horizontal-scroll.ts  # 水平滚动工具函数
 ```
 
-### 2.2 架构边界
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     Renderer (React)                        │
-│  ┌───────────────────┐  ┌─────────────────────────────────┐ │
-│  │  UI Components    │  │         Features                │ │
-│  │  (TerminalView)   │  │ (connections, files, commands)  │ │
-│  └────────┬──────────┘  └──────────────┬──────────────────┘ │
-│           │                             │                    │
-└───────────┼─────────────────────────────┼────────────────────┘
-            │                             │
-            ▼                             ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      Preload                                │
-│         安全的 IPC 桥梁，暴露系统能力给前端                    │
-└─────────────────────────────────────────────────────────────┘
-            │
-            ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      Main Process                           │
-│  ┌───────────────────┐  ┌─────────────────────────────────┐ │
-│  │      IPC Handlers │  │       Services                  │ │
-│  │  (ipc/*.ts)       │  │ (ssh, ftp, workspace, files)   │ │
-│  └───────────────────┘  └─────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 三、通用组件清单
-
-### 3.1 主组件目录 `renderer/components/`
-
-| 组件 | 文件 | 功能描述 |
-|------|------|----------|
-| **TerminalView** | `TerminalView.tsx` | 终端视图核心组件，基于 xterm.js，支持 SSH 会话展示、复制粘贴、搜索查找、右键菜单 |
-
-### 3.2 通用功能组件 `renderer/features/common/`
-
-| 组件 | 文件 | 功能描述 |
-|------|------|----------|
-| **AppIcon** | `AppIcon.tsx` | 统一 SVG 图标组件，支持 11 种图标类型 |
-| **ContextMenu** | `ContextMenu.tsx` | 右键上下文菜单组件 |
-| **handleHorizontalWheelScroll** | `horizontal-scroll.ts` | 水平滚动处理工具函数 |
-
-### 3.3 组件功能详解
+### 1.2 核心组件说明
 
 #### TerminalView（终端组件）
-- 基于 `@xterm/xterm` 构建
-- 支持主题颜色定制（CSS 变量）
+
+**文件路径**：`apps/desktop/src/renderer/components/TerminalView.tsx`
+
+**功能特性**：
+- 基于 `@xterm/xterm` 构建的终端视图
+- 支持主题颜色定制（通过 CSS 变量）
 - 快捷键支持：复制(⌘C/Ctrl+Shift+C)、粘贴(⌘V/Ctrl+Shift+V)、查找(⌘F/Ctrl+F)
-- 右键上下文菜单
+- 右键上下文菜单集成
 - 自动适配容器尺寸
+- 国际化文本支持
+
+**关键依赖**：
+```typescript
+import { Terminal } from '@xterm/xterm'
+import { FitAddon } from '@xterm/addon-fit'
+import { ContextMenu } from '../features/common/ContextMenu'
+```
 
 #### AppIcon（图标组件）
-- 支持图标类型：`grid`、`menu`、`server`、`connections`、`folder`、`file`、`history`、`refresh`、`upload`、`download`、`flash`
+
+**文件路径**：`apps/desktop/src/renderer/features/common/AppIcon.tsx`
+
+**支持的图标类型**：
+| 图标名 | 用途 |
+|--------|------|
+| `grid` | 网格视图 |
+| `menu` | 菜单按钮 |
+| `server` | 服务器连接 |
+| `connections` | 连接管理 |
+| `folder` | 文件夹 |
+| `file` | 文件 |
+| `history` | 历史记录 |
+| `refresh` | 刷新 |
+| `upload` | 上传 |
+| `download` | 下载 |
+| `flash` | 快速操作 |
+
+**使用方式**：
+```tsx
+<AppIcon name="folder" size={16} />
+```
+
+**特性**：
+- 统一 SVG 图标系统
 - 可自定义尺寸（默认 14px）
 - 颜色继承父元素 `currentColor`
 
-#### ContextMenu（右键菜单）
+#### ContextMenu（右键菜单组件）
+
+**文件路径**：`apps/desktop/src/renderer/features/common/ContextMenu.tsx`
+
+**功能特性**：
 - 点击外部区域自动关闭
 - Esc 键关闭
 - 位置自动调整（避免超出视口）
 - 支持禁用状态和危险操作样式
 
----
-
-## 四、移动端开发方案
-
-当前项目是纯桌面应用，如需支持移动端，推荐以下方案：
-
-### 4.1 方案对比
-
-| 方案 | 优势 | 劣势 | 推荐度 |
-|------|------|------|--------|
-| **React Native** | 复用 React 组件逻辑，TypeScript 支持好，原生性能 | 需要重新实现 UI，学习成本 | ⭐⭐⭐⭐⭐ |
-| **Capacitor** | 保持 Web 技术栈，复用 renderer 层代码 | 性能略差于原生 | ⭐⭐⭐⭐ |
-| **Flutter** | 跨平台一致性好，性能优秀 | 需要学习 Dart，无法复用现有代码 | ⭐⭐⭐ |
-
-### 4.2 React Native 实施路径
-
-```
-1. 架构拆分
-   └─ 确保 packages/core/ 与 UI 完全解耦
-
-2. 项目初始化
-   └─ 在 apps/ 下新建 mobile/ 目录
-   └─ 初始化 React Native 项目
-
-3. 代码复用
-   └─ 复用 packages/core/ 和 packages/shared/
-   └─ 重新实现移动端 UI 组件
-
-4. 原生能力
-   └─ 实现移动端存储和权限逻辑
-   └─ 处理 SSH 连接的移动端适配
+**接口定义**：
+```typescript
+type ContextMenuEntry = {
+  label?: string
+  shortcut?: string
+  disabled?: boolean
+  danger?: boolean
+  action?(): void
+  separator?: boolean
+}
 ```
 
-### 4.3 关键注意事项
+**使用方式**：
+```tsx
+<ContextMenu
+  items={[
+    { label: '复制', shortcut: '⌘C', action: handleCopy },
+    { separator: true },
+    { label: '删除', danger: true, action: handleDelete }
+  ]}
+  onClose={closeMenu}
+  position={{ x: 100, y: 100 }}
+/>
+```
 
-1. **SSH 连接**：移动端需要使用原生 SSH 库或 WebSocket 代理
-2. **存储方案**：使用 React Native AsyncStorage 或 Realm
-3. **权限管理**：处理文件系统权限、网络权限等
-4. **交互适配**：移动端触控交互与桌面端差异较大，需要重新设计
+#### handleHorizontalWheelScroll（水平滚动工具）
+
+**文件路径**：`apps/desktop/src/renderer/features/common/horizontal-scroll.ts`
+
+**功能**：支持鼠标滚轮水平滚动容器
+
+**特性**：
+- 兼容不同浏览器的 deltaMode
+- 边界检测（不滚动超出内容范围）
+
+**使用方式**：
+```tsx
+<div onWheel={handleHorizontalWheelScroll}>
+  {/* 可水平滚动内容 */}
+</div>
+```
 
 ---
 
-## 五、开发规范
+## 二、CSS 主题系统
 
-### 5.1 代码约定
+### 2.1 样式目录结构
 
-- 使用 TypeScript，严格模式
-- 组件命名采用 PascalCase
-- 文件命名采用 kebab-case
-- 函数命名采用 camelCase
+```
+renderer/styles/
+├── themes/               # 主题定义
+│   ├── index.css         # 主题入口
+│   ├── tokens.css        # 设计令牌
+│   ├── default-dark.css  # 暗色主题
+│   └── default-light.css # 亮色主题
+├── features/             # 功能模块样式
+│   ├── session.css       # 会话样式
+│   ├── shell.css         # 终端样式
+│   ├── home.css          # 首页样式
+│   └── ...
+├── app.css               # 应用主样式
+├── global.css            # 全局样式
+└── index.css             # 样式入口
+```
 
-### 5.2 状态管理
+### 2.2 设计令牌（Tokens）
 
-- 领域状态优先进入 `packages/core`
-- UI 状态在组件内部管理
-- 跨组件状态通过 Context 或自定义 Hooks 管理
+主题样式采用 `token -> theme vars -> component skins` 的层级结构。
 
-### 5.3 样式规范
+**核心 CSS 变量**：
 
-- 主题样式优先走 `token -> theme vars -> component skins`
-- 避免在业务组件中硬编码颜色、阴影、圆角
-- 使用 CSS 变量进行主题切换
+| 变量名 | 用途 | 示例值 |
+|--------|------|--------|
+| `--terminal-bg` | 终端背景色 | `#1e1e1e` |
+| `--terminal-text` | 终端文字色 | `#e0e0e0` |
+| `--success` | 成功状态色 | `#39d98a` |
+| `--accent-text` | 强调文字色 | `#c8d0da` |
+| `--text-main` | 主文字色 | `#f1f5f9` |
 
----
+**终端主题变量**：
+```css
+:root {
+  --terminal-bg: #1e1e1e;
+  --terminal-text: #e0e0e0;
+  --terminal-cmd-bg: rgba(148, 163, 184, 0.24);
+  --terminal-search-highlight: rgba(236, 255, 71, 0.82);
+}
+```
 
-## 六、核心入口文件
+### 2.3 主题切换机制
 
-| 文件 | 路径 | 说明 |
+项目支持亮色/暗色主题切换，但当前仓库不是通过 `.theme-dark/.theme-light` 类名控制，而是通过 `document.documentElement.dataset.theme` 和 Electron 窗口启动参数控制。
+
+```css
+/* 默认暗色：未声明主题时也会走暗色 */
+:root:not([data-theme]),
+:root[data-theme='default-dark'],
+:root[data-theme='default'] {
+  color-scheme: dark;
+}
+
+/* 亮色主题 */
+:root[data-theme='default-light'] {
+  color-scheme: light;
+}
+```
+
+**实现方式**：
+- 在 `html` 根元素上设置 `data-theme="default-dark|default-light"`
+- 通过 `apps/desktop/src/renderer/hooks/useThemeMode.ts` 同步 `dataset.theme` 与 `color-scheme`
+- 通过 `apps/desktop/src/renderer/App.tsx` 持久化 `theme` / `locale`
+- 通过 `apps/desktop/src/main/main.ts` 把 `theme` / `locale` 注入独立窗口 query，并设置 `BrowserWindow.backgroundColor`
+- 组件通过 CSS 变量获取颜色值，终端再从 CSS 变量映射到 xterm theme
+
+### 2.3.1 启动阶段防闪色
+
+独立窗口的亮色主题有一个额外约束：不能等 React 挂载后才决定背景色，否则白窗会先闪一下黑底。
+
+当前仓库的处理链路是：
+
+1. `apps/desktop/src/main/main.ts`
+   - 读取持久化的 UI 偏好
+   - 创建 `BrowserWindow` 时按主题设置 `backgroundColor`
+   - 打开独立窗口时把 `theme`、`locale` 作为 query 传给 renderer
+2. `apps/desktop/index.html`
+   - 在脚本最早期读取 query / `localStorage`
+   - 提前设置 `data-theme`、`lang`、启动背景色和 `color-scheme`
+3. `apps/desktop/src/renderer/App.tsx`
+   - 用 query 作为首选初值，再回退到本地存储
+
+如果未来再加新独立窗口，必须沿用这条链路，否则很容易出现“窗口本体是亮色，但出生先黑一下”的问题。
+
+### 2.4 样式规范
+
+1. **避免硬编码**：颜色、阴影、圆角应通过 CSS 变量引用
+2. **主题优先**：所有视觉属性应支持主题切换
+3. **组件隔离**：功能模块样式应独立，避免全局污染
+4. **响应式设计**：使用 `@media` 查询适配不同屏幕尺寸
+
+### 2.5 组件结构与 CSS 主题颜色分离
+
+#### 分离原则
+
+组件的结构样式（layout）与主题颜色（theme）必须分离，遵循以下规则：
+
+| 分类 | 内容 | 示例 |
 |------|------|------|
-| 主进程入口 | `apps/desktop/src/main/main.ts` | Electron 主进程启动 |
-| 渲染进程入口 | `apps/desktop/src/renderer/main.tsx` | React 应用启动 |
-| IPC 注册 | `apps/desktop/src/main/ipc/index.ts` | 进程间通信定义 |
-| 预加载脚本 | `apps/desktop/src/preload/preload.cts` | 安全 API 暴露 |
+| **结构样式** | 布局、尺寸、间距、定位 | `display`, `flex`, `margin`, `padding`, `position` |
+| **主题颜色** | 颜色、背景色、边框色 | `color`, `background-color`, `border-color` |
+
+#### 分离实现
+
+**结构样式**应直接写在组件的 CSS 文件中：
+
+```css
+/* Button.css */
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  outline: none;
+  transition: all 0.2s ease;
+}
+```
+
+**主题颜色**应通过 CSS 变量引用：
+
+```css
+/* Button.css */
+.button {
+  background-color: var(--primary-bg);
+  color: var(--primary-text);
+  border: 1px solid var(--primary-border);
+}
+
+.button:hover {
+  background-color: var(--primary-hover);
+}
+
+.button:active {
+  background-color: var(--primary-active);
+}
+```
+
+#### 主题变量定义
+
+主题颜色集中定义在 `apps/desktop/src/renderer/styles/themes/tokens.css` 中：
+
+```css
+/* themes/tokens.css */
+:root {
+  /* 主色调 */
+  --primary-bg: #3b82f6;
+  --primary-text: #ffffff;
+  --primary-border: #2563eb;
+  --primary-hover: #2563eb;
+  --primary-active: #1d4ed8;
+  
+  /* 成功状态 */
+  --success-bg: #22c55e;
+  --success-text: #ffffff;
+  
+  /* 警告状态 */
+  --warning-bg: #f59e0b;
+  --warning-text: #ffffff;
+  
+  /* 危险状态 */
+  --danger-bg: #ef4444;
+  --danger-text: #ffffff;
+}
+```
+
+#### 暗色主题覆盖
+
+在暗色主题中优先覆盖颜色变量和组件皮肤，无需复制布局结构：
+
+```css
+/* apps/desktop/src/renderer/styles/themes/default-dark.css */
+:root[data-theme='default-dark'] {
+  --primary-bg: #60a5fa;
+  --primary-text: #0f172a;
+  --primary-border: #93c5fd;
+  --primary-hover: #93c5fd;
+  --primary-active: #bfdbfe;
+}
+```
+
+#### 组件编写规范
+
+1. **结构与颜色分离**：组件 CSS 文件中，结构样式直接写值，颜色样式使用 CSS 变量
+2. **变量命名规范**：使用 `--[category]-[property]-[state]` 命名规则
+3. **变量复用**：相同语义的颜色应复用同一个变量（如按钮禁用态统一使用 `--disabled-bg`）
+4. **主题完整性**：确保所有主题变量在亮色/暗色主题中都有定义
+5. **避免内联样式**：颜色值不应写在 JSX 中，应通过 CSS 类名或 CSS 变量引用
+
+### 2.6 独立窗口主题约束
+
+连接管理器、连接表单、命令管理器、命令编辑器、文件编辑器都存在 standalone 形态。处理这类窗口时，额外遵循：
+
+1. **窗口出生底色**：优先在 `main.ts` 设置 `BrowserWindow.backgroundColor`，不要只靠 renderer CSS。
+2. **入口预设主题**：如果窗口首屏可能是亮色，必须在 `apps/desktop/index.html` 挂载前预设 `data-theme`。
+3. **基础层不要写死 dark**：像 `.standalone-shell`、`.command-editor-window` 这类壳层不要直接写 `#1b1b1b`，优先用 `var(--bg-main)` 或透明，再交给主题层覆盖。
+4. **暗色专用类按需挂载**：类似 `file-editor-modal--dark` 只能在暗色主题下添加，不能在组件里永久写死。
+5. **终端主题要主动重刷**：`TerminalView` 这类非纯 CSS 组件要监听根节点主题变化并主动同步内部渲染主题。
 
 ---
 
-## 七、扩展开发建议
+## 三、组件协作关系
 
-如需添加新功能，推荐路径：
+```
+TerminalView
+    └── ContextMenu（右键菜单）
+    └── xterm.js（终端渲染）
 
-1. 在 `.agents/extensions/` 或 `docs/plans/active/` 编写功能草案
-2. 明确影响层级：`core` → `main services` → `ipc` → `preload` → `renderer`
-3. 补充或复用 `packages/core` 类型
-4. 新建或扩展 `main/services/*`
-5. 经由 `ipc.ts` 和 `preload.cts` 暴露能力
-6. 最后接到 renderer 页面或组件
+TabBar
+    └── AppIcon（标签图标）
+    └── ContextMenu（右键菜单）
+
+FileManager
+    └── AppIcon（文件/文件夹图标）
+    └── ContextMenu（右键菜单）
+    └── handleHorizontalWheelScroll（水平滚动）
+
+CommandCenter
+    └── AppIcon（命令图标）
+```
+
+---
+
+## 四、扩展指南
+
+### 4.1 添加新图标
+
+在 `AppIcon.tsx` 中添加新的图标类型：
+
+```tsx
+{name === 'new-icon' ? (
+  <path {...commonProps} d="M..." />
+) : null}
+```
+
+### 4.2 添加新主题
+
+1. 在 `themes/` 目录下创建新的主题文件
+2. 在 `themes/index.css` 中引入
+3. 在 `useThemeMode`、`App.tsx`、窗口 query 初始化与 main 进程 UI 偏好持久化中补齐新主题分支
+4. 如果新主题需要独立窗口支持，同时更新 `apps/desktop/index.html` 启动预设逻辑和 `main.ts` 的窗口背景色映射
+
+### 4.3 创建新通用组件
+
+1. 根据组件类型选择放置位置：
+   - 核心视图组件 → `renderer/components/`
+   - 功能辅助组件 → `renderer/features/common/`
+2. 遵循现有组件的命名和编码规范
+3. 添加相应的样式文件到 `styles/features/`
+4. 如果组件会出现在独立窗口或使用内置渲染器（如 xterm、Monaco），额外检查主题切换和首屏加载是否会闪错色

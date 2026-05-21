@@ -24,6 +24,8 @@ const api: TermdockDesktopApi = {
   platform: typeof process !== 'undefined' ? process.platform : 'unknown',
   appName: 'TermDock',
   isDesktop: true,
+  getUiPreferences: () => ipcRenderer.invoke('app:getUiPreferences'),
+  setUiPreferences: (input) => ipcRenderer.invoke('app:setUiPreferences', input),
   openConnectionManagerWindow: (): Promise<void> =>
     ipcRenderer.invoke('app:openConnectionManagerWindow'),
   openCommandManagerWindow: (): Promise<void> =>

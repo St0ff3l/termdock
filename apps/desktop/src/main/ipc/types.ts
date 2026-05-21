@@ -5,6 +5,8 @@ import type { WorkspaceService } from '../services/workspace-service.js'
 
 export interface IpcWindowOptions {
   getMainWindow(): BrowserWindow | null
+  getUiPreferences(): { theme: 'default-dark' | 'default-light'; locale: 'zhCN' | 'enUS' }
+  setUiPreferences(input: Partial<{ theme: 'default-dark' | 'default-light'; locale: 'zhCN' | 'enUS' }>): { theme: 'default-dark' | 'default-light'; locale: 'zhCN' | 'enUS' }
   openConnectionManagerWindow(parent: BrowserWindow): void
   openCommandManagerWindow(parent: BrowserWindow): void
   openConnectionFormWindow(parent: BrowserWindow, mode: 'create' | 'edit', profileId?: string): void

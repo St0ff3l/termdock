@@ -13,7 +13,7 @@ body,
   color: var(--text-main);
   font-family: "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
-  color-scheme: dark;
+  color-scheme: inherit;
 }
 
 button,

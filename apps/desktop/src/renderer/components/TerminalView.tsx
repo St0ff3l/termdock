@@ -69,6 +69,15 @@ export function TerminalView({
     )
   })
 
+  const applyTerminalTheme = () => {
+    const terminal = terminalRef.current
+    if (!terminal) {
+      return
+    }
+    terminal.options.theme = buildTerminalTheme(findOpen && Boolean(findQuery))
+    terminal.refresh(0, Math.max(terminal.rows - 1, 0))
+  }
+
   const clearFindSelection = () => {
     const terminal = terminalRef.current
     if (terminal?.hasSelection()) {
@@ -359,12 +368,25 @@ export function TerminalView({
   }, [isMac, onStatus, tabId])
 
   useEffect(() => {
-    const terminal = terminalRef.current
-    if (!terminal) {
+    if (!terminalRef.current) {
       return
     }
 
-    terminal.options.theme = buildTerminalTheme(findOpen && Boolean(findQuery))
+    applyTerminalTheme()
+  }, [findOpen, findQuery])
+
+  useEffect(() => {
+    const root = document.documentElement
+    const observer = new MutationObserver(() => {
+      applyTerminalTheme()
+    })
+
+    observer.observe(root, {
+      attributes: true,
+      attributeFilter: ['data-theme', 'style', 'class']
+    })
+
+    return () => observer.disconnect()
   }, [findOpen, findQuery])
 
   useEffect(() => {
