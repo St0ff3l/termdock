@@ -323,8 +323,8 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
     this.shellStream?.write(data)
   }
 
-  async resize(cols: number, rows: number): Promise<void> {
-    this.shellStream?.setWindow(rows, cols, rows * 16, cols * 8)
+  async resize(cols: number, rows: number, width: number, height: number): Promise<void> {
+    this.shellStream?.setWindow(rows, cols, Math.max(0, Math.floor(height)), Math.max(0, Math.floor(width)))
   }
 
   async listRemoteFiles(): Promise<RemoteFileItem[]> {

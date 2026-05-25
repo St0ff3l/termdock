@@ -422,7 +422,7 @@ export interface TermdockDesktopApi {
   downloadFile(tabId: string, remotePath: string, localDirectory: string, options?: TransferTargetOptions): Promise<WorkspaceSnapshot>
   setRemoteFileAccessMode(tabId: string, mode: 'user' | 'root', options?: RemoteFileAccessOptions): Promise<WorkspaceSnapshot>
   writeTerminal(tabId: string, data: string): Promise<void>
-  resizeTerminal(tabId: string, cols: number, rows: number): Promise<void>
+  resizeTerminal(tabId: string, cols: number, rows: number, width: number, height: number): Promise<void>
   openRemotePath(tabId: string, targetPath: string): Promise<WorkspaceSnapshot>
   readRemoteFile(tabId: string, targetPath: string, encoding?: string): Promise<string>
   writeRemoteFile(tabId: string, targetPath: string, content: string, encoding?: string): Promise<WorkspaceSnapshot>
@@ -450,7 +450,7 @@ export interface ShellSessionController extends SessionController {
   readonly type: 'ssh'
   getTerminalTranscript(): string
   write(data: string): Promise<void>
-  resize(cols: number, rows: number): Promise<void>
+  resize(cols: number, rows: number, width: number, height: number): Promise<void>
 }
 
 export interface FileSessionController extends SessionController {

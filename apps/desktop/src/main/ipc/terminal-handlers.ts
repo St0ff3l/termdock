@@ -8,7 +8,7 @@ export function registerTerminalHandlers(services: IpcServices) {
     workspaceService.writeToTerminal(tabId, data)
   )
 
-  ipcMain.handle('terminal:resize', (_, tabId: string, cols: number, rows: number) =>
-    workspaceService.resizeTerminal(tabId, cols, rows)
+  ipcMain.handle('terminal:resize', (_, tabId: string, cols: number, rows: number, width: number, height: number) =>
+    workspaceService.resizeTerminal(tabId, cols, rows, width, height)
   )
 }

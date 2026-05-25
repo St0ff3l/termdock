@@ -37,7 +37,6 @@ import { WorkspaceStage } from './features/workspace/WorkspaceStage'
 import { useThemeMode, type ThemeMode } from './hooks/useThemeMode'
 import { defaultLocale, setLocale, t, type AppLocale } from './i18n'
 
-const TERMINAL_TRANSCRIPT_LIMIT = 200_000
 const STATUS_MESSAGE_TIMEOUT_MS = 15_000
 const REMOTE_METHOD_ERROR_PREFIX = /Error invoking remote method '[^']+':\s*/i
 const THEME_STORAGE_KEY = 'termdock.theme'
@@ -260,26 +259,6 @@ export function App() {
       return
     }
 
-    const offTerminalData = desktopApi.onTerminalData(({ tabId, chunk }) => {
-      setWorkspace((prev) => {
-        const session = prev.sessions[tabId]
-        if (!session) {
-          return prev
-        }
-
-        return {
-          ...prev,
-          sessions: {
-            ...prev.sessions,
-            [tabId]: {
-              ...session,
-              terminalTranscript: appendTerminalTranscript(session.terminalTranscript, chunk)
-            }
-          }
-        }
-      })
-    })
-
     const offSnapshot = desktopApi.onWorkspaceSnapshot((snapshot) => {
       applySnapshot(snapshot)
     })
@@ -295,7 +274,6 @@ export function App() {
     }
 
     return () => {
-      offTerminalData()
       offSnapshot()
     }
   }, [desktopApi, isCommandFormWindow, isCommandManagerWindow, isConnectionFormWindow, isConnectionManagerWindow, isFileEditorWindow])
@@ -2137,15 +2115,6 @@ export function App() {
       ) : null}
     </>
   )
-}
-
-function appendTerminalTranscript(current: string | undefined, chunk: string) {
-  const next = `${current ?? ''}${chunk}`
-  if (next.length <= TERMINAL_TRANSCRIPT_LIMIT) {
-    return next
-  }
-
-  return next.slice(next.length - TERMINAL_TRANSCRIPT_LIMIT)
 }
 
 function fileNameFromPath(filePath: string) {

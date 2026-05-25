@@ -1,11 +1,16 @@
-import { BrowserWindow, ipcMain } from 'electron'
+import { BrowserWindow, ipcMain, type WebContents } from 'electron'
 import type { CommandExecutionOptions, CommandTemplateInput, CreateProfileInput } from '@termdock/core'
 import type { IpcServices, IpcWindowOptions } from './types.js'
 
 export function registerWorkspaceHandlers(services: IpcServices, options: IpcWindowOptions) {
   const { workspaceService, broadcastSnapshot } = services
 
-  ipcMain.handle('workspace:getSnapshot', () => workspaceService.getSnapshot())
+  ipcMain.handle('workspace:getSnapshot', (event) => {
+    if (isWorkspaceWindow(event.sender)) {
+      workspaceService.bindWorkspaceSender(event.sender)
+    }
+    return workspaceService.getSnapshot()
+  })
 
   ipcMain.handle('workspace:createProfile', async (_, input: CreateProfileInput) => {
     const snapshot = await workspaceService.createProfile(input)
@@ -115,8 +120,8 @@ export function registerWorkspaceHandlers(services: IpcServices, options: IpcWin
     return snapshot
   })
 
-  ipcMain.handle('workspace:reconnectTab', async (_, tabId: string) => {
-    const snapshot = await workspaceService.reconnectTab(tabId)
+  ipcMain.handle('workspace:reconnectTab', async (event, tabId: string) => {
+    const snapshot = await workspaceService.reconnectTab(tabId, event.sender)
     broadcastSnapshot(snapshot)
     return snapshot
   })
@@ -132,4 +137,14 @@ export function registerWorkspaceHandlers(services: IpcServices, options: IpcWin
     broadcastSnapshot(snapshot)
     return snapshot
   })
+}
+
+function isWorkspaceWindow(sender: WebContents) {
+  try {
+    const url = new URL(sender.getURL())
+    const windowMode = url.searchParams.get('window')
+    return !windowMode || windowMode === 'main'
+  } catch {
+    return false
+  }
 }

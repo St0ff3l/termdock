@@ -60,6 +60,12 @@ export class WorkspaceService {
     }
   }
 
+  bindWorkspaceSender(sender: WebContents) {
+    for (const tab of this.tabs.list()) {
+      this.sessionRuntime.setSender(tab.id, sender)
+    }
+  }
+
   async createProfile(input: CreateProfileInput): Promise<WorkspaceSnapshot> {
     await this.profileRepository.create(input)
     return this.getSnapshot()
@@ -188,16 +194,18 @@ export class WorkspaceService {
     return this.getSnapshot()
   }
 
-  async reconnectTab(tabId: string): Promise<WorkspaceSnapshot> {
+  async reconnectTab(tabId: string, sender: WebContents): Promise<WorkspaceSnapshot> {
     const tab = this.tabs.getById(tabId)
     if (!tab) {
       throw new Error(`Tab not found: ${tabId}`)
     }
 
-    const sender = this.sessionRuntime.getSender(tabId)
-    if (!sender || sender.isDestroyed()) {
+    const currentSender = this.sessionRuntime.getSender(tabId)
+    const reusableSender = currentSender && !currentSender.isDestroyed() ? currentSender : sender
+    if (!reusableSender || reusableSender.isDestroyed()) {
       throw new Error(`Tab sender unavailable: ${tabId}`)
     }
+    this.sessionRuntime.setSender(tabId, reusableSender)
 
     await this.sessionRuntime.disconnect(tabId)
 
@@ -229,7 +237,7 @@ export class WorkspaceService {
       await controller.setFileAccessMode('root', this.resolvePrivilegedAccess(tabId, current))
     }
     void this.sessionRuntime.connect(tabId, controller)
-    await this.sessionRuntime.emitSnapshot(sender)
+    await this.sessionRuntime.emitSnapshot(reusableSender)
     return this.getSnapshot()
   }
 
@@ -474,12 +482,12 @@ export class WorkspaceService {
     await controller.write(data)
   }
 
-  async resizeTerminal(tabId: string, cols: number, rows: number): Promise<void> {
+  async resizeTerminal(tabId: string, cols: number, rows: number, width: number, height: number): Promise<void> {
     const controller = this.sessionRuntime.getController(tabId)
     if (!controller || controller.type !== 'ssh') {
       return
     }
-    await controller.resize(cols, rows)
+    await controller.resize(cols, rows, width, height)
   }
 
   async openRemotePath(tabId: string, targetPath: string): Promise<WorkspaceSnapshot> {

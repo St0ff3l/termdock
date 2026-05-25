@@ -23,6 +23,7 @@ export class WorkspaceSessionRuntime {
   private readonly metricsRefreshInFlight = new Set<string>()
   private readonly tabSenders = new Map<string, WebContents>()
   private readonly invalidSenders = new WeakSet<WebContents>()
+  private readonly senderDestroyListeners = new WeakSet<WebContents>()
   private readonly pendingSshInteractions = new Map<string, {
     tabId: string
     resolve(response: SshInteractionResponse): void
@@ -53,9 +54,23 @@ export class WorkspaceSessionRuntime {
   setSender(tabId: string, sender: WebContents) {
     this.invalidSenders.delete(sender)
     this.tabSenders.set(tabId, sender)
-    sender.once('destroyed', () => {
-      this.handleSenderDestroyed(sender)
-    })
+    if (!this.senderDestroyListeners.has(sender)) {
+      this.senderDestroyListeners.add(sender)
+      sender.once('destroyed', () => {
+        this.handleSenderDestroyed(sender)
+      })
+    }
+
+    const controller = this.liveControllers.get(tabId)
+    const session = this.sessions.get(tabId)
+    if (
+      controller?.type === 'ssh'
+      && session?.connected
+      && !this.metricsPollers.has(tabId)
+      && this.shouldPollMetrics(controller)
+    ) {
+      this.startMetricsPolling(tabId, controller)
+    }
   }
 
   getSender(tabId: string) {
@@ -231,8 +246,7 @@ export class WorkspaceSessionRuntime {
       }
 
       if (controller.type === 'ssh') {
-        const profile = controller['profile']
-        if (profile.type !== 'ssh' || profile.enableExecChannel !== false) {
+        if (this.shouldPollMetrics(controller)) {
           this.startMetricsPolling(tabId, controller)
         }
       }
@@ -331,6 +345,11 @@ export class WorkspaceSessionRuntime {
     }
 
     const snapshot = await this.options.getSnapshot()
+    if (!this.canSendToSender(sender)) {
+      this.handleSenderDestroyed(sender)
+      return
+    }
+
     const didSend = this.trySend(sender, 'workspace:snapshot', snapshot)
     if (!didSend) {
       this.handleSenderDestroyed(sender)
@@ -365,6 +384,11 @@ export class WorkspaceSessionRuntime {
     this.metricsRefreshInFlight.delete(tabId)
   }
 
+  private shouldPollMetrics(controller: LiveSshSessionController) {
+    const profile = controller['profile']
+    return profile.type !== 'ssh' || profile.enableExecChannel !== false
+  }
+
   private async refreshMetricsForTab(tabId: string, controller: LiveSshSessionController) {
     if (this.metricsRefreshInFlight.has(tabId)) {
       return
@@ -372,7 +396,10 @@ export class WorkspaceSessionRuntime {
 
     const current = this.sessions.get(tabId)
     const sender = this.tabSenders.get(tabId)
-    if (!current || !sender || !current.connected) {
+    if (!current || !sender || !current.connected || !this.canSendToSender(sender)) {
+      if (sender) {
+        this.handleSenderDestroyed(sender)
+      }
       this.stopMetricsPolling(tabId)
       return
     }
@@ -394,6 +421,11 @@ export class WorkspaceSessionRuntime {
         systemMetrics: this.mergeNetworkHistory(latest.systemMetrics, systemMetrics)
       })
 
+      if (!this.canSendToSender(sender)) {
+        this.handleSenderDestroyed(sender)
+        return
+      }
+
       await this.emitSnapshot(sender)
     } finally {
       this.metricsRefreshInFlight.delete(tabId)
@@ -404,16 +436,12 @@ export class WorkspaceSessionRuntime {
     const sender = this.tabSenders.get(tabId)
     if (!sender || !this.canSendToSender(sender)) {
       this.handleSenderDestroyed(sender)
-      this.tabSenders.delete(tabId)
-      this.stopMetricsPolling(tabId)
       return
     }
 
     const didSend = this.trySend(sender, channel, payload)
     if (!didSend) {
       this.handleSenderDestroyed(sender)
-      this.tabSenders.delete(tabId)
-      this.stopMetricsPolling(tabId)
     }
   }
 

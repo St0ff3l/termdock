@@ -6,7 +6,7 @@ import { copyText } from '../app/app-utils'
 import { t } from '../i18n'
 import { ContextMenu } from '../features/common/ContextMenu'
 
-const TERMINAL_BOTTOM_GAP_ROWS = 2
+const MAX_TERMINAL_WRITE_CHARS_PER_FRAME = 128_000
 
 function localizeTerminalText(value: string) {
   return value
@@ -23,18 +23,19 @@ function localizeTerminalText(value: string) {
 
 export function TerminalView({
   tabId,
-  initialText,
+  bootText,
   onStatus
 }: {
   tabId: string
-  initialText: string
+  bootText: string
   onStatus?(message: string | null): void
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const terminalRef = useRef<Terminal | null>(null)
-  const renderedTranscriptRef = useRef(initialText)
   const findInputRef = useRef<HTMLInputElement | null>(null)
-  const initialTextRef = useRef(initialText)
+  const bootTextRef = useRef(bootText)
+  const pendingWriteRef = useRef('')
+  const writeFrameRef = useRef<number | null>(null)
   const bootedTabs = useRef(new Set<string>())
   const wasConnectedRef = useRef(false)
   const [hasSelection, setHasSelection] = useState(false)
@@ -221,6 +222,51 @@ export function TerminalView({
     terminal.focus()
   }
 
+  const flushPendingWrite = () => {
+    writeFrameRef.current = null
+    const terminal = terminalRef.current
+    if (!terminal || !pendingWriteRef.current) {
+      pendingWriteRef.current = ''
+      return
+    }
+
+    const nextChunk = pendingWriteRef.current.slice(0, MAX_TERMINAL_WRITE_CHARS_PER_FRAME)
+    pendingWriteRef.current = pendingWriteRef.current.slice(MAX_TERMINAL_WRITE_CHARS_PER_FRAME)
+    terminal.write(nextChunk)
+
+    if (pendingWriteRef.current) {
+      writeFrameRef.current = window.requestAnimationFrame(flushPendingWrite)
+    }
+  }
+
+  const scheduleTerminalWrite = (text: string) => {
+    pendingWriteRef.current += text
+    if (writeFrameRef.current === null) {
+      writeFrameRef.current = window.requestAnimationFrame(flushPendingWrite)
+    }
+  }
+
+  const syncTerminalSize = (fitAddon: FitAddon, terminal: Terminal) => {
+    const host = hostRef.current
+    if (!host) {
+      return
+    }
+
+    const { width, height } = host.getBoundingClientRect()
+    if (width <= 0 || height <= 0) {
+      return
+    }
+
+    fitAddon.fit()
+    void window.termdock?.resizeTerminal(
+      tabId,
+      terminal.cols,
+      terminal.rows,
+      Math.floor(width),
+      Math.floor(height)
+    )
+  }
+
   useEffect(() => {
     if (!hostRef.current) {
       return
@@ -239,26 +285,14 @@ export function TerminalView({
     terminal.open(hostRef.current)
     terminalRef.current = terminal
 
-    const fitTerminal = () => {
-      const dimensions = fitAddon.proposeDimensions()
+    syncTerminalSize(fitAddon, terminal)
 
-      if (!dimensions) {
-        return
-      }
-
-      terminal.resize(dimensions.cols, Math.max(1, dimensions.rows - TERMINAL_BOTTOM_GAP_ROWS))
+    if (bootTextRef.current) {
+      terminal.write(localizeTerminalText(bootTextRef.current))
     }
-
-    fitTerminal()
-
-    if (initialTextRef.current) {
-      terminal.write(localizeTerminalText(initialTextRef.current))
-    }
-    renderedTranscriptRef.current = localizeTerminalText(initialTextRef.current)
 
     const resize = () => {
-      fitTerminal()
-      void window.termdock?.resizeTerminal(tabId, terminal.cols, terminal.rows)
+      syncTerminalSize(fitAddon, terminal)
     }
 
     const onDataDispose = terminal.onData((data) => {
@@ -269,19 +303,13 @@ export function TerminalView({
       void window.termdock?.writeTerminal(tabId, data)
     })
 
-    const onResizeDispose = terminal.onResize(({ cols, rows }) => {
-      void window.termdock?.resizeTerminal(tabId, cols, rows)
-    })
-
     const onSelectionDispose = terminal.onSelectionChange(() => {
       setHasSelection(terminal.hasSelection())
     })
 
     const offData = window.termdock?.onTerminalData(({ tabId: nextTabId, chunk }) => {
       if (nextTabId === tabId) {
-        const localizedChunk = localizeTerminalText(chunk)
-        terminal.write(localizedChunk)
-        renderedTranscriptRef.current += localizedChunk
+        scheduleTerminalWrite(localizeTerminalText(chunk))
       }
     })
 
@@ -289,8 +317,7 @@ export function TerminalView({
       if (nextTabId === tabId) {
         onStatus?.(localizeTerminalText(summary))
         if (wasConnectedRef.current && !connected) {
-          terminal.writeln(`\r\n${t.terminalConnectionClosed}`)
-          renderedTranscriptRef.current += `\r\n${t.terminalConnectionClosed}`
+          scheduleTerminalWrite(`\r\n${t.terminalConnectionClosed}\r\n`)
         }
         wasConnectedRef.current = connected
       }
@@ -355,10 +382,14 @@ export function TerminalView({
 
     return () => {
       onDataDispose.dispose()
-      onResizeDispose.dispose()
       onSelectionDispose.dispose()
       offData?.()
       offState?.()
+      if (writeFrameRef.current !== null) {
+        window.cancelAnimationFrame(writeFrameRef.current)
+      }
+      writeFrameRef.current = null
+      pendingWriteRef.current = ''
       resizeObserver.disconnect()
       hostRef.current?.removeEventListener('contextmenu', onContextMenu)
       window.removeEventListener('keydown', onKeyDown)
@@ -388,39 +419,6 @@ export function TerminalView({
 
     return () => observer.disconnect()
   }, [findOpen, findQuery])
-
-  useEffect(() => {
-    const terminal = terminalRef.current
-    if (!terminal) {
-      initialTextRef.current = initialText
-      renderedTranscriptRef.current = initialText
-      return
-    }
-
-    const localizedInitialText = localizeTerminalText(initialText)
-
-    if (localizedInitialText === renderedTranscriptRef.current) {
-      return
-    }
-
-    terminal.reset()
-    if (localizedInitialText) {
-      terminal.write(localizedInitialText)
-    }
-    renderedTranscriptRef.current = localizedInitialText
-    setHasSelection(false)
-    setContextMenu(null)
-    if (findQuery) {
-      const matches = collectFindMatches(findQuery)
-      setFindMatchCount(matches.length)
-      if (matches.length === 0) {
-        setFindMiss(true)
-        setActiveFindIndex(-1)
-      } else {
-        void selectFindMatch(findQuery, activeFindIndex >= 0 ? Math.min(activeFindIndex, matches.length - 1) : 0, matches)
-      }
-    }
-  }, [initialText])
 
   useEffect(() => {
     if (!findOpen) {
