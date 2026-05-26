@@ -42,6 +42,7 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
     setWindow(rows: number, cols: number, height: number, width: number): void
     end(): void
   }
+  private pendingResize?: { cols: number; rows: number; width: number; height: number }
   private transcript = ''
   private currentRemotePath: string
   private fileAccessMode: 'user' | 'root' = 'user'
@@ -120,8 +121,8 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
           this.ssh.shell(
             {
               term: 'xterm-256color',
-              rows: 32,
-              cols: 120
+              rows: this.pendingResize?.rows ?? 32,
+              cols: this.pendingResize?.cols ?? 120
             },
             (error: Error | undefined, stream: ClientChannel) => {
               if (error) {
@@ -136,6 +137,12 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
               }
 
               this.shellStream = stream
+              if (this.pendingResize) {
+                const { cols, rows, width, height } = this.pendingResize
+                stream.setWindow(rows, cols, Math.max(0, Math.floor(height)), Math.max(0, Math.floor(width)))
+                this.pendingResize = undefined
+              }
+
               stream.on('data', (chunk: Buffer) => {
                 const text = chunk.toString('utf8')
                 this.transcript = trimTranscript(`${this.transcript}${text}`, LiveSshSessionController.TRANSCRIPT_LIMIT)
@@ -342,7 +349,11 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
   }
 
   async resize(cols: number, rows: number, width: number, height: number): Promise<void> {
-    this.shellStream?.setWindow(rows, cols, Math.max(0, Math.floor(height)), Math.max(0, Math.floor(width)))
+    if (this.shellStream) {
+      this.shellStream.setWindow(rows, cols, Math.max(0, Math.floor(height)), Math.max(0, Math.floor(width)))
+    } else {
+      this.pendingResize = { cols, rows, width, height }
+    }
   }
 
   async listRemoteFiles(): Promise<RemoteFileItem[]> {

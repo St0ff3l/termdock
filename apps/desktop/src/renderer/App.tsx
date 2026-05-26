@@ -108,6 +108,23 @@ function readInitialLocale(searchParams: URLSearchParams): AppLocale {
   return readStoredLocale()
 }
 
+function areStringArraysEqual(left: string[], right: string[]) {
+  if (left === right) {
+    return true
+  }
+  if (left.length !== right.length) {
+    return false
+  }
+
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) {
+      return false
+    }
+  }
+
+  return true
+}
+
 export function App() {
   const searchParams = new URLSearchParams(window.location.search)
   const windowMode = searchParams.get('window') ?? 'main'
@@ -367,11 +384,13 @@ export function App() {
           const next = [...kept]
           next.splice(replaceIndex, 1, missing[0])
           pendingHomeReplacementKeyRef.current = null
-          return [...next, ...missing.slice(1)]
+          const nextOrder = [...next, ...missing.slice(1)]
+          return areStringArraysEqual(prev, nextOrder) ? prev : nextOrder
         }
       }
 
-      return [...kept, ...missing]
+      const nextOrder = [...kept, ...missing]
+      return areStringArraysEqual(prev, nextOrder) ? prev : nextOrder
     })
   }, [localTabs, workspace.tabs])
 

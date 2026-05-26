@@ -51,9 +51,7 @@
   min-height: 0;
 }
 
-.terminal-host .xterm,
-.terminal-host .xterm-screen,
-.terminal-host .xterm-helpers {
+.terminal-host .xterm {
   height: 100%;
 }
 

@@ -52,6 +52,7 @@ function rowsForDisplayWidth(width: number, cols: number) {
 }
 
 const TERMINAL_TRANSCRIPT_LIMIT = 200_000
+const TERMINAL_FIT_GUARD_ROWS = 1
 
 function trimTranscript(transcript: string) {
   if (transcript.length <= TERMINAL_TRANSCRIPT_LIMIT) {
@@ -84,6 +85,7 @@ export function TerminalView({
   const suppressHydratedChunksUntilRef = useRef(0)
   const bootedTabs = useRef(new Set<string>())
   const wasConnectedRef = useRef(false)
+  const lastSyncedSizeRef = useRef<{ cols: number; rows: number; width: number; height: number } | null>(null)
   const [hasSelection, setHasSelection] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [findOpen, setFindOpen] = useState(false)
@@ -321,6 +323,8 @@ export function TerminalView({
     renderedTranscriptRef.current = trimTranscript(`${renderedTranscriptRef.current}${chunk}`)
   }
 
+  const formatTerminalChunk = (value: string) => toDisplayTerminalText(value)
+
   const replaceTerminalWithTranscript = (terminal: Terminal, transcript: string) => {
     renderedTranscriptRef.current = trimTranscript(transcript)
     pendingWriteRef.current = ''
@@ -331,7 +335,7 @@ export function TerminalView({
     isWritingRef.current = false
     clearInlineRedrawState()
     terminal.reset()
-    terminal.write(normalizeInlineRedrawChunk(terminal, toDisplayTerminalText(renderedTranscriptRef.current)))
+    terminal.write(formatTerminalChunk(renderedTranscriptRef.current))
     suppressHydratedChunksUntilRef.current = Date.now() + 1500
   }
 
@@ -344,6 +348,13 @@ export function TerminalView({
       return true
     }
 
+    // Replaying a live terminal transcript breaks full-screen TUIs like nano/vim.
+    // Once the PTY is connected and we've already rendered content, trust the
+    // streaming terminal:data channel instead of resetting and rehydrating.
+    if (connected) {
+      return false
+    }
+
     if (nextTranscript.length < currentTranscript.length) {
       return true
     }
@@ -352,11 +363,7 @@ export function TerminalView({
       return true
     }
 
-    if (!connected) {
-      return true
-    }
-
-    return currentTranscript.length < 512
+    return true
   }
 
   const buildInlineRedrawPrefix = (rows: number) => {
@@ -464,13 +471,43 @@ export function TerminalView({
       return
     }
 
-    fitAddon.fit()
+    const proposed = fitAddon.proposeDimensions()
+    if (!proposed) {
+      return
+    }
+
+    // xterm's fit calculation can be optimistic by a sliver in Electron split panes.
+    // Keep one row of breathing room so full-screen TUIs do not draw their status
+    // bars under the file panel/resizer.
+    const rows = Math.max(1, proposed.rows - TERMINAL_FIT_GUARD_ROWS)
+    if (terminal.cols !== proposed.cols || terminal.rows !== rows) {
+      terminal.resize(proposed.cols, rows)
+    }
+
+    const nextSize = {
+      cols: terminal.cols,
+      rows: terminal.rows,
+      width: Math.floor(width),
+      height: Math.floor(height)
+    }
+    const previousSize = lastSyncedSizeRef.current
+    if (
+      previousSize
+      && previousSize.cols === nextSize.cols
+      && previousSize.rows === nextSize.rows
+      && previousSize.width === nextSize.width
+      && previousSize.height === nextSize.height
+    ) {
+      return
+    }
+    lastSyncedSizeRef.current = nextSize
+
     void window.termdock?.resizeTerminal(
       tabId,
-      terminal.cols,
-      terminal.rows,
-      Math.floor(width),
-      Math.floor(height)
+      nextSize.cols,
+      nextSize.rows,
+      nextSize.width,
+      nextSize.height
     )
   }
 
@@ -481,8 +518,8 @@ export function TerminalView({
 
     const terminal = new Terminal({
       fontFamily: '"SF Mono", Menlo, Consolas, monospace',
-      fontSize: 14,
-      lineHeight: 1.45,
+      fontSize: 13,
+      lineHeight: 1.05,
       cursorBlink: true,
       allowTransparency: true,
       scrollback: 6000,
@@ -522,7 +559,7 @@ export function TerminalView({
           return
         }
         appendRenderedTranscript(chunk)
-        scheduleTerminalWrite(normalizeInlineRedrawChunk(terminal, toDisplayTerminalText(chunk)))
+        scheduleTerminalWrite(formatTerminalChunk(chunk))
       }
     })
 
@@ -609,6 +646,7 @@ export function TerminalView({
       pendingWriteRef.current = ''
       renderedTranscriptRef.current = ''
       suppressHydratedChunksUntilRef.current = 0
+      lastSyncedSizeRef.current = null
       clearInlineRedrawState()
       resizeObserver.disconnect()
       hostRef.current?.removeEventListener('contextmenu', onContextMenu)

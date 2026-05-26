@@ -262,6 +262,23 @@ function buildScrollingWindow(samples: NetworkSamplePoint[], visibleCount: numbe
   return [...padded, ...samples].slice(-windowSize)
 }
 
+function areSampleWindowsEqual(left: NetworkSamplePoint[], right: NetworkSamplePoint[]) {
+  if (left === right) {
+    return true
+  }
+  if (left.length !== right.length) {
+    return false
+  }
+
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index]?.rx !== right[index]?.rx || left[index]?.tx !== right[index]?.tx) {
+      return false
+    }
+  }
+
+  return true
+}
+
 function formatTrafficLabel(value: number) {
   if (value >= 1024 * 1024) {
     return `${(value / 1024 / 1024).toFixed(value >= 10 * 1024 * 1024 ? 0 : 1)}M`
@@ -321,22 +338,22 @@ function NetworkPanel({ metrics }: { metrics?: SystemMetrics }) {
     }
 
     if (interfaceChanged) {
-      setDisplaySamples(samples)
+      setDisplaySamples((current) => areSampleWindowsEqual(current, samples) ? current : samples)
       setChartOffset(-chartStep)
       return
     }
 
     if (!sampleAdvanced) {
-      setDisplaySamples(samples)
-      setChartOffset(-chartStep)
+      setDisplaySamples((current) => areSampleWindowsEqual(current, samples) ? current : samples)
+      setChartOffset((current) => current === -chartStep ? current : -chartStep)
       return
     }
 
     const startTime = performance.now()
     const duration = 420
 
-    setDisplaySamples(samples)
-    setChartOffset(0)
+    setDisplaySamples((current) => areSampleWindowsEqual(current, samples) ? current : samples)
+    setChartOffset((current) => current === 0 ? current : 0)
 
     const animate = (now: number) => {
       const progress = Math.min(1, (now - startTime) / duration)

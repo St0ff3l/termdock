@@ -497,7 +497,7 @@ textarea:focus-visible,
 }
 
 .terminal-host {
-  padding: 16px 18px 16px 15px;
+  padding: 10px 14px 10px 12px;
   background: transparent;
   box-shadow: none;
 }

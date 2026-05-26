@@ -188,12 +188,17 @@ export class WorkspaceSessionRuntime {
   }
 
   async connect(tabId: string, controller: LiveSessionController) {
+    this.liveControllers.set(tabId, controller)
+
     try {
       await controller.connect()
-      this.liveControllers.set(tabId, controller)
 
       const current = this.sessions.get(tabId)
       if (!current) {
+        if (this.liveControllers.get(tabId) === controller) {
+          this.liveControllers.delete(tabId)
+          await controller.disconnect().catch(() => undefined)
+        }
         return
       }
 
@@ -251,6 +256,9 @@ export class WorkspaceSessionRuntime {
         }
       }
     } catch (error) {
+      if (this.liveControllers.get(tabId) === controller) {
+        this.liveControllers.delete(tabId)
+      }
       const current = this.sessions.get(tabId)
       if (current) {
         const message = error instanceof Error ? error.message : '未知错误'

@@ -32,6 +32,12 @@ terminal spacing issue = xterm mount box and fit box are the same node
 - 内层 `terminal-inner` 负责给 `xterm` 挂载和执行 `fitAddon.fit()`。
 - `terminal-host` 需要 `box-sizing: border-box`，确保 padding 不把外层高度撑爆。
 
+在最近一次回归里，我们又补了一个更稳的保护层：
+
+- `fitAddon.proposeDimensions()` 计算出来的行数会减去 1 行安全余量，再上报给主进程。
+- 这个余量专门留给 nano / vim 这类全屏 TUI 的底部状态行和菜单行，避免它们和文件 dock 的边界抢高度。
+- `xterm` 内部的 `.xterm-screen` / `.xterm-helpers` 不再被额外强制拉成 `height: 100%`，让 xterm 自己按渲染尺寸管理内部画布。
+
 当前实现位置：
 
 - 结构调整在 [apps/desktop/src/renderer/components/TerminalView.tsx](/Users/stoffel/CodeFile/termdock/apps/desktop/src/renderer/components/TerminalView.tsx:700)
@@ -64,7 +70,8 @@ terminal spacing issue = xterm mount box and fit box are the same node
 
 1. 先确认 `xterm` 挂载节点是不是直接等于带 padding 的容器。
 2. 再确认 `fitAddon.fit()` 使用的是不是内层纯内容区尺寸。
-3. 最后才调 `.terminal-host` 的 padding 数值。
+3. 如果全屏 TUI 的底部状态行仍然挤掉，先看是否需要保留 1 行安全余量，而不是继续改 padding。
+4. 最后才调 `.terminal-host` 的 padding 数值。
 
 ## 6. 不推荐的修法
 
