@@ -59,10 +59,12 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
     private readonly requestInteraction: (request: SshInteractionDraft) => Promise<SshInteractionResponse>,
     private readonly rememberTrustedHostFingerprint: (fingerprint: string) => Promise<void>,
     private readonly onData: (chunk: string) => void,
-    private readonly onStateChange: (summary: string, transcript: string, connected: boolean) => void
+    private readonly onStateChange: (summary: string, transcript: string, connected: boolean) => void,
+    initialTranscript?: string
   ) {
     super(id, 'ssh', profile)
     this.currentRemotePath = profile.remotePath || '.'
+    this.transcript = initialTranscript ?? ''
     this.appendSystemMessage('连接主机...\r\n')
   }
 

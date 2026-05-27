@@ -589,6 +589,10 @@ export function TerminalView({
     const offState = window.termdock?.onTerminalState(({ tabId: nextTabId, summary, transcript, connected }) => {
       if (nextTabId === tabId) {
         onStatus?.(localizeTerminalText(summary))
+        const isDisconnecting = wasConnectedRef.current && !connected
+        if (isDisconnecting) {
+          preserveVisibleBufferRef.current = true
+        }
         if (shouldHydrateTranscript(renderedTranscriptRef.current, transcript, connected)) {
           replaceTerminalWithTranscript(terminal, transcript)
         }
@@ -596,8 +600,7 @@ export function TerminalView({
           preserveVisibleBufferRef.current = false
           window.requestAnimationFrame(() => resize(true))
         }
-        if (wasConnectedRef.current && !connected) {
-          preserveVisibleBufferRef.current = true
+        if (isDisconnecting) {
           terminal.write(buildExitAlternateScreenSequence(), () => {
             const visibleTranscript = snapshotTerminalBuffer(terminal)
             const disconnectedTranscript = visibleTranscript

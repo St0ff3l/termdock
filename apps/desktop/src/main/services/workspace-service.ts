@@ -217,22 +217,34 @@ export class WorkspaceService {
 
     const current = this.sessionRuntime.get(tabId)
     const disconnectedTranscript = appendDisconnectedTranscript(current?.terminalTranscript)
-    const controller = this.createController(tabId, profile)
+    this.sessionRuntime.set(tabId, {
+      profileId: profile.id,
+      accessHost: profile.host,
+      summary: current?.accessHost ? `Disconnected from ${current.accessHost}` : 'Disconnected',
+      terminalTranscript: disconnectedTranscript,
+      remotePath: current?.remotePath ?? profile.remotePath,
+      remoteFiles: [],
+      fileAccessMode: current?.fileAccessMode ?? 'user',
+      sudoUser: current?.sudoUser ?? (profile.type === 'ssh' ? 'root' : undefined),
+      hasReusableSudoAuth: false,
+      connected: false,
+      systemMetrics: undefined
+    })
+
+    const controller = this.createController(tabId, profile, disconnectedTranscript)
     this.sessionRuntime.set(tabId, {
       profileId: profile.id,
       accessHost: profile.host,
       summary: profile.type === 'ssh' ? '连接主机...' : `连接主机 ${profile.host}:${profile.port}...`,
       terminalTranscript:
-        controller.type === 'ssh'
-          ? `${disconnectedTranscript}${controller.getTerminalTranscript()}`
-          : undefined,
+        controller.type === 'ssh' ? controller.getTerminalTranscript() : undefined,
       remotePath: current?.remotePath ?? profile.remotePath,
-      remoteFiles: current?.remoteFiles ?? [],
+      remoteFiles: [],
       fileAccessMode: current?.fileAccessMode ?? controller.getFileAccessMode(),
       sudoUser: current?.sudoUser ?? (profile.type === 'ssh' ? 'root' : undefined),
       hasReusableSudoAuth: current?.hasReusableSudoAuth ?? (controller.type === 'ssh' ? controller.hasReusableSudoAuth() : false),
       connected: false,
-      systemMetrics: current?.systemMetrics
+      systemMetrics: undefined
     })
     this.tabs.updateStatus(tabId, 'connecting')
     this.tabs.activate(tabId)
@@ -274,9 +286,11 @@ export class WorkspaceService {
       ...current,
       summary: current.accessHost ? `Disconnected from ${current.accessHost}` : 'Disconnected',
       terminalTranscript: disconnectedTranscript,
+      remoteFiles: [],
       fileAccessMode: 'user',
       hasReusableSudoAuth: false,
-      connected: false
+      connected: false,
+      systemMetrics: undefined
     })
     this.tabs.updateStatus(tabId, 'closed')
     await this.sessionRuntime.emitSnapshotForTab(tabId)
@@ -632,8 +646,8 @@ export class WorkspaceService {
     return this.getSnapshot()
   }
 
-  private createController(tabId: string, profile: ConnectionProfile) {
-    return this.sessionRuntime.createController(tabId, profile)
+  private createController(tabId: string, profile: ConnectionProfile, initialTranscript?: string) {
+    return this.sessionRuntime.createController(tabId, profile, initialTranscript)
   }
 
   private resolvePrivilegedAccess(

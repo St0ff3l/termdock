@@ -137,7 +137,7 @@ export class WorkspaceSessionRuntime {
     pending.resolve(response)
   }
 
-  createController(tabId: string, profile: ConnectionProfile): LiveSessionController {
+  createController(tabId: string, profile: ConnectionProfile, initialTranscript?: string): LiveSessionController {
     if (profile.type === 'ssh') {
       let sshController: LiveSshSessionController | null = null
       sshController = new LiveSshSessionController(
@@ -180,7 +180,8 @@ export class WorkspaceSessionRuntime {
               connected
             })
             void this.emitSnapshotForTab(tabId)
-          }
+          },
+          initialTranscript
         )
       return sshController
     }
