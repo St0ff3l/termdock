@@ -17,15 +17,24 @@ export function SessionWorkspace({
   tabs,
   localItems,
   localPath,
+  canPasteToLocal,
+  canPasteToRemote,
+  clipboardStatusText,
+  localCutPaths,
+  remoteCutPaths,
   commandFolders,
   commandTemplates,
   isBusy,
+  onCopyItems,
+  onCutItems,
+  onClearCutState,
   onExecuteCommand,
   onOpenCommandManager,
   onOpenLocalItem,
   onOpenLocalPath,
   onOpenRemoteItem,
   onOpenRemotePath,
+  onPasteIntoPane,
   onRequestChangePermissions,
   onRequestDelete,
   onRequestNewFile,
@@ -45,15 +54,24 @@ export function SessionWorkspace({
   tabs: WorkspaceTab[]
   localItems: LocalFileItem[]
   localPath: string
+  canPasteToLocal: boolean
+  canPasteToRemote: boolean
+  clipboardStatusText: string | null
+  localCutPaths: string[]
+  remoteCutPaths: string[]
   commandFolders: CommandFolder[]
   commandTemplates: CommandTemplate[]
   isBusy: boolean
+  onCopyItems(pane: 'local' | 'remote', items: Array<LocalFileItem | RemoteFileItem>): void
+  onCutItems(pane: 'local' | 'remote', items: Array<LocalFileItem | RemoteFileItem>): void
+  onClearCutState(): void
   onExecuteCommand(commandId: string, args: string[], options: CommandExecutionOptions, scope: 'current' | 'all-ssh'): void
   onOpenCommandManager(): void
   onOpenLocalItem(item: LocalFileItem): void
   onOpenLocalPath(path: string): void
   onOpenRemoteItem(item: RemoteFileItem): void
   onOpenRemotePath(path: string): void
+  onPasteIntoPane(pane: 'local' | 'remote'): void
   onRequestChangePermissions(pane: 'local' | 'remote', item: LocalFileItem | RemoteFileItem): void
   onRequestDelete(pane: 'local' | 'remote', items: Array<LocalFileItem | RemoteFileItem>): void
   onRequestNewFile(pane: 'local' | 'remote', directoryPath: string): void
@@ -167,12 +185,21 @@ export function SessionWorkspace({
         isBusy={isBusy}
         localItems={localItems}
         localPath={localPath}
+        canPasteToLocal={canPasteToLocal}
+        canPasteToRemote={canPasteToRemote}
+        clipboardStatusText={clipboardStatusText}
+        localCutPaths={localCutPaths}
+        remoteCutPaths={remoteCutPaths}
+        onCopyItems={onCopyItems}
+        onCutItems={onCutItems}
+        onClearCutState={onClearCutState}
         onExecuteCommand={onExecuteCommand}
         onOpenCommandManager={onOpenCommandManager}
         onOpenLocalItem={onOpenLocalItem}
         onOpenLocalPath={onOpenLocalPath}
         onOpenRemoteItem={onOpenRemoteItem}
         onOpenRemotePath={onOpenRemotePath}
+        onPasteIntoPane={onPasteIntoPane}
         onRequestChangePermissions={onRequestChangePermissions}
         onRequestDelete={onRequestDelete}
         onRequestNewFile={onRequestNewFile}

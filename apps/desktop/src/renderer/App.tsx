@@ -62,11 +62,139 @@ type FileDialogTarget = {
   type: 'file' | 'folder'
 }
 
+type FileClipboardState = {
+  pane: 'local' | 'remote'
+  operation: 'copy' | 'cut'
+  items: FileDialogTarget[]
+  tabId?: string
+}
+
+function areClipboardItemsEqual(left: FileDialogTarget[], right: FileDialogTarget[]) {
+  if (left.length !== right.length) {
+    return false
+  }
+
+  for (let index = 0; index < left.length; index += 1) {
+    const leftItem = left[index]
+    const rightItem = right[index]
+    if (
+      !leftItem
+      || !rightItem
+      || leftItem.pane !== rightItem.pane
+      || leftItem.path !== rightItem.path
+      || leftItem.name !== rightItem.name
+      || leftItem.type !== rightItem.type
+    ) {
+      return false
+    }
+  }
+
+  return true
+}
+
 type FileActionDialog =
   | { kind: 'new-folder'; pane: 'local' | 'remote'; directoryPath: string }
   | { kind: 'new-file'; pane: 'local' | 'remote'; directoryPath: string }
   | { kind: 'rename'; target: FileDialogTarget }
   | { kind: 'delete'; targets: FileDialogTarget[] }
+
+function splitNameForDuplicate(name: string, type: 'file' | 'folder') {
+  if (type === 'folder') {
+    return { stem: name, ext: '' }
+  }
+
+  const dotIndex = name.lastIndexOf('.')
+  if (dotIndex <= 0 || dotIndex === name.length - 1) {
+    return { stem: name, ext: '' }
+  }
+
+  return {
+    stem: name.slice(0, dotIndex),
+    ext: name.slice(dotIndex)
+  }
+}
+
+function makeDuplicateName(name: string, type: 'file' | 'folder', attempt: number) {
+  const { stem, ext } = splitNameForDuplicate(name, type)
+  const suffix = attempt === 1 ? ' copy' : ` copy ${attempt}`
+  return `${stem}${suffix}${ext}`
+}
+
+function allocateTargetNames(
+  items: FileDialogTarget[],
+  existingNames: string[],
+  operation: 'copy' | 'cut',
+  destinationPath: string
+) {
+  const reservedNames = new Set(existingNames)
+  return items.map((item) => {
+    const isSameDirectory = item.pane === 'remote'
+      ? remoteDirname(item.path) === destinationPath
+      : localDirname(item.path) === destinationPath
+
+    let nextName = item.name
+
+    if (operation === 'cut' && isSameDirectory) {
+      reservedNames.add(nextName)
+      return nextName
+    }
+
+    if (reservedNames.has(nextName) || (operation === 'copy' && isSameDirectory)) {
+      let attempt = 1
+      do {
+        nextName = makeDuplicateName(item.name, item.type, attempt)
+        attempt += 1
+      } while (reservedNames.has(nextName))
+    }
+
+    reservedNames.add(nextName)
+    return nextName
+  })
+}
+
+function remoteDirname(targetPath: string) {
+  const normalized = targetPath.replace(/\/+$/, '') || '/'
+  if (normalized === '/') {
+    return '/'
+  }
+  const slashIndex = normalized.lastIndexOf('/')
+  if (slashIndex <= 0) {
+    return '/'
+  }
+  return normalized.slice(0, slashIndex)
+}
+
+function joinRemotePath(directoryPath: string, name: string) {
+  return directoryPath === '/' ? `/${name}` : `${directoryPath.replace(/\/+$/, '')}/${name}`
+}
+
+function normalizeLocalPath(targetPath: string) {
+  return targetPath.replace(/[\\/]+$/, '')
+}
+
+function localDirname(targetPath: string) {
+  const normalized = normalizeLocalPath(targetPath)
+  if (/^[A-Za-z]:$/.test(normalized)) {
+    return `${normalized}\\`
+  }
+  const slashIndex = Math.max(normalized.lastIndexOf('/'), normalized.lastIndexOf('\\'))
+  if (slashIndex <= 0) {
+    return slashIndex === 0 ? normalized.slice(0, 1) : '.'
+  }
+  if (slashIndex === 2 && /^[A-Za-z]:/.test(normalized)) {
+    return normalized.slice(0, 3)
+  }
+  return normalized.slice(0, slashIndex)
+}
+
+function joinLocalPath(directoryPath: string, name: string) {
+  const separator = directoryPath.includes('\\') ? '\\' : '/'
+  const normalized = normalizeLocalPath(directoryPath)
+  if (normalized === separator) {
+    return `${separator}${name}`
+  }
+  return `${normalized}${separator}${name}`
+}
 
 function readStoredLocale(): AppLocale {
   if (typeof window === 'undefined') {
@@ -181,6 +309,7 @@ export function App() {
   const [fileEditorError, setFileEditorError] = useState<string | null>(null)
   const [fileActionDialog, setFileActionDialog] = useState<FileActionDialog | null>(null)
   const [fileActionError, setFileActionError] = useState<string | null>(null)
+  const [fileClipboard, setFileClipboard] = useState<FileClipboardState | null>(null)
   const [permissionDialog, setPermissionDialog] = useState<{
     target: FileDialogTarget & { permission?: string }
     supportsRecursive: boolean
@@ -1222,6 +1351,159 @@ export function App() {
     }
   }
 
+  const setClipboardItems = (operation: 'copy' | 'cut', pane: 'local' | 'remote', items: Array<LocalFileItem | RemoteFileItem>) => {
+    const normalizedItems = items
+      .filter((item) => item.name !== '..')
+      .map((item) => ({
+        pane,
+        path: item.path,
+        name: item.name,
+        type: item.type
+      }))
+
+    if (!normalizedItems.length) {
+      return
+    }
+
+    const nextClipboard = {
+      pane,
+      operation,
+      items: normalizedItems,
+      tabId: pane === 'remote' ? activeTab?.id : undefined
+    } satisfies FileClipboardState
+
+    setFileClipboard((current) => {
+      if (
+        current
+        && current.pane === nextClipboard.pane
+        && current.operation === nextClipboard.operation
+        && current.tabId === nextClipboard.tabId
+        && areClipboardItemsEqual(current.items, nextClipboard.items)
+      ) {
+        return null
+      }
+
+      return nextClipboard
+    })
+  }
+
+  const canPasteIntoLocal = Boolean(fileClipboard)
+
+  const canPasteIntoRemote = Boolean(
+    fileClipboard
+    && activeTab
+    && (
+      fileClipboard.pane !== 'remote'
+      || fileClipboard.tabId === activeTab.id
+    )
+  )
+
+  const localCutPaths = fileClipboard?.operation === 'cut' && fileClipboard.pane === 'local'
+    ? fileClipboard.items.map((item) => item.path)
+    : []
+  const remoteCutPaths = fileClipboard?.operation === 'cut' && fileClipboard.pane === 'remote'
+    ? fileClipboard.items.map((item) => item.path)
+    : []
+  const clipboardStatusText = fileClipboard
+    ? fileClipboard.operation === 'cut'
+      ? (locale === 'zhCN'
+        ? `已剪切 ${fileClipboard.items.length} 个文件，按 Esc 取消`
+        : `Cut ${fileClipboard.items.length} files, press Esc to cancel`)
+      : (locale === 'zhCN'
+        ? `已复制 ${fileClipboard.items.length} 个文件，可在其他目录粘贴`
+        : `Copied ${fileClipboard.items.length} files, ready to paste in another folder`)
+    : null
+
+  const clearCutState = () => {
+    setFileClipboard((current) => current?.operation === 'cut' ? null : current)
+  }
+
+  const handlePasteIntoPane = (pane: 'local' | 'remote') => {
+    if (!desktopApi || !fileClipboard) {
+      return
+    }
+
+    void (async () => {
+      try {
+        setIsBusy(true)
+
+        const destinationDirectory = pane === 'local' ? localPath : activeSession?.remotePath
+        if (!destinationDirectory) {
+          return
+        }
+
+        if (pane === 'remote' && !activeTab) {
+          return
+        }
+
+        if (fileClipboard.pane === 'remote' && pane === 'remote' && fileClipboard.tabId !== activeTab?.id) {
+          throw new Error('暂不支持跨远程会话粘贴，请在原会话内操作或先下载到本地')
+        }
+
+        const existingNames = pane === 'local'
+          ? localItems.filter((item) => item.name !== '..').map((item) => item.name)
+          : (activeSession?.remoteFiles ?? []).filter((item) => item.name !== '..').map((item) => item.name)
+        const targetNames = allocateTargetNames(fileClipboard.items, existingNames, fileClipboard.operation, destinationDirectory)
+
+        if (fileClipboard.pane === 'local' && pane === 'local') {
+          for (const [index, item] of fileClipboard.items.entries()) {
+            const destinationPath = joinLocalPath(destinationDirectory, targetNames[index]!)
+            if (fileClipboard.operation === 'copy') {
+              await desktopApi.copyLocalPath(item.path, destinationPath)
+            } else {
+              await desktopApi.moveLocalPath(item.path, destinationPath)
+            }
+          }
+          await openLocalDirectory(localPath)
+        } else if (fileClipboard.pane === 'local' && pane === 'remote') {
+          for (const [index, item] of fileClipboard.items.entries()) {
+            const snapshot = await desktopApi.uploadFile(activeTab!.id, item.path, destinationDirectory, {
+              targetName: targetNames[index]
+            })
+            applySnapshot(snapshot)
+            if (fileClipboard.operation === 'cut') {
+              await desktopApi.deleteLocalPath(item.path)
+            }
+          }
+          await openLocalDirectory(localPath)
+          await refreshCurrentPane('remote')
+        } else if (fileClipboard.pane === 'remote' && pane === 'local') {
+          for (const [index, item] of fileClipboard.items.entries()) {
+            const snapshot = await desktopApi.downloadRemotePath(fileClipboard.tabId!, item.path, item.type, destinationDirectory, {
+              targetName: targetNames[index]
+            })
+            applySnapshot(snapshot)
+            if (fileClipboard.operation === 'cut') {
+              const deleteSnapshot = await desktopApi.deleteRemotePath(fileClipboard.tabId!, item.path, item.type)
+              applySnapshot(deleteSnapshot)
+            }
+          }
+          await openLocalDirectory(localPath)
+          if (fileClipboard.tabId === activeTab?.id) {
+            await refreshCurrentPane('remote')
+          }
+        } else if (fileClipboard.pane === 'remote' && pane === 'remote') {
+          for (const [index, item] of fileClipboard.items.entries()) {
+            const destinationPath = joinRemotePath(destinationDirectory, targetNames[index]!)
+            const snapshot = fileClipboard.operation === 'copy'
+              ? await desktopApi.copyRemotePath(activeTab!.id, item.path, destinationPath, item.type)
+              : await desktopApi.moveRemotePath(activeTab!.id, item.path, destinationPath)
+            applySnapshot(snapshot)
+          }
+          await refreshCurrentPane('remote')
+        }
+
+        if (fileClipboard.operation === 'cut') {
+          setFileClipboard(null)
+        }
+      } catch (err) {
+        reportError(setError, '粘贴文件', err)
+      } finally {
+        setIsBusy(false)
+      }
+    })()
+  }
+
   const runFileAction = async (action: () => Promise<void>) => {
     try {
       setIsBusy(true)
@@ -1877,6 +2159,14 @@ export function App() {
               isBusy={isBusy}
               localItems={localItems}
               localPath={localPath}
+              canPasteToLocal={canPasteIntoLocal}
+              canPasteToRemote={canPasteIntoRemote}
+              clipboardStatusText={clipboardStatusText}
+              localCutPaths={localCutPaths}
+              remoteCutPaths={remoteCutPaths}
+              onCopyItems={setClipboardItems.bind(null, 'copy')}
+              onCutItems={setClipboardItems.bind(null, 'cut')}
+              onClearCutState={clearCutState}
               onExecuteCommand={(commandId, args, options, scope) => {
                 void executeCommandTemplate(commandId, args, options, scope)
               }}
@@ -1892,6 +2182,7 @@ export function App() {
               onOpenProfile={handleOpenProfile}
               onOpenRemoteItem={handleOpenRemoteItem}
               onOpenRemotePath={handleOpenRemotePath}
+              onPasteIntoPane={handlePasteIntoPane}
               onRequestChangePermissions={requestChangePermissions}
               onRequestDelete={requestDelete}
               onRequestNewFile={requestNewFile}

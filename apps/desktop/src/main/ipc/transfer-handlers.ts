@@ -20,4 +20,8 @@ export function registerTransferHandlers(services: IpcServices) {
   ipcMain.handle('transfer:downloadFile', (event, tabId: string, remotePath: string, localDirectory: string, options?: TransferTargetOptions) =>
     workspaceService.downloadFile(tabId, remotePath, localDirectory, event.sender, options)
   )
+
+  ipcMain.handle('transfer:downloadRemotePath', (event, tabId: string, remotePath: string, targetType: 'file' | 'folder', localDirectory: string, options?: TransferTargetOptions) =>
+    workspaceService.downloadRemotePath(tabId, remotePath, targetType, localDirectory, event.sender, options)
+  )
 }

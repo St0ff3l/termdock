@@ -86,6 +86,14 @@ export class LiveFtpSessionController extends BaseFileSessionController implemen
     }
   }
 
+  async copyRemotePath(_targetPath: string, _destinationPath: string, _targetType: RemoteFileItem['type']): Promise<void> {
+    throw new Error('FTP 暂不支持服务器内复制，请改用下载后上传')
+  }
+
+  async moveRemotePath(targetPath: string, destinationPath: string): Promise<void> {
+    await this.renameRemotePath(targetPath, destinationPath)
+  }
+
   async renameRemotePath(targetPath: string, nextPath: string): Promise<void> {
     await this.ensureConnected()
     await this.ftp.rename(targetPath, nextPath)

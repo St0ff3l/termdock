@@ -32,6 +32,7 @@ export function PanePathBar({
 export function FileTable({
   rows,
   compact = false,
+  cutPaths,
   selectedPaths,
   onClearSelection,
   onContextItem,
@@ -43,6 +44,7 @@ export function FileTable({
 }: {
   rows: RemoteFileItem[]
   compact?: boolean
+  cutPaths?: string[]
   selectedPaths?: string[]
   onClearSelection?(): void
   onContextItem?(event: MouseEvent<HTMLTableRowElement>, item: RemoteFileItem): void
@@ -79,7 +81,7 @@ export function FileTable({
         {rows.length ? rows.map((row) => (
           <tr
             key={row.path}
-            className={`${row.type === 'folder' ? 'is-folder' : 'is-file'} ${selectedPaths?.includes(row.path) ? 'is-selected' : ''}`}
+            className={`${row.type === 'folder' ? 'is-folder' : 'is-file'} ${selectedPaths?.includes(row.path) ? 'is-selected' : ''} ${cutPaths?.includes(row.path) ? 'is-cut-pending' : ''}`}
             onClick={(event) => onSelectItem?.(event, row)}
             onContextMenu={(event) => onContextItem?.(event, row)}
             onDoubleClick={() => onOpenItem?.(row)}
@@ -117,6 +119,7 @@ export function FileTable({
 }
 
 export function LocalFileTable({
+  cutPaths,
   rows,
   selectedPaths,
   onClearSelection,
@@ -127,6 +130,7 @@ export function LocalFileTable({
   onSelectionDragEnter,
   onSelectionDragStart
 }: {
+  cutPaths?: string[]
   rows: LocalFileItem[]
   selectedPaths: string[]
   onClearSelection(): void
@@ -159,7 +163,7 @@ export function LocalFileTable({
         {rows.map((row) => (
           <tr
             key={`${row.path}:${row.name}`}
-            className={`${row.type === 'folder' ? 'is-folder' : 'is-file'} ${selectedPaths.includes(row.path) ? 'is-selected' : ''}`}
+            className={`${row.type === 'folder' ? 'is-folder' : 'is-file'} ${selectedPaths.includes(row.path) ? 'is-selected' : ''} ${cutPaths?.includes(row.path) ? 'is-cut-pending' : ''}`}
             onClick={(event) => onSelectItem(event, row)}
             onContextMenu={(event) => onContextItem(event, row)}
             onDoubleClick={() => onOpenItem(row)}

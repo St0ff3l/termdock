@@ -410,6 +410,8 @@ export interface TermdockDesktopApi {
   writeLocalFile(filePath: string, content: string, encoding?: string): Promise<void>
   createLocalDirectory(dirPath: string, name: string): Promise<void>
   createLocalFile(dirPath: string, name: string): Promise<void>
+  copyLocalPath(sourcePath: string, destinationPath: string): Promise<void>
+  moveLocalPath(sourcePath: string, destinationPath: string): Promise<void>
   renameLocalPath(targetPath: string, newName: string): Promise<void>
   deleteLocalPath(targetPath: string): Promise<void>
   changeLocalPermissions(targetPath: string, options: PermissionChangeOptions): Promise<void>
@@ -420,6 +422,7 @@ export interface TermdockDesktopApi {
   cancelTransfer(transferId: string): Promise<WorkspaceSnapshot>
   uploadFile(tabId: string, localPath: string, remoteDirectory: string, options?: TransferTargetOptions): Promise<WorkspaceSnapshot>
   downloadFile(tabId: string, remotePath: string, localDirectory: string, options?: TransferTargetOptions): Promise<WorkspaceSnapshot>
+  downloadRemotePath(tabId: string, remotePath: string, targetType: RemoteFileItem['type'], localDirectory: string, options?: TransferTargetOptions): Promise<WorkspaceSnapshot>
   setRemoteFileAccessMode(tabId: string, mode: 'user' | 'root', options?: RemoteFileAccessOptions): Promise<WorkspaceSnapshot>
   writeTerminal(tabId: string, data: string): Promise<void>
   resizeTerminal(tabId: string, cols: number, rows: number, width: number, height: number): Promise<void>
@@ -428,6 +431,8 @@ export interface TermdockDesktopApi {
   writeRemoteFile(tabId: string, targetPath: string, content: string, encoding?: string): Promise<WorkspaceSnapshot>
   createRemoteDirectory(tabId: string, parentPath: string, name: string): Promise<WorkspaceSnapshot>
   createRemoteFile(tabId: string, parentPath: string, name: string): Promise<WorkspaceSnapshot>
+  copyRemotePath(tabId: string, targetPath: string, destinationPath: string, targetType: RemoteFileItem['type']): Promise<WorkspaceSnapshot>
+  moveRemotePath(tabId: string, targetPath: string, destinationPath: string): Promise<WorkspaceSnapshot>
   renameRemotePath(tabId: string, targetPath: string, newName: string): Promise<WorkspaceSnapshot>
   deleteRemotePath(tabId: string, targetPath: string, targetType: RemoteFileItem['type']): Promise<WorkspaceSnapshot>
   resolveSshInteraction(requestId: string, response: SshInteractionResponse): Promise<void>
@@ -462,6 +467,8 @@ export interface FileSessionController extends SessionController {
   openRemotePath(path: string): Promise<RemoteFileItem[]>
   readRemoteFile(path: string, encoding?: string): Promise<string>
   writeRemoteFile(path: string, content: string, encoding?: string): Promise<void>
+  copyRemotePath(path: string, destinationPath: string, targetType: RemoteFileItem['type']): Promise<void>
+  moveRemotePath(path: string, destinationPath: string): Promise<void>
   renameRemotePath(path: string, nextPath: string): Promise<void>
   deleteRemotePath(path: string, targetType: RemoteFileItem['type']): Promise<void>
   changeRemotePermissions(path: string, options: PermissionChangeOptions): Promise<void>

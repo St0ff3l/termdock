@@ -1,4 +1,4 @@
-import { chmod, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { chmod, cp, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import type { LocalFileItem, PermissionChangeOptions } from '@termdock/core'
@@ -76,6 +76,35 @@ export class LocalFilesService {
     await writeFile(targetPath, '', 'utf8')
   }
 
+  async copyPath(sourcePath: string, destinationPath: string): Promise<void> {
+    if (sourcePath === destinationPath) {
+      return
+    }
+    await mkdir(path.dirname(destinationPath), { recursive: true })
+    await cp(sourcePath, destinationPath, {
+      recursive: true,
+      errorOnExist: true,
+      force: false,
+      preserveTimestamps: true
+    })
+  }
+
+  async movePath(sourcePath: string, destinationPath: string): Promise<void> {
+    if (sourcePath === destinationPath) {
+      return
+    }
+    await mkdir(path.dirname(destinationPath), { recursive: true })
+    try {
+      await rename(sourcePath, destinationPath)
+    } catch (error) {
+      if (!isCrossDeviceRenameError(error)) {
+        throw error
+      }
+      await this.copyPath(sourcePath, destinationPath)
+      await rm(sourcePath, { recursive: true, force: true })
+    }
+  }
+
   async renamePath(targetPath: string, newName: string): Promise<void> {
     await rename(targetPath, path.join(path.dirname(targetPath), newName))
   }
@@ -126,6 +155,10 @@ function parseMode(mode: string) {
     throw new Error('权限值必须是 3 到 4 位八进制数字，例如 755')
   }
   return Number.parseInt(normalized, 8)
+}
+
+function isCrossDeviceRenameError(error: unknown) {
+  return Boolean(error && typeof error === 'object' && 'code' in error && (error as { code?: string }).code === 'EXDEV')
 }
 
 function formatPermissionBits(mode: number, isDirectory: boolean) {

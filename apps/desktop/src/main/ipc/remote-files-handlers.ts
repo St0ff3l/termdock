@@ -29,6 +29,14 @@ export function registerRemoteFilesHandlers(services: IpcServices) {
     workspaceService.createRemoteFile(tabId, parentPath, name)
   )
 
+  ipcMain.handle('remoteFiles:copyPath', (_, tabId: string, targetPath: string, destinationPath: string, targetType: 'file' | 'folder') =>
+    workspaceService.copyRemotePath(tabId, targetPath, destinationPath, targetType)
+  )
+
+  ipcMain.handle('remoteFiles:movePath', (_, tabId: string, targetPath: string, destinationPath: string) =>
+    workspaceService.moveRemotePath(tabId, targetPath, destinationPath)
+  )
+
   ipcMain.handle('remoteFiles:renamePath', (_, tabId: string, targetPath: string, newName: string) =>
     workspaceService.renameRemotePath(tabId, targetPath, newName)
   )

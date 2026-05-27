@@ -441,6 +441,22 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
     }
   }
 
+  async copyRemotePath(targetPath: string, destinationPath: string, targetType: RemoteFileItem['type']): Promise<void> {
+    const copyCommand = `${targetType === 'folder' ? 'cp -R' : 'cp'} -- ${shellQuote(targetPath)} ${shellQuote(destinationPath)}`
+    const command = `mkdir -p ${shellQuote(path.posix.dirname(destinationPath))} && ${copyCommand}`
+
+    if (this.fileAccessMode === 'root') {
+      await this.execShellFileCommand(command, { allowNonZeroWithStdout: true }, true)
+      return
+    }
+
+    await this.execCommand(`sh -lc ${shellQuote(command)}`, { allowNonZeroWithStdout: true })
+  }
+
+  async moveRemotePath(targetPath: string, destinationPath: string): Promise<void> {
+    await this.renameRemotePath(targetPath, destinationPath)
+  }
+
   async renameRemotePath(targetPath: string, nextPath: string): Promise<void> {
     if (this.fileAccessMode === 'root') {
       await this.execShellFileCommand(

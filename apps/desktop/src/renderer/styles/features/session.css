@@ -304,6 +304,14 @@
   transition: background 0.15s;
 }
 
+.fs-file-table tbody tr.is-cut-pending {
+  opacity: 0.52;
+}
+
+.fs-file-table tbody tr.is-selected.is-cut-pending {
+  opacity: 0.78;
+}
+
 .fs-file-table tbody tr.is-folder {
   cursor: pointer;
 }

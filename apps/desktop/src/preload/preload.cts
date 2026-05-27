@@ -91,6 +91,10 @@ const api: TermdockDesktopApi = {
     ipcRenderer.invoke('localFiles:createDirectory', dirPath, name),
   createLocalFile: (dirPath: string, name: string): Promise<void> =>
     ipcRenderer.invoke('localFiles:createFile', dirPath, name),
+  copyLocalPath: (sourcePath: string, destinationPath: string): Promise<void> =>
+    ipcRenderer.invoke('localFiles:copyPath', sourcePath, destinationPath),
+  moveLocalPath: (sourcePath: string, destinationPath: string): Promise<void> =>
+    ipcRenderer.invoke('localFiles:movePath', sourcePath, destinationPath),
   renameLocalPath: (targetPath: string, newName: string): Promise<void> =>
     ipcRenderer.invoke('localFiles:renamePath', targetPath, newName),
   deleteLocalPath: (targetPath: string): Promise<void> =>
@@ -111,6 +115,8 @@ const api: TermdockDesktopApi = {
     ipcRenderer.invoke('transfer:uploadFile', tabId, localPath, remoteDirectory, options),
   downloadFile: (tabId: string, remotePath: string, localDirectory: string, options?: TransferTargetOptions): Promise<WorkspaceSnapshot> =>
     ipcRenderer.invoke('transfer:downloadFile', tabId, remotePath, localDirectory, options),
+  downloadRemotePath: (tabId: string, remotePath: string, targetType: 'file' | 'folder', localDirectory: string, options?: TransferTargetOptions): Promise<WorkspaceSnapshot> =>
+    ipcRenderer.invoke('transfer:downloadRemotePath', tabId, remotePath, targetType, localDirectory, options),
   setRemoteFileAccessMode: (tabId: string, mode: 'user' | 'root', options?: RemoteFileAccessOptions): Promise<WorkspaceSnapshot> =>
     ipcRenderer.invoke('remoteFiles:setFileAccessMode', tabId, mode, options),
   writeTerminal: (tabId: string, data: string): Promise<void> =>
@@ -127,6 +133,10 @@ const api: TermdockDesktopApi = {
     ipcRenderer.invoke('remoteFiles:createDirectory', tabId, parentPath, name),
   createRemoteFile: (tabId: string, parentPath: string, name: string): Promise<WorkspaceSnapshot> =>
     ipcRenderer.invoke('remoteFiles:createFile', tabId, parentPath, name),
+  copyRemotePath: (tabId: string, targetPath: string, destinationPath: string, targetType: 'file' | 'folder'): Promise<WorkspaceSnapshot> =>
+    ipcRenderer.invoke('remoteFiles:copyPath', tabId, targetPath, destinationPath, targetType),
+  moveRemotePath: (tabId: string, targetPath: string, destinationPath: string): Promise<WorkspaceSnapshot> =>
+    ipcRenderer.invoke('remoteFiles:movePath', tabId, targetPath, destinationPath),
   renameRemotePath: (tabId: string, targetPath: string, newName: string): Promise<WorkspaceSnapshot> =>
     ipcRenderer.invoke('remoteFiles:renamePath', tabId, targetPath, newName),
   deleteRemotePath: (tabId: string, targetPath: string, targetType: 'file' | 'folder'): Promise<WorkspaceSnapshot> =>

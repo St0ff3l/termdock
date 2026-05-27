@@ -31,6 +31,14 @@ export function WorkspaceStage({
   isBusy,
   localItems,
   localPath,
+  canPasteToLocal,
+  canPasteToRemote,
+  clipboardStatusText,
+  localCutPaths,
+  remoteCutPaths,
+  onCopyItems,
+  onCutItems,
+  onClearCutState,
   onExecuteCommand,
   onOpenCommandManager,
   profiles,
@@ -42,6 +50,7 @@ export function WorkspaceStage({
   onOpenProfile,
   onOpenRemoteItem,
   onOpenRemotePath,
+  onPasteIntoPane,
   onRequestChangePermissions,
   onRequestDelete,
   onRequestNewFile,
@@ -64,6 +73,14 @@ export function WorkspaceStage({
   isBusy: boolean
   localItems: LocalFileItem[]
   localPath: string
+  canPasteToLocal: boolean
+  canPasteToRemote: boolean
+  clipboardStatusText: string | null
+  localCutPaths: string[]
+  remoteCutPaths: string[]
+  onCopyItems(pane: 'local' | 'remote', items: Array<LocalFileItem | RemoteFileItem>): void
+  onCutItems(pane: 'local' | 'remote', items: Array<LocalFileItem | RemoteFileItem>): void
+  onClearCutState(): void
   onExecuteCommand(commandId: string, args: string[], options: CommandExecutionOptions, scope: 'current' | 'all-ssh'): void
   onOpenCommandManager(): void
   profiles: ConnectionProfile[]
@@ -75,6 +92,7 @@ export function WorkspaceStage({
   onOpenProfile(profileId: string): void
   onOpenRemoteItem(item: RemoteFileItem): void
   onOpenRemotePath(path: string): void
+  onPasteIntoPane(pane: 'local' | 'remote'): void
   onRequestChangePermissions(pane: 'local' | 'remote', item: LocalFileItem | RemoteFileItem): void
   onRequestDelete(pane: 'local' | 'remote', items: Array<LocalFileItem | RemoteFileItem>): void
   onRequestNewFile(pane: 'local' | 'remote', directoryPath: string): void
@@ -101,6 +119,14 @@ export function WorkspaceStage({
         isBusy={isBusy}
         localItems={localItems}
         localPath={localPath}
+        canPasteToLocal={canPasteToLocal}
+        canPasteToRemote={canPasteToRemote}
+        clipboardStatusText={clipboardStatusText}
+        localCutPaths={localCutPaths}
+        remoteCutPaths={remoteCutPaths}
+        onCopyItems={onCopyItems}
+        onCutItems={onCutItems}
+        onClearCutState={onClearCutState}
         onExecuteCommand={onExecuteCommand}
         onOpenCommandManager={onOpenCommandManager}
         onChooseUploadFiles={onChooseUploadFiles}
@@ -110,6 +136,7 @@ export function WorkspaceStage({
         onOpenLocalPath={onOpenLocalPath}
         onOpenRemoteItem={onOpenRemoteItem}
         onOpenRemotePath={onOpenRemotePath}
+        onPasteIntoPane={onPasteIntoPane}
         onRequestChangePermissions={onRequestChangePermissions}
         onRequestDelete={onRequestDelete}
         onRequestNewFile={onRequestNewFile}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type DragEvent, type FormEvent, type MouseEvent } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type DragEvent, type FormEvent, type KeyboardEvent, type MouseEvent } from 'react'
 import type {
   CommandExecutionOptions,
   CommandFolder,
@@ -33,12 +33,21 @@ export function FileManager({
   isBusy,
   localItems,
   localPath,
+  canPasteToLocal,
+  canPasteToRemote,
+  clipboardStatusText,
+  localCutPaths,
+  remoteCutPaths,
   onExecuteCommand,
   onOpenCommandManager,
+  onCopyItems,
+  onCutItems,
+  onClearCutState,
   onOpenLocalItem,
   onOpenLocalPath,
   onOpenRemoteItem,
   onOpenRemotePath,
+  onPasteIntoPane,
   onRefresh,
   onUploadFiles,
   onChooseUploadFiles,
@@ -61,12 +70,21 @@ export function FileManager({
   isBusy: boolean
   localItems: LocalFileItem[]
   localPath: string
+  canPasteToLocal: boolean
+  canPasteToRemote: boolean
+  clipboardStatusText: string | null
+  localCutPaths: string[]
+  remoteCutPaths: string[]
   onExecuteCommand(commandId: string, args: string[], options: CommandExecutionOptions, scope: 'current' | 'all-ssh'): void
   onOpenCommandManager(): void
+  onCopyItems(pane: 'local' | 'remote', items: Array<LocalFileItem | RemoteFileItem>): void
+  onCutItems(pane: 'local' | 'remote', items: Array<LocalFileItem | RemoteFileItem>): void
+  onClearCutState(): void
   onOpenLocalItem(item: LocalFileItem): void
   onOpenLocalPath(path: string): void
   onOpenRemoteItem(item: RemoteFileItem): void
   onOpenRemotePath(path: string): void
+  onPasteIntoPane(pane: 'local' | 'remote'): void
   onRefresh(): void
   onUploadFiles(items: LocalFileItem[]): void
   onChooseUploadFiles(): void
@@ -89,6 +107,7 @@ export function FileManager({
   const [selectedRemotePaths, setSelectedRemotePaths] = useState<string[]>([])
   const [localAnchorPath, setLocalAnchorPath] = useState<string | null>(null)
   const [remoteAnchorPath, setRemoteAnchorPath] = useState<string | null>(null)
+  const [keyboardPane, setKeyboardPane] = useState<'local' | 'remote'>('remote')
   const [contextMenu, setContextMenu] = useState<{
     pane: 'local' | 'remote'
     x: number
@@ -96,6 +115,7 @@ export function FileManager({
     path: string | null
   } | null>(null)
   const splitRef = useRef<HTMLDivElement | null>(null)
+  const containerRef = useRef<HTMLDivElement | null>(null)
   const isResizingFileSplit = useRef(false)
   const isSelectingLocal = useRef(false)
   const isSelectingRemote = useRef(false)
@@ -127,21 +147,29 @@ export function FileManager({
     ? localItems.filter((item) => selectedLocalPaths.includes(item.path) && item.name !== '..')
     : contextLocalItem && contextLocalItem.name !== '..' ? [contextLocalItem] : []
   const contextRemoteSelection = contextRemoteItem && selectedRemotePaths.includes(contextRemoteItem.path)
-    ? selectedRemoteItems
-    : contextRemoteItem ? [contextRemoteItem] : []
+    ? selectedRemoteItems.filter((item) => item.name !== '..')
+    : contextRemoteItem && contextRemoteItem.name !== '..' ? [contextRemoteItem] : []
   const contextSelectionCount = contextMenu?.pane === 'local' ? contextLocalSelection.length : contextRemoteSelection.length
   const isMultiContextSelection = contextSelectionCount > 1
   const singleContextItem = contextMenu?.pane === 'local'
     ? (contextLocalSelection.length === 1 ? contextLocalSelection[0] : contextLocalItem)
     : (contextRemoteSelection.length === 1 ? contextRemoteSelection[0] : contextRemoteItem)
   const canOpenContextItem = Boolean(singleContextItem)
+  const canCopyContextItems = contextSelectionCount > 0
   const canCopyContextPath = Boolean(singleContextItem && !isMultiContextSelection)
+  const canCutContextItems = contextSelectionCount > 0
   const canDownloadContextItems = contextRemoteSelection.some((item) => item.type === 'file')
+  const canPasteIntoContextPane = contextMenu?.pane === 'local' ? canPasteToLocal : canPasteToRemote
   const canUploadContextItems = Boolean(!isMultiContextSelection && contextLocalSelection.length)
     || Boolean(!isMultiContextSelection && contextMenu?.pane === 'remote')
   const canCreateFromContext = !isMultiContextSelection
   const canRenameContextItem = Boolean(singleContextItem && !isMultiContextSelection && singleContextItem.name !== '..')
   const canChangeContextPermissions = Boolean(singleContextItem && !isMultiContextSelection && singleContextItem.name !== '..')
+
+  const keyboardSelection = keyboardPane === 'local'
+    ? localItems.filter((item) => selectedLocalPaths.includes(item.path) && item.name !== '..')
+    : selectedRemoteItems.filter((item) => item.name !== '..')
+  const canPasteFromKeyboard = keyboardPane === 'local' ? canPasteToLocal : canPasteToRemote
 
   const submitLocalPath = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -269,6 +297,53 @@ export function FileManager({
     setContextMenu(null)
   }
 
+  const focusContainer = () => {
+    containerRef.current?.focus()
+  }
+
+  const handleKeyboardShortcuts = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      onClearCutState()
+      return
+    }
+
+    if (!(event.metaKey || event.ctrlKey) || event.altKey) {
+      return
+    }
+
+    const target = event.target
+    if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || (target instanceof HTMLElement && target.isContentEditable)) {
+      return
+    }
+
+    const key = event.key.toLowerCase()
+    if (key === 'c') {
+      if (!keyboardSelection.length) {
+        return
+      }
+      event.preventDefault()
+      onCopyItems(keyboardPane, keyboardSelection)
+      return
+    }
+
+    if (key === 'x') {
+      if (!keyboardSelection.length) {
+        return
+      }
+      event.preventDefault()
+      onCutItems(keyboardPane, keyboardSelection)
+      return
+    }
+
+    if (key === 'v') {
+      if (!canPasteFromKeyboard) {
+        return
+      }
+      event.preventDefault()
+      onPasteIntoPane(keyboardPane)
+    }
+  }
+
   useEffect(() => {
     const handleMouseMove = (event: globalThis.MouseEvent) => {
       if (!isResizingFileSplit.current || !splitRef.current) return
@@ -307,12 +382,20 @@ export function FileManager({
   }, [activeSession.remoteFiles, localItems])
 
   return (
-    <div className="file-manager" onClick={() => setContextMenu(null)}>
+    <div
+      ref={containerRef}
+      className="file-manager"
+      onClick={() => setContextMenu(null)}
+      onKeyDown={handleKeyboardShortcuts}
+      tabIndex={0}
+    >
       <div className="file-tabs">
         <button className={activeView === 'file' ? 'active' : ''} type="button" onClick={() => setActiveView('file')}>{t.file}</button>
         <button className={activeView === 'command' ? 'active' : ''} type="button" onClick={() => setActiveView('command')}>{t.command}</button>
-        <span className="file-current-path">
-          {activeView === 'file' ? activeSession.remotePath : `${t.commandQuickLaunch} (${activeTab?.sessionType === 'ssh' ? t.send : t.commandSshOnly})`}
+        <span className={`file-current-path ${clipboardStatusText ? 'is-status-hint' : ''}`}>
+          {activeView === 'file'
+            ? clipboardStatusText || activeSession.remotePath
+            : `${t.commandQuickLaunch} (${activeTab?.sessionType === 'ssh' ? t.send : t.commandSshOnly})`}
         </span>
         {activeView === 'file' ? (
           <div className="file-tab-actions">
@@ -352,6 +435,10 @@ export function FileManager({
       <div className="file-split" ref={splitRef} style={{ '--local-pane-width': `${localPaneWidth}px` } as CSSProperties}>
         <div
           className="local-pane"
+          onMouseDownCapture={() => {
+            setKeyboardPane('local')
+            focusContainer()
+          }}
           onClick={(event) => {
             if (event.target === event.currentTarget) {
               setSelectedLocalPaths([])
@@ -395,6 +482,7 @@ export function FileManager({
             }}
           >
             <LocalFileTable
+              cutPaths={localCutPaths}
               rows={localItems}
               selectedPaths={selectedLocalPaths}
               onDragItem={(event, item) => {
@@ -426,6 +514,7 @@ export function FileManager({
               }}
               onSelectItem={selectLocalItem}
               onSelectionDragStart={(event, item) => {
+                setKeyboardPane('local')
                 isSelectingLocal.current = true
                 didDragSelect.current = false
                 const startPath = event.shiftKey && localAnchorPath ? localAnchorPath : item.path
@@ -456,6 +545,10 @@ export function FileManager({
         />
         <div
           className="remote-pane"
+          onMouseDownCapture={() => {
+            setKeyboardPane('remote')
+            focusContainer()
+          }}
           onClick={(event) => {
             if (event.target === event.currentTarget) {
               setSelectedRemotePaths([])
@@ -499,6 +592,7 @@ export function FileManager({
             }}
           >
             <FileTable
+              cutPaths={remoteCutPaths}
               rows={activeSession.remoteFiles}
               selectedPaths={selectedRemotePaths}
               onDragItem={(event, item) => {
@@ -528,6 +622,7 @@ export function FileManager({
               }}
               onSelectItem={selectRemoteItem}
               onSelectionDragStart={(event, item) => {
+                setKeyboardPane('remote')
                 isSelectingRemote.current = true
                 didDragSelect.current = false
                 const startPath = event.shiftKey && remoteAnchorPath ? remoteAnchorPath : item.path
@@ -552,10 +647,13 @@ export function FileManager({
       {contextMenu ? (
         <FileContextMenu
           canChangePermissions={canChangeContextPermissions}
+          canCopy={canCopyContextItems}
           canCopyPath={canCopyContextPath}
           canCreate={canCreateFromContext}
+          canCut={canCutContextItems}
           canDownload={canDownloadContextItems}
           canOpen={canOpenContextItem}
+          canPaste={canPasteIntoContextPane}
           canQuickDelete={contextMenu.pane === 'remote' && activeTab?.sessionType === 'ssh'}
           canRename={canRenameContextItem}
           canUpload={canUploadContextItems}
@@ -570,7 +668,21 @@ export function FileManager({
             setContextMenu(null)
           }}
           onClose={() => setContextMenu(null)}
+          onCopy={() => {
+            const items = contextMenu.pane === 'local' ? contextLocalSelection : contextRemoteSelection
+            if (items.length) {
+              onCopyItems(contextMenu.pane, items)
+            }
+            setContextMenu(null)
+          }}
           onCopyPath={copyContextPath}
+          onCut={() => {
+            const items = contextMenu.pane === 'local' ? contextLocalSelection : contextRemoteSelection
+            if (items.length) {
+              onCutItems(contextMenu.pane, items)
+            }
+            setContextMenu(null)
+          }}
           onDelete={() => {
             const items = contextMenu.pane === 'local' ? contextLocalSelection : contextRemoteSelection
             if (items.length) {
@@ -599,6 +711,10 @@ export function FileManager({
             setContextMenu(null)
           }}
           onOpen={openContextTarget}
+          onPaste={() => {
+            onPasteIntoPane(contextMenu.pane)
+            setContextMenu(null)
+          }}
           onRefresh={() => {
             onRefresh()
             setContextMenu(null)

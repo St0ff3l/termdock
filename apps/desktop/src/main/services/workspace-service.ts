@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { readdir, stat } from 'node:fs/promises'
+import { mkdir, readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { WebContents } from 'electron'
 import {
@@ -433,6 +433,109 @@ export class WorkspaceService {
     return this.getSnapshot()
   }
 
+  async downloadRemotePath(
+    tabId: string,
+    remotePath: string,
+    targetType: 'file' | 'folder',
+    localDirectory: string,
+    sender: WebContents,
+    options?: TransferTargetOptions
+  ): Promise<WorkspaceSnapshot> {
+    if (targetType === 'file') {
+      return this.downloadFile(tabId, remotePath, localDirectory, sender, options)
+    }
+
+    const controller = this.sessionRuntime.requireController(tabId)
+    const transferName = options?.targetName ?? (path.posix.basename(remotePath) || 'folder')
+    const localRootPath = path.join(localDirectory, transferName)
+    const transferId = this.addTransfer('download', transferName, sender)
+    const transferState = { canceled: false }
+    this.setTransferCancel(transferId, async () => {
+      transferState.canceled = true
+      await controller.abortTransfer()
+    })
+
+    try {
+      const { directories, files } = await this.collectRemoteDownloadEntries(controller, remotePath, transferState)
+      await mkdir(localRootPath, { recursive: true })
+
+      for (const directory of directories) {
+        this.ensureTransferActive(transferState)
+        await mkdir(path.join(localRootPath, ...directory.split('/')), { recursive: true })
+      }
+
+      if (!files.length) {
+        await this.updateTransfer(transferId, {
+          progress: 100,
+          status: 'done',
+          speed: undefined,
+          message: undefined
+        }, sender)
+        return this.getSnapshot()
+      }
+
+      let completedFiles = 0
+      const totalFiles = files.length
+
+      for (const file of files) {
+        this.ensureTransferActive(transferState)
+        const localFilePath = path.join(localRootPath, ...file.relativePath.split('/'))
+        await mkdir(path.dirname(localFilePath), { recursive: true })
+        await controller.downloadFile(file.remotePath, localFilePath, (progress) => {
+          if (transferState.canceled) {
+            return
+          }
+
+          const currentFraction = Math.max(0, Math.min(1, progress.percent / 100))
+          const overallPercent = Math.max(
+            1,
+            Math.min(99, Math.round(((completedFiles + currentFraction) / totalFiles) * 100))
+          )
+
+          void this.updateTransfer(transferId, {
+            progress: overallPercent,
+            status: 'running',
+            speed: undefined,
+            message: file.relativePath
+          }, sender)
+        })
+
+        completedFiles += 1
+        await this.updateTransfer(transferId, {
+          progress: Math.max(1, Math.min(99, Math.round((completedFiles / totalFiles) * 100))),
+          status: 'running',
+          speed: undefined,
+          message: file.relativePath
+        }, sender)
+      }
+
+      if (transferState.canceled) {
+        return this.getSnapshot()
+      }
+
+      await this.updateTransfer(transferId, {
+        progress: 100,
+        status: 'done',
+        speed: undefined,
+        message: undefined
+      }, sender)
+    } catch (error) {
+      if (transferState.canceled) {
+        return this.getSnapshot()
+      }
+      await this.updateTransfer(transferId, {
+        status: 'failed',
+        message: error instanceof Error ? error.message : '下载失败',
+        speed: undefined
+      }, sender)
+      throw error
+    } finally {
+      this.transferCancels.delete(transferId)
+    }
+
+    return this.getSnapshot()
+  }
+
   async readRemoteFile(tabId: string, targetPath: string, encoding?: string): Promise<string> {
     return this.sessionRuntime.requireController(tabId).readRemoteFile(targetPath, encoding)
   }
@@ -454,6 +557,20 @@ export class WorkspaceService {
   async createRemoteFile(tabId: string, parentPath: string, name: string): Promise<WorkspaceSnapshot> {
     const controller = this.sessionRuntime.requireController(tabId)
     await controller.writeRemoteFile(path.posix.join(parentPath, name), '')
+    await this.refreshRemoteFiles(tabId)
+    return this.getSnapshot()
+  }
+
+  async copyRemotePath(tabId: string, targetPath: string, destinationPath: string, targetType: 'file' | 'folder'): Promise<WorkspaceSnapshot> {
+    const controller = this.sessionRuntime.requireController(tabId)
+    await controller.copyRemotePath(targetPath, destinationPath, targetType)
+    await this.refreshRemoteFiles(tabId)
+    return this.getSnapshot()
+  }
+
+  async moveRemotePath(tabId: string, targetPath: string, destinationPath: string): Promise<WorkspaceSnapshot> {
+    const controller = this.sessionRuntime.requireController(tabId)
+    await controller.moveRemotePath(targetPath, destinationPath)
     await this.refreshRemoteFiles(tabId)
     return this.getSnapshot()
   }
@@ -640,6 +757,43 @@ export class WorkspaceService {
         fullPath,
         relativePath: path.relative(rootPath, fullPath),
         size: info.size
+      })
+    }
+
+    return { directories, files }
+  }
+
+  private async collectRemoteDownloadEntries(
+    controller: ReturnType<WorkspaceService['createController']>,
+    rootPath: string,
+    transferState: { canceled: boolean },
+    currentPath = rootPath
+  ): Promise<{
+    directories: string[]
+    files: Array<{
+      remotePath: string
+      relativePath: string
+    }>
+  }> {
+    this.ensureTransferActive(transferState)
+    const entries = (await controller.openRemotePath(currentPath)).filter((entry) => entry.name !== '..')
+    const directories: string[] = []
+    const files: Array<{ remotePath: string; relativePath: string }> = []
+
+    for (const entry of entries) {
+      this.ensureTransferActive(transferState)
+      const relativePath = path.posix.relative(rootPath, entry.path)
+      if (entry.type === 'folder') {
+        directories.push(relativePath)
+        const nestedEntries = await this.collectRemoteDownloadEntries(controller, rootPath, transferState, entry.path)
+        directories.push(...nestedEntries.directories)
+        files.push(...nestedEntries.files)
+        continue
+      }
+
+      files.push({
+        remotePath: entry.path,
+        relativePath
       })
     }
 

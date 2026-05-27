@@ -1866,6 +1866,12 @@
   color: #d9d9d9;
 }
 
+:root:not([data-theme]) .file-current-path.is-status-hint,
+:root[data-theme='default-dark'] .file-current-path.is-status-hint,
+:root[data-theme='default'] .file-current-path.is-status-hint {
+  color: var(--text-muted);
+}
+
 :root:not([data-theme]) .file-tab-actions button,
 :root[data-theme='default-dark'] .file-tab-actions button,
 :root[data-theme='default'] .file-tab-actions button {

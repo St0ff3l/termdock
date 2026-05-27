@@ -296,6 +296,10 @@
   color: var(--text-main);
 }
 
+:root[data-theme='default-light'] .file-current-path.is-status-hint {
+  color: var(--text-muted);
+}
+
 :root[data-theme='default-light'] .file-tab-actions button {
   border: 1px solid var(--border-light);
   background: #ffffff;

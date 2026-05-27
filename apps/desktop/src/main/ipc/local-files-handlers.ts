@@ -26,6 +26,14 @@ export function registerLocalFilesHandlers(services: IpcServices) {
     localFilesService.createFile(dirPath, name)
   )
 
+  ipcMain.handle('localFiles:copyPath', (_, sourcePath: string, destinationPath: string) =>
+    localFilesService.copyPath(sourcePath, destinationPath)
+  )
+
+  ipcMain.handle('localFiles:movePath', (_, sourcePath: string, destinationPath: string) =>
+    localFilesService.movePath(sourcePath, destinationPath)
+  )
+
   ipcMain.handle('localFiles:renamePath', (_, targetPath: string, newName: string) =>
     localFilesService.renamePath(targetPath, newName)
   )

@@ -539,6 +539,13 @@ textarea:focus-visible,
   font-weight: 400;
 }
 
+.file-current-path.is-status-hint {
+  overflow: hidden;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .file-tab-actions {
   display: flex;
   gap: 5px;
