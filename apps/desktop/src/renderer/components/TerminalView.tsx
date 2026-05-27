@@ -319,6 +319,21 @@ export function TerminalView({
   const buildExitAlternateScreenSequence = () =>
     '\x1b[?1049l\x1b[?1047l\x1b[?47l\x1b[?25h'
 
+  const snapshotTerminalBuffer = (terminal: Terminal) => {
+    const lines: string[] = []
+    const buffer = terminal.buffer.active
+
+    for (let row = 0; row < buffer.length; row += 1) {
+      lines.push(buffer.getLine(row)?.translateToString(true) ?? '')
+    }
+
+    while (lines.length > 0 && lines[lines.length - 1] === '') {
+      lines.pop()
+    }
+
+    return lines.join('\r\n')
+  }
+
   const appendRenderedTranscript = (chunk: string) => {
     if (!chunk) {
       return
@@ -465,7 +480,7 @@ export function TerminalView({
     return normalized
   }
 
-  const syncTerminalSize = (fitAddon: FitAddon, terminal: Terminal) => {
+  const syncTerminalSize = (fitAddon: FitAddon, terminal: Terminal, force = false) => {
     const host = hostRef.current
     if (!host) {
       return
@@ -497,11 +512,14 @@ export function TerminalView({
     }
     const previousSize = lastSyncedSizeRef.current
     if (
+      !force
+      && (
       previousSize
       && previousSize.cols === nextSize.cols
       && previousSize.rows === nextSize.rows
       && previousSize.width === nextSize.width
       && previousSize.height === nextSize.height
+      )
     ) {
       return
     }
@@ -542,8 +560,8 @@ export function TerminalView({
       replaceTerminalWithTranscript(terminal, bootTextRef.current)
     }
 
-    const resize = () => {
-      syncTerminalSize(fitAddon, terminal)
+    const resize = (force = false) => {
+      syncTerminalSize(fitAddon, terminal, force)
     }
 
     const onDataDispose = terminal.onData((data) => {
@@ -574,9 +592,19 @@ export function TerminalView({
         if (shouldHydrateTranscript(renderedTranscriptRef.current, transcript, connected)) {
           replaceTerminalWithTranscript(terminal, transcript)
         }
+        if (!wasConnectedRef.current && connected) {
+          preserveVisibleBufferRef.current = false
+          window.requestAnimationFrame(() => resize(true))
+        }
         if (wasConnectedRef.current && !connected) {
           preserveVisibleBufferRef.current = true
-          scheduleTerminalWrite(`${buildExitAlternateScreenSequence()}\r\n${t.terminalConnectionClosed}\r\n`)
+          terminal.write(buildExitAlternateScreenSequence(), () => {
+            const visibleTranscript = snapshotTerminalBuffer(terminal)
+            const disconnectedTranscript = visibleTranscript
+              ? `${visibleTranscript}\r\n${t.terminalConnectionClosed}\r\n`
+              : `${t.terminalConnectionClosed}\r\n`
+            replaceTerminalWithTranscript(terminal, disconnectedTranscript)
+          })
         }
         wasConnectedRef.current = connected
       }
