@@ -679,7 +679,7 @@ export class WorkspaceSessionRuntime {
 
 function shouldFallbackRootFileAccess(error: unknown) {
   const message = error instanceof Error ? error.message : String(error)
-  return /root 切换没有拿到可复用的 sudo 授权|sudo 密码无效|sudo credentials|incorrect password|authentication failure/i.test(message)
+  return /未检测到可复用的 sudo 授权|sudo 密码错误|sudo 密码无效|sudo credentials|incorrect password|authentication failure/i.test(message)
 }
 
 function isIgnorableWebContentsSendError(error: unknown) {

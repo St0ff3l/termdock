@@ -33,9 +33,9 @@
 
 ## 技术栈
 
-| Desktop | Renderer | Language | Terminal | Protocols | Tooling |
-| --- | --- | --- | --- | --- | --- |
-| <img src="https://img.shields.io/badge/Electron-38-47848F?style=flat-square&logo=electron&logoColor=white" alt="Electron" /> | <img src="https://img.shields.io/badge/React-19-149ECA?style=flat-square&logo=react&logoColor=white" alt="React" /> <img src="https://img.shields.io/badge/Vite-7-646CFF?style=flat-square&logo=vite&logoColor=white" alt="Vite" /> | <img src="https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" /> | <img src="https://img.shields.io/badge/xterm.js-111827?style=flat-square" alt="xterm.js" /> | <img src="https://img.shields.io/badge/ssh2-0F766E?style=flat-square" alt="ssh2" /> <img src="https://img.shields.io/badge/basic--ftp-2563EB?style=flat-square" alt="basic-ftp" /> | <img src="https://img.shields.io/badge/npm%20workspaces-CB3837?style=flat-square&logo=npm&logoColor=white" alt="npm workspaces" /> |
+| Desktop | Renderer | Language | Terminal | Editor | Protocols | Tooling |
+| --- | --- | --- | --- | --- | --- | --- |
+| <img src="https://img.shields.io/badge/Electron-38-47848F?style=flat-square&logo=electron&logoColor=white" alt="Electron" /> | <img src="https://img.shields.io/badge/React-19-149ECA?style=flat-square&logo=react&logoColor=white" alt="React" /> <img src="https://img.shields.io/badge/Vite-7-646CFF?style=flat-square&logo=vite&logoColor=white" alt="Vite" /> | <img src="https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" /> | <img src="https://img.shields.io/badge/xterm.js-111827?style=flat-square" alt="xterm.js" /> | <img src="https://img.shields.io/badge/Monaco%20Editor-007ACC?style=flat-square&logo=visualstudiocode&logoColor=white" alt="Monaco Editor" /> | <img src="https://img.shields.io/badge/ssh2-0F766E?style=flat-square" alt="ssh2" /> <img src="https://img.shields.io/badge/basic--ftp-2563EB?style=flat-square" alt="basic-ftp" /> | <img src="https://img.shields.io/badge/npm%20workspaces-CB3837?style=flat-square&logo=npm&logoColor=white" alt="npm workspaces" /> |
 
 ```txt
 main process  ████████████████████  Electron services, IPC, protocol lifecycle
@@ -64,11 +64,19 @@ theme system  ████████████████░░░░  toke
 | SSH profile 管理 | 进行中 | 新增、编辑、删除、文件持久化 |
 | FTP profile 管理 | 进行中 | 独立于 SSH 的连接模型 |
 | SSH shell | 进行中 | xterm.js 渲染、输入、输出、resize |
+| 文件编辑器 | 进行中 | Monaco Editor 提供语法高亮、编辑、查找替换 |
 | SFTP 文件管理 | 进行中 | 远程目录浏览、读取、写回 |
 | FTP 文件管理 | 进行中 | FTP 会话与远程文件能力 |
 | Transfer center | 进行中 | 上传下载任务队列与进度状态 |
 | Workspace tabs | 进行中 | 多标签工作区模型 |
 | Theme system | 进行中 | tokens、theme vars、component skins、terminal colors |
+
+## 外部开源项目
+
+TermDock 的核心交互里使用了两个成熟的开源项目：
+
+- [xterm.js](https://xtermjs.org/)：用于 SSH 终端渲染、输入输出和窗口 resize。
+- [Monaco Editor](https://microsoft.github.io/monaco-editor/)：用于文件编辑器，提供语法高亮、编辑体验和查找替换。
 
 ## 架构原则
 
@@ -208,11 +216,19 @@ TermDock is a modern desktop remote workspace for developers and operations team
 ### Highlights
 
 - SSH sessions with terminal and SFTP file panels.
+- File editing powered by Monaco Editor.
 - FTP sessions with a clean file-only workflow.
 - Workspace tabs for parallel remote work.
 - Unified transfer center for uploads, downloads, progress, and errors.
 - A layered Electron architecture: `main -> preload -> renderer`.
 - MIT licensed and open for collaboration.
+
+### Open Source Components
+
+TermDock uses two well-known open source projects in its core UI:
+
+- [xterm.js](https://xtermjs.org/) for SSH terminal rendering, input/output, and resize handling.
+- [Monaco Editor](https://microsoft.github.io/monaco-editor/) for file editing, syntax highlighting, and search/replace.
 
 ### Contributors
 

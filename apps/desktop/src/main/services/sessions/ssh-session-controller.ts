@@ -1167,6 +1167,9 @@ done
       this.awaitingSudoPasswordInput = true
       this.pendingSudoPasswordInput = ''
     }
+    if (/incorrect password|authentication failure|sorry, try again|密码错误|认证失败|对不起，请重试/i.test(normalized)) {
+      this.sudoPassword = undefined
+    }
   }
 
   private captureSudoPasswordInput(data: string) {
@@ -1178,6 +1181,7 @@ done
       if (char === '\u0003' || char === '\u001b') {
         this.awaitingSudoPasswordInput = false
         this.pendingSudoPasswordInput = ''
+        this.sudoPassword = undefined
         return
       }
 
@@ -1210,17 +1214,74 @@ done
   ): Promise<string> {
     const execClient = await this.ensureExecConnection()
     return new Promise<string>((resolve, reject) => {
+      let settled = false
+      let streamInstance: ClientChannel | undefined
+
+      const safeResolve = (val: string) => {
+        if (!settled) {
+          settled = true
+          clearTimeout(timeoutId)
+          resolve(val)
+        }
+      }
+
+      const safeReject = (err: Error) => {
+        if (!settled) {
+          settled = true
+          clearTimeout(timeoutId)
+          reject(err)
+        }
+      }
+
+      const timeoutId = setTimeout(() => {
+        if (!settled) {
+          if (streamInstance) {
+            try {
+              streamInstance.destroy()
+            } catch {
+              // ignore
+            }
+          }
+          safeReject(new Error('命令执行超时'))
+        }
+      }, 15000)
+
       const handleExec = (error: Error | undefined, stream: ClientChannel) => {
         if (error) {
-          reject(error)
+          safeReject(error)
           return
         }
+
+        streamInstance = stream
 
         let stdout = ''
         let stderr = ''
 
         stream.on('data', (chunk: Buffer) => {
-          stdout += chunk.toString('utf8')
+          const chunkStr = chunk.toString('utf8')
+          stdout += chunkStr
+
+          if (privileged && stdinPayload !== undefined) {
+            if (/incorrect password|authentication failure|3 incorrect password attempts|sorry, try again|no password was provided|密码错误|认证失败|对不起，请重试|未提供密码/i.test(stdout)) {
+              this.sudoPassword = undefined
+              safeReject(new Error('sudo 密码错误，请重新输入。'))
+              try {
+                stream.destroy()
+              } catch {
+                // ignore
+              }
+              return
+            }
+            if (/password is required|a password is required|no tty present|a terminal is required|sorry, you must have a tty|需要密码|必须输入密码/i.test(stdout)) {
+              safeReject(new Error('未检测到可复用的 sudo 授权，需要提供 sudo 密码。'))
+              try {
+                stream.destroy()
+              } catch {
+                // ignore
+              }
+              return
+            }
+          }
         })
         stream.stderr.on('data', (chunk: Buffer) => {
           stderr += chunk.toString('utf8')
@@ -1231,31 +1292,43 @@ done
         }
         stream.on('close', (code?: number) => {
           if (options?.allowNonZeroWithStdout && stdout.trim()) {
-            resolve(stdout)
+            safeResolve(stdout)
             return
           }
-          if (code && code !== 0 && stderr.trim()) {
-            if (privileged && /password is required|a password is required|no tty present|a terminal is required|sorry, you must have a tty|需要密码|必须输入密码/i.test(stderr)) {
-              reject(new Error('当前这次 root 切换没有拿到可复用的 sudo 授权，请直接输入 sudo 密码后重试。终端里先执行 `sudo -i` 或 `sudo -v`，这里也不一定能复用。'))
+          
+          const errMessage = stderr.trim() || (privileged && stdinPayload !== undefined ? stdout.trim() : '')
+
+          if (code && code !== 0) {
+            if (privileged && /password is required|a password is required|no tty present|a terminal is required|sorry, you must have a tty|需要密码|必须输入密码/i.test(errMessage)) {
+              safeReject(new Error('未检测到可复用的 sudo 授权，需要提供 sudo 密码。'))
               return
             }
-            if (privileged && /incorrect password|authentication failure|3 incorrect password attempts|sorry, try again|no password was provided|密码错误|认证失败|对不起，请重试|未提供密码/i.test(stderr)) {
-              reject(new Error('sudo 密码无效，请重新输入。'))
+            if (privileged && /incorrect password|authentication failure|3 incorrect password attempts|sorry, try again|no password was provided|密码错误|认证失败|对不起，请重试|未提供密码/i.test(errMessage)) {
+              this.sudoPassword = undefined
+              safeReject(new Error('sudo 密码错误，请重新输入。'))
               return
             }
-            reject(new Error(stderr.trim()))
+            if (errMessage) {
+              safeReject(new Error(errMessage))
+              return
+            }
+            safeReject(new Error(`Command exited with code ${code}`))
             return
           }
-          resolve(stdout)
+          safeResolve(stdout)
         })
       }
 
-      if (privileged && stdinPayload !== undefined) {
-        execClient.exec(command, { pty: true }, handleExec)
-        return
-      }
+      try {
+        if (privileged && stdinPayload !== undefined) {
+          execClient.exec(command, { pty: true }, handleExec)
+          return
+        }
 
-      execClient.exec(command, handleExec)
+        execClient.exec(command, handleExec)
+      } catch (err) {
+        safeReject(err instanceof Error ? err : new Error(String(err)))
+      }
     })
   }
 

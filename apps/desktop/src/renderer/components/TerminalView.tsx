@@ -41,7 +41,8 @@ function isWideCodePoint(codePoint: number) {
 }
 
 function getTerminalCellWidth(value: string) {
-  return Array.from(value).reduce((width, char) => {
+  const stripped = value.replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, '')
+  return Array.from(stripped).reduce((width, char) => {
     const codePoint = char.codePointAt(0) ?? 0
     return width + (isWideCodePoint(codePoint) ? 2 : 1)
   }, 0)
@@ -343,12 +344,7 @@ export function TerminalView({
   }
 
   const formatTerminalChunk = (terminal: Terminal | null, value: string) => {
-    const localized = toDisplayTerminalText(value)
-    if (!terminal) {
-      return localized
-    }
-
-    return normalizeInlineRedrawChunk(terminal, localized)
+    return toDisplayTerminalText(value)
   }
 
   const replaceTerminalWithTranscript = (terminal: Terminal, transcript: string) => {
@@ -553,7 +549,8 @@ export function TerminalView({
       cursorBlink: true,
       allowTransparency: true,
       scrollback: 6000,
-      theme: buildTerminalTheme(false)
+      theme: buildTerminalTheme(false),
+      convertEol: true
     })
     const fitAddon = new FitAddon()
     terminal.loadAddon(fitAddon)

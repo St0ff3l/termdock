@@ -640,7 +640,7 @@ export function App() {
 
   const shouldPromptForRootAccess = (err: unknown) => {
     const message = normalizeErrorMessage(err)
-    return /root 视角需要可用的 sudo 凭据|sudo 密码无效|sudo credentials|incorrect password|authentication failure/i.test(message)
+    return /未检测到可复用的 sudo 授权|sudo 密码错误|sudo 密码无效|sudo credentials|incorrect password|authentication failure/i.test(message)
   }
 
   const applySnapshot = (snapshot: WorkspaceSnapshot) => {
