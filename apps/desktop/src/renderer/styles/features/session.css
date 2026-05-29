@@ -404,6 +404,10 @@
   align-self: end;
 }
 
+.transfer-strip.full-width {
+  grid-column: 1 / -1;
+}
+
 .transfer-summary-button {
   min-width: 0;
   height: 22px;

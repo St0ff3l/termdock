@@ -34,6 +34,10 @@ textarea:focus-visible,
   height: auto;
 }
 
+.fs-main.full-width {
+  grid-column: 1 / -1;
+}
+
 .fs-main.no-status {
   grid-template-rows: minmax(0, 1fr);
 }
@@ -666,6 +670,10 @@ textarea:focus-visible,
   margin-top: auto;
   z-index: 10;
   position: relative;
+}
+
+.transfer-strip.full-width {
+  grid-column: 1 / -1;
 }
 
 .home-workspace {

@@ -735,7 +735,6 @@ export function App() {
   }, [fileClipboard])
 
   const activeLocalTab = activeLocalTabId ? localTabs.find((tab) => tab.id === activeLocalTabId) ?? null : null
-  const showSidebar = activeLocalTab?.kind !== 'home'
   const displayedSessionTabId = activeLocalTab
     ? activeLocalTab.kind === 'system' ? activeLocalTab.sessionTabId : null
     : workspace.activeTabId
@@ -745,6 +744,7 @@ export function App() {
     ? workspace.profiles.find((profile) => profile.id === activeTab.profileId) ?? null
     : null
   const activeTransferCount = workspace.transfers.filter(isActiveTransfer).length
+  const showSidebar = activeTab !== null && activeSession !== null && activeLocalTab?.kind !== 'home'
 
   const normalizeErrorMessage = (err: unknown) => {
     const rawMessage = err instanceof Error ? err.message : String(err)
