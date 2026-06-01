@@ -80,6 +80,8 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
       username,
       ...authConfig,
       readyTimeout: 15000,
+      keepaliveInterval: 3000,
+      keepaliveCountMax: 2,
       tryKeyboard: shouldTryKeyboard,
       hostVerifier: (key: Buffer | string, verify: (accepted: boolean) => void) => {
         void this.verifyHostFingerprint(profile, key)

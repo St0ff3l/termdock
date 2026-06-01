@@ -491,6 +491,12 @@ export function App() {
       .getSnapshot()
       .then((snapshot) => {
         setWorkspace(snapshot)
+        if (isMainWorkspaceWindow && snapshot.tabs.length === 0) {
+          setLocalTabs((current) => current.length ? current : [{ id: 'home-1', kind: 'home', title: t.untitledTab }])
+          setActiveLocalTabId((current) => current ?? 'home-1')
+          setTabOrder((current) => current.includes('home:home-1') ? current : ['home:home-1', ...current])
+          setNextHomeTabNumber((current) => Math.max(current, 2))
+        }
         setHasLoadedInitialSnapshot(true)
       })
       .catch((err: Error) => reportError(setError, '获取工作区快照', err))
