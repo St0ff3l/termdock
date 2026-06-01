@@ -37,6 +37,7 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
   private execReady = false
   private execConnectPromise?: Promise<Client>
   private hasRegisteredExecLifecycle = false
+  private hasRegisteredSftpLifecycle = false
   private shellStream?: {
     write(data: string): void
     setWindow(rows: number, cols: number, height: number, width: number): void
@@ -152,8 +153,7 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
                 this.onData(text)
               })
               stream.on('close', () => {
-                this.resetPrivilegedFileAccess()
-                this.connected = false
+                this.handlePrimaryDisconnect()
                 this.onStateChange('Shell closed', this.transcript, false)
               })
 
@@ -165,8 +165,7 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
           )
         })
         .on('error', (error: Error) => {
-          this.resetPrivilegedFileAccess()
-          this.connected = false
+          this.handlePrimaryDisconnect()
           if (connectionFailed) {
             this.sshDebug.log('main', `忽略重复连接错误: ${error.message}`)
             return
@@ -181,8 +180,7 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
           this.onStateChange(`Connection error: ${error.message}`, this.transcript, false)
         })
         .on('close', () => {
-          this.resetPrivilegedFileAccess()
-          this.connected = false
+          this.handlePrimaryDisconnect()
           if (connectionFailed) {
             this.sshDebug.log('main', '连接失败后收到关闭事件')
             return
@@ -716,6 +714,7 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
     }
 
     const sshConfig = this.sshConfig
+    this.registerSftpLifecycle()
     await new Promise<void>((resolve, reject) => {
       let settled = false
       this.sshDebug.logSftpStart(sshConfig.username)
@@ -783,9 +782,37 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
     })
   }
 
+  private handlePrimaryDisconnect() {
+    this.resetPrivilegedFileAccess()
+    this.connected = false
+    this.closeExecSession()
+    this.closeSftpSession()
+  }
+
+  private registerSftpLifecycle() {
+    if (this.hasRegisteredSftpLifecycle) {
+      return
+    }
+
+    this.hasRegisteredSftpLifecycle = true
+    const markClosed = () => {
+      this.sftp?.end?.()
+      this.sftp = undefined
+      this.sftpUnavailableReason = 'SFTP SSH connection closed'
+    }
+
+    this.sftpSsh.on('error', (error) => {
+      this.sshDebug.log('sftp', `连接异常断开: ${error.message}`)
+      markClosed()
+    })
+    this.sftpSsh.on('close', markClosed)
+    this.sftpSsh.on('end', markClosed)
+  }
+
   private closeSftpSession() {
     this.sftp?.end?.()
     this.sftp = undefined
+    this.sftpUnavailableReason = 'SFTP session closed'
     this.sftpSsh.end()
   }
 

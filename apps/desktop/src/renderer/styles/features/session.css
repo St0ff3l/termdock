@@ -441,7 +441,25 @@
 }
 
 .transfer-popover-head strong {
-  font-size: 13px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.transfer-popover-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.transfer-clear-button {
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--border-light);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-soft);
+  font-size: 11px;
+  line-height: 1;
 }
 
 .transfer-filters {
@@ -485,7 +503,7 @@
 
 .transfer-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 70px;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 6px 10px;
   padding: 9px 10px;
   border-radius: var(--radius-md);
@@ -500,6 +518,22 @@
   min-width: 0;
 }
 
+.transfer-row-head {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.transfer-row-head strong {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .transfer-row-main strong,
 .transfer-row-main span,
 .transfer-row small {
@@ -508,18 +542,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.transfer-row-inline {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.transfer-row-inline span {
-  flex: 1 1 auto;
-  min-width: 0;
 }
 
 .transfer-row-main strong {
@@ -533,21 +555,32 @@
   font-size: 11px;
 }
 
-.transfer-row-meta {
-  text-align: right;
+.transfer-row-main span {
+  color: var(--text-soft);
 }
 
-.transfer-row-meta b {
-  display: block;
-  font-size: 12px;
+.transfer-row-meta {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.transfer-row-meta span {
+  color: var(--text-muted);
 }
 
 .transfer-cancel {
   flex: 0 0 auto;
-  height: 20px;
-  padding: 0 8px;
-  border-radius: 5px;
+  height: 22px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-light);
+  background: transparent;
+  color: var(--text-soft);
   font-size: 11px;
+  line-height: 1;
 }
 
 .transfer-progress {

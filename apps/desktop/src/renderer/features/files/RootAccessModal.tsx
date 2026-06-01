@@ -42,7 +42,6 @@ export function RootAccessModal({
         <label className="file-action-field">
           <span>{t.fileRootAccessTargetUser}</span>
           <input
-            autoFocus
             disabled={isSubmitting}
             value={sudoUser}
             onChange={(event) => setSudoUser(event.target.value)}
@@ -57,6 +56,7 @@ export function RootAccessModal({
         <label className="file-action-field">
           <span>{t.fileRootAccessPassword}</span>
           <input
+            autoFocus
             type="password"
             disabled={isSubmitting}
             value={sudoPassword}

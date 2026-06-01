@@ -111,6 +111,8 @@ const api: TermdockDesktopApi = {
     ipcRenderer.invoke('transfer:queueUpload', fileNames),
   cancelTransfer: (transferId: string): Promise<WorkspaceSnapshot> =>
     ipcRenderer.invoke('transfer:cancel', transferId),
+  clearTransfers: (transferIds: string[]): Promise<WorkspaceSnapshot> =>
+    ipcRenderer.invoke('transfer:clear', transferIds),
   uploadFile: (tabId: string, localPath: string, remoteDirectory: string, options?: TransferTargetOptions): Promise<WorkspaceSnapshot> =>
     ipcRenderer.invoke('transfer:uploadFile', tabId, localPath, remoteDirectory, options),
   downloadFile: (tabId: string, remotePath: string, localDirectory: string, options?: TransferTargetOptions): Promise<WorkspaceSnapshot> =>

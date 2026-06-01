@@ -420,6 +420,7 @@ export interface TermdockDesktopApi {
   selectLocalDirectory(defaultPath?: string): Promise<string | null>
   queueUpload(fileNames: string[]): Promise<WorkspaceSnapshot>
   cancelTransfer(transferId: string): Promise<WorkspaceSnapshot>
+  clearTransfers(transferIds: string[]): Promise<WorkspaceSnapshot>
   uploadFile(tabId: string, localPath: string, remoteDirectory: string, options?: TransferTargetOptions): Promise<WorkspaceSnapshot>
   downloadFile(tabId: string, remotePath: string, localDirectory: string, options?: TransferTargetOptions): Promise<WorkspaceSnapshot>
   downloadRemotePath(tabId: string, remotePath: string, targetType: RemoteFileItem['type'], localDirectory: string, options?: TransferTargetOptions): Promise<WorkspaceSnapshot>

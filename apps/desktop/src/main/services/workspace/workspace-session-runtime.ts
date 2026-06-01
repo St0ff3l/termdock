@@ -165,9 +165,11 @@ export class WorkspaceSessionRuntime {
               ...current,
               summary,
               terminalTranscript: transcript,
+              remoteFiles: connected ? current.remoteFiles : [],
               fileAccessMode: sshController?.getFileAccessMode() ?? current.fileAccessMode,
               hasReusableSudoAuth: sshController?.hasReusableSudoAuth() ?? false,
-              connected
+              connected,
+              systemMetrics: connected ? current.systemMetrics : undefined
             })
             this.options.updateTabStatus(
               tabId,

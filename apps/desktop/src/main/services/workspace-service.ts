@@ -341,6 +341,30 @@ export class WorkspaceService {
     return this.getSnapshot()
   }
 
+  async clearTransfers(transferIds: string[]): Promise<WorkspaceSnapshot> {
+    if (!transferIds.length) {
+      return this.getSnapshot()
+    }
+
+    const removableIds = transferIds.filter((transferId) => {
+      const transfer = this.transfers.get(transferId)
+      return Boolean(transfer && transfer.status !== 'running' && transfer.status !== 'queued')
+    })
+
+    if (!removableIds.length) {
+      return this.getSnapshot()
+    }
+
+    this.transfers.removeMany(removableIds)
+    removableIds.forEach((transferId) => {
+      this.transferTabs.delete(transferId)
+      this.transferCancels.delete(transferId)
+      this.transferCanceling.delete(transferId)
+    })
+
+    return this.getSnapshot()
+  }
+
   async uploadFile(
     tabId: string,
     localPath: string,
@@ -350,6 +374,7 @@ export class WorkspaceService {
   ): Promise<WorkspaceSnapshot> {
     const controller = this.sessionRuntime.requireController(tabId)
     const transferId = this.addTransfer('upload', path.basename(localPath), tabId, sender)
+    const targetRemotePath = path.posix.join(remoteDirectory, options?.targetName ?? path.basename(localPath))
     const transferState = { canceled: false }
     const transferTracker = createTransferSpeedTracker()
     this.setTransferCancel(transferId, async () => {
@@ -366,7 +391,7 @@ export class WorkspaceService {
           progress: progress.percent,
           status: 'running',
           speed: transferTracker(progress),
-          message: progress.message
+          message: progress.message ?? targetRemotePath
         }, sender)
       }, options?.targetName)
       if (transferState.canceled) {
@@ -422,7 +447,7 @@ export class WorkspaceService {
           progress: progress.percent,
           status: 'running',
           speed: transferTracker(progress),
-          message: progress.message
+          message: progress.message ?? localPath
         }, sender)
       })
       if (transferState.canceled) {
@@ -514,7 +539,7 @@ export class WorkspaceService {
             progress: overallPercent,
             status: 'running',
             speed: undefined,
-            message: file.relativePath
+            message: localFilePath
           }, sender)
         })
 
@@ -523,7 +548,7 @@ export class WorkspaceService {
           progress: Math.max(1, Math.min(99, Math.round((completedFiles / totalFiles) * 100))),
           status: 'running',
           speed: undefined,
-          message: file.relativePath
+          message: localFilePath
         }, sender)
       }
 
@@ -887,8 +912,11 @@ function isSkippableLocalReadError(error: unknown) {
 }
 
 function createTransferSpeedTracker() {
-  let lastTransferredBytes = 0
-  let lastTimestamp = Date.now()
+  const minSampleMs = 120
+  const smoothingFactor = 0.35
+  let sampleStartBytes: number | undefined
+  let sampleStartTimestamp: number | undefined
+  let smoothedBytesPerSecond: number | undefined
   let lastSpeed: string | undefined
 
   return (progress: TransferProgress) => {
@@ -897,17 +925,27 @@ function createTransferSpeedTracker() {
     }
 
     const now = Date.now()
-    const deltaBytes = progress.transferredBytes - lastTransferredBytes
-    const deltaMs = now - lastTimestamp
-
-    if (deltaBytes > 0 && deltaMs >= 200) {
-      lastTransferredBytes = progress.transferredBytes
-      lastTimestamp = now
-      lastSpeed = formatTransferSpeed(deltaBytes / (deltaMs / 1000))
-    } else if (progress.transferredBytes >= lastTransferredBytes) {
-      lastTransferredBytes = progress.transferredBytes
-      lastTimestamp = now
+    if (sampleStartBytes === undefined || sampleStartTimestamp === undefined) {
+      sampleStartBytes = progress.transferredBytes
+      sampleStartTimestamp = now
+      return lastSpeed
     }
+
+    const deltaBytes = progress.transferredBytes - sampleStartBytes
+    const deltaMs = now - sampleStartTimestamp
+
+    if (deltaBytes <= 0 || deltaMs < minSampleMs) {
+      return lastSpeed
+    }
+
+    const instantBytesPerSecond = deltaBytes / (deltaMs / 1000)
+    smoothedBytesPerSecond = smoothedBytesPerSecond === undefined
+      ? instantBytesPerSecond
+      : (smoothedBytesPerSecond * (1 - smoothingFactor)) + (instantBytesPerSecond * smoothingFactor)
+
+    lastSpeed = formatTransferSpeed(smoothedBytesPerSecond)
+    sampleStartBytes = progress.transferredBytes
+    sampleStartTimestamp = now
 
     return lastSpeed
   }

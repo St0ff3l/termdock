@@ -176,20 +176,19 @@ export function setFileDragPreview(event: DragEvent<HTMLElement>, names: string[
 }
 
 export function transferStatusText(transfer: TransferTask) {
-  const direction = transfer.direction === 'upload' ? t.upload : t.download
   if (transfer.status === 'failed') {
-    return `${transfer.direction === 'upload' ? t.uploadFailed : t.downloadFailed}: ${transfer.name}`
+    return transfer.direction === 'upload' ? t.uploadFailed : t.downloadFailed
   }
   if (transfer.status === 'canceled') {
-    return `${transfer.direction === 'upload' ? t.uploadCanceled : t.downloadCanceled}: ${transfer.name}`
+    return transfer.direction === 'upload' ? t.uploadCanceled : t.downloadCanceled
   }
   if (transfer.status === 'done') {
-    return `${transfer.direction === 'upload' ? t.uploadDone : t.downloadDone}: ${transfer.name}`
+    return transfer.direction === 'upload' ? t.uploadDone : t.downloadDone
   }
   if (transfer.status === 'queued') {
-    return `${transfer.direction === 'upload' ? t.waitingUpload : t.waitingDownload}: ${transfer.name}`
+    return transfer.direction === 'upload' ? t.waitingUpload : t.waitingDownload
   }
-  return `${transfer.direction === 'upload' ? t.uploading : t.downloading} ${transfer.progress}%: ${transfer.name}`
+  return transfer.direction === 'upload' ? t.uploading : t.downloading
 }
 
 function escapeHtml(value: string) {

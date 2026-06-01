@@ -91,4 +91,19 @@ export class WorkspaceTransfersState {
   get(transferId: string) {
     return this.transfers.find((transfer) => transfer.id === transferId)
   }
+
+  removeMany(transferIds: string[]) {
+    if (!transferIds.length) {
+      return false
+    }
+
+    const transferIdSet = new Set(transferIds)
+    const nextTransfers = this.transfers.filter((transfer) => !transferIdSet.has(transfer.id))
+    if (nextTransfers.length === this.transfers.length) {
+      return false
+    }
+
+    this.transfers.splice(0, this.transfers.length, ...nextTransfers)
+    return true
+  }
 }

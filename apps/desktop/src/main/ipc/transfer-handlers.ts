@@ -13,6 +13,10 @@ export function registerTransferHandlers(services: IpcServices) {
     workspaceService.cancelTransfer(transferId, event.sender)
   )
 
+  ipcMain.handle('transfer:clear', (_, transferIds: string[]) =>
+    workspaceService.clearTransfers(transferIds)
+  )
+
   ipcMain.handle('transfer:uploadFile', (event, tabId: string, localPath: string, remoteDirectory: string, options?: TransferTargetOptions) =>
     workspaceService.uploadFile(tabId, localPath, remoteDirectory, event.sender, options)
   )

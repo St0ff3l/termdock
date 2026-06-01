@@ -2391,6 +2391,14 @@ export function App() {
                   reportError(setError, '取消传输', err)
                 })
               }}
+              onClearTransfers={(transferIds) => {
+                if (!desktopApi || !transferIds.length) return
+                void desktopApi.clearTransfers(transferIds).then((snapshot) => {
+                  applySnapshot(snapshot)
+                }).catch((err: Error) => {
+                  reportError(setError, '清理传输记录', err)
+                })
+              }}
               onClose={() => setShowTransfers(false)}
             />
         ) : null}
