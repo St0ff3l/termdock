@@ -514,7 +514,7 @@
 .titlebar-brand {
   display: flex;
   align-items: center;
-  padding: 0 18px 0 92px;
+  padding: 0 14px 0 86px;
   border-right: 1px solid var(--border-light);
 }
 
@@ -526,7 +526,7 @@
   letter-spacing: -0.015em;
   text-overflow: ellipsis;
   white-space: nowrap;
-  margin-left: 8px;
+  margin-left: 2px;
 }
 
 .titlebar-tabarea {

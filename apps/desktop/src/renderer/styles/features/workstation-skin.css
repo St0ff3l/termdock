@@ -56,7 +56,7 @@ textarea:focus-visible,
 }
 
 .titlebar-brand {
-  padding: 0 20px 0 96px;
+  padding: 0 16px 0 90px;
 }
 
 .titlebar-brand strong {
@@ -859,7 +859,15 @@ textarea:focus-visible,
 
 @media (max-width: 820px) {
   .fs-tabbar {
-    grid-template-columns: minmax(120px, 34vw) minmax(0, 1fr);
+    grid-template-columns: minmax(156px, 34vw) minmax(0, 1fr);
+  }
+
+  .titlebar-brand {
+    padding: 0 12px 0 82px;
+  }
+
+  .titlebar-brand strong {
+    font-size: 14px;
   }
 
   .session-workspace {
