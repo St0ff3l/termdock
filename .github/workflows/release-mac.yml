@@ -3,7 +3,7 @@ name: release-mac
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*-beta.*'
 
 permissions:
   contents: write
