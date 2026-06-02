@@ -1,4 +1,8 @@
-import { createTabLayout, type ConnectionProfile, type WorkspaceTab } from '@termdock/core'
+import type { ConnectionProfile, TabLayout, WorkspaceTab } from '@termdock/core'
+
+function createTabLayout(profile: ConnectionProfile): TabLayout {
+  return profile.type === 'ssh' ? 'terminal-file' : 'file-only'
+}
 
 export class WorkspaceTabsState {
   private tabs: WorkspaceTab[] = []

@@ -5,6 +5,8 @@ dist/
 dist-electron/
 apps/desktop/dist/
 apps/desktop/dist-electron/
+release/
+apps/desktop/release/
 
 .DS_Store
 npm-debug.log*

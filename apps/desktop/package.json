@@ -1,9 +1,11 @@
 {
   "name": "@termdock/desktop",
-  "version": "0.1.0",
+  "version": "0.1.0-beta.1",
   "private": true,
   "type": "module",
   "main": "dist-electron/main/main.js",
+  "description": "Modern remote workspace for SSH, SFTP, and FTP.",
+  "author": "St0ff3l",
   "scripts": {
     "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:main\" \"npm:dev:electron\"",
     "dev:renderer": "vite",
@@ -12,12 +14,14 @@
     "build": "npm run build:renderer && npm run build:main",
     "build:renderer": "vite build",
     "build:main": "tsc -p tsconfig.node.json",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
+    "package:mac": "electron-builder --mac --arm64",
+    "release:mac": "npm run build && npm run package:mac"
   },
   "dependencies": {
     "@monaco-editor/react": "4.7.0",
-    "@termdock/core": "0.1.0",
-    "@termdock/storage": "0.1.0",
+    "@termdock/core": "0.1.0-beta.1",
+    "@termdock/storage": "0.1.0-beta.1",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
     "basic-ftp": "^6.0.1",
@@ -35,9 +39,32 @@
     "@types/ssh2": "^1.15.5",
     "@vitejs/plugin-react": "^5.1.0",
     "concurrently": "^9.2.1",
-    "electron": "^38.3.0",
+    "electron": "38.3.0",
+    "electron-builder": "^26.8.1",
     "typescript": "^5.9.3",
     "vite": "^7.2.1",
     "wait-on": "^9.0.3"
+  },
+  "build": {
+    "appId": "com.termdock.desktop",
+    "productName": "TermDock",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "dist-electron/**",
+      "build/**",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "artifactName": "TermDock-${version}-${arch}.${ext}"
+    }
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "termdock",
-  "version": "0.1.0",
+  "version": "0.1.0-beta.1",
   "private": true,
   "license": "MIT",
   "description": "Modern remote workspace for SSH, SFTP, and FTP.",
@@ -10,8 +10,9 @@
   ],
   "scripts": {
     "dev": "npm run dev -w @termdock/desktop",
-    "build": "npm run build -ws --if-present",
-    "typecheck": "npm run typecheck -ws --if-present"
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "release:mac": "npm run release:mac -w @termdock/desktop"
   },
   "engines": {
     "node": ">=20.0.0"
