@@ -24,6 +24,8 @@ const api: TermdockDesktopApi = {
   platform: typeof process !== 'undefined' ? process.platform : 'unknown',
   appName: 'TermDock',
   isDesktop: true,
+  readClipboardText: (): Promise<string> => ipcRenderer.invoke('app:readClipboardText'),
+  writeClipboardText: (text: string): Promise<void> => ipcRenderer.invoke('app:writeClipboardText', text),
   getUiPreferences: () => ipcRenderer.invoke('app:getUiPreferences'),
   setUiPreferences: (input) => ipcRenderer.invoke('app:setUiPreferences', input),
   openConnectionManagerWindow: (): Promise<void> =>

@@ -24,6 +24,42 @@ function toDisplayTerminalText(value: string) {
   return localizeTerminalText(value)
 }
 
+function splitOscPayload(payload: string) {
+  const separatorIndex = payload.indexOf(';')
+  if (separatorIndex === -1) {
+    return null
+  }
+
+  return {
+    target: payload.slice(0, separatorIndex),
+    data: payload.slice(separatorIndex + 1)
+  }
+}
+
+function isOsc52TargetSupported(target: string) {
+  return target === ''
+    || /[cpsq01234567]/.test(target)
+}
+
+function decodeBase64Utf8(value: string) {
+  try {
+    const normalized = value.replace(/\s+/g, '')
+    const bytes = Uint8Array.from(atob(normalized), (char) => char.charCodeAt(0))
+    return new TextDecoder().decode(bytes)
+  } catch {
+    return null
+  }
+}
+
+function encodeBase64Utf8(value: string) {
+  const bytes = new TextEncoder().encode(value)
+  let binary = ''
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte)
+  }
+  return btoa(binary)
+}
+
 function isWideCodePoint(codePoint: number) {
   return (
     (codePoint >= 0x1100 && codePoint <= 0x115f)
@@ -214,7 +250,11 @@ export function TerminalView({
     if (!selection) {
       return
     }
-    copyText(selection)
+    if (window.termdock?.writeClipboardText) {
+      void window.termdock.writeClipboardText(selection)
+    } else {
+      copyText(selection)
+    }
     terminal.focus()
   }
 
@@ -223,7 +263,9 @@ export function TerminalView({
     if (!terminal) {
       return
     }
-    const value = await navigator.clipboard?.readText?.()
+    const value = window.termdock?.readClipboardText
+      ? await window.termdock.readClipboardText()
+      : await navigator.clipboard?.readText?.()
     if (value) {
       terminal.paste(value)
     }
@@ -557,6 +599,34 @@ export function TerminalView({
     terminal.open(hostRef.current)
     terminalRef.current = terminal
 
+    const osc52Disposable = terminal.parser.registerOscHandler(52, async (payload) => {
+      const parsed = splitOscPayload(payload)
+      if (!parsed || !isOsc52TargetSupported(parsed.target)) {
+        return false
+      }
+
+      if (parsed.data === '?') {
+        const clipboardText = window.termdock?.readClipboardText
+          ? await window.termdock.readClipboardText()
+          : await navigator.clipboard?.readText?.() ?? ''
+        const encoded = encodeBase64Utf8(clipboardText)
+        await window.termdock?.writeTerminal(tabId, `\u001b]52;${parsed.target || 'c'};${encoded}\u0007`)
+        return true
+      }
+
+      const decoded = decodeBase64Utf8(parsed.data)
+      if (decoded === null) {
+        return false
+      }
+
+      if (window.termdock?.writeClipboardText) {
+        await window.termdock.writeClipboardText(decoded)
+      } else {
+        copyText(decoded)
+      }
+      return true
+    })
+
     syncTerminalSize(fitAddon, terminal)
     clearInlineRedrawState()
 
@@ -690,6 +760,7 @@ export function TerminalView({
       preserveVisibleBufferRef.current = false
       lastSyncedSizeRef.current = null
       clearInlineRedrawState()
+      osc52Disposable.dispose()
       resizeObserver.disconnect()
       hostRef.current?.removeEventListener('contextmenu', onContextMenu)
       window.removeEventListener('keydown', onKeyDown)

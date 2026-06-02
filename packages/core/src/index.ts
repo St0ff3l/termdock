@@ -375,6 +375,8 @@ export interface TermdockDesktopApi {
   platform: string
   appName: string
   isDesktop: boolean
+  readClipboardText(): Promise<string>
+  writeClipboardText(text: string): Promise<void>
   getUiPreferences(): Promise<{ theme: 'default-dark' | 'default-light'; locale: 'zhCN' | 'enUS' }>
   setUiPreferences(input: { theme?: 'default-dark' | 'default-light'; locale?: 'zhCN' | 'enUS' }): Promise<{ theme: 'default-dark' | 'default-light'; locale: 'zhCN' | 'enUS' }>
   openConnectionManagerWindow(): Promise<void>

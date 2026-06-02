@@ -15,6 +15,7 @@
     "build:renderer": "vite build",
     "build:main": "tsc -p tsconfig.node.json",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
+    "clean:release": "node ./scripts/clean-release.mjs",
     "package:mac": "electron-builder --mac --arm64",
     "release:mac": "npm run build && npm run package:mac"
   },

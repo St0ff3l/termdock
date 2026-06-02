@@ -24,6 +24,12 @@
 4. 确认 `apps/desktop/release/` 里出现 `dmg` 和 `zip`。
 5. 确认版本号为 `0.1.0-beta.1`。
 
+如需清理本地产物后再重打，可执行：
+
+```bash
+npm run clean:release -w @termdock/desktop
+```
+
 ## 4. 打 tag
 
 ```bash
