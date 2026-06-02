@@ -38,11 +38,11 @@
 | <img src="https://img.shields.io/badge/Electron-38-47848F?style=flat-square&logo=electron&logoColor=white" alt="Electron" /> | <img src="https://img.shields.io/badge/React-19-149ECA?style=flat-square&logo=react&logoColor=white" alt="React" /> <img src="https://img.shields.io/badge/Vite-7-646CFF?style=flat-square&logo=vite&logoColor=white" alt="Vite" /> | <img src="https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" /> | <img src="https://img.shields.io/badge/xterm.js-111827?style=flat-square" alt="xterm.js" /> | <img src="https://img.shields.io/badge/Monaco%20Editor-007ACC?style=flat-square&logo=visualstudiocode&logoColor=white" alt="Monaco Editor" /> | <img src="https://img.shields.io/badge/ssh2-0F766E?style=flat-square" alt="ssh2" /> <img src="https://img.shields.io/badge/basic--ftp-2563EB?style=flat-square" alt="basic-ftp" /> | <img src="https://img.shields.io/badge/npm%20workspaces-CB3837?style=flat-square&logo=npm&logoColor=white" alt="npm workspaces" /> |
 
 ```txt
-main process  ████████████████████  Electron services, IPC, protocol lifecycle
+main process   ████████████████████  Electron services, IPC, protocol lifecycle
 preload bridge ████████████████░░░░  Secure API boundary for renderer
-renderer UI   ███████████████████░  React workspace, tabs, files, terminal
-protocols     ███████████████░░░░░  SSH shell, SFTP, FTP adapters
-theme system  ████████████████░░░░  tokens -> vars -> skins -> terminal colors
+renderer UI    ███████████████████░  React workspace, tabs, files, terminal
+protocols      ███████████████░░░░░  SSH shell, SFTP, FTP adapters
+theme system   ████████████████░░░░  tokens -> vars -> skins -> terminal colors
 ```
 
 ## 为什么做 TermDock
