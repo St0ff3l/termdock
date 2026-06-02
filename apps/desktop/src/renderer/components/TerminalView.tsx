@@ -90,6 +90,7 @@ function rowsForDisplayWidth(width: number, cols: number) {
 
 const TERMINAL_TRANSCRIPT_LIMIT = 200_000
 const TERMINAL_FIT_GUARD_ROWS = 1
+const TERMINAL_RESIZE_DEBOUNCE_MS = 140
 
 function trimTranscript(transcript: string) {
   if (transcript.length <= TERMINAL_TRANSCRIPT_LIMIT) {
@@ -115,6 +116,8 @@ export function TerminalView({
   const renderedTranscriptRef = useRef('')
   const pendingWriteRef = useRef('')
   const writeFrameRef = useRef<number | null>(null)
+  const resizeTimerRef = useRef<number | null>(null)
+  const pendingResizeForceRef = useRef(false)
   const isWritingRef = useRef(false)
   const activeInlineRedrawRef = useRef(false)
   const inlineRedrawContentRef = useRef('')
@@ -386,7 +389,8 @@ export function TerminalView({
   }
 
   const formatTerminalChunk = (terminal: Terminal | null, value: string) => {
-    return toDisplayTerminalText(value)
+    const displayText = toDisplayTerminalText(value)
+    return terminal ? normalizeInlineRedrawChunk(terminal, displayText) : displayText
   }
 
   const replaceTerminalWithTranscript = (terminal: Terminal, transcript: string) => {
@@ -546,7 +550,9 @@ export function TerminalView({
     // bars under the file panel/resizer.
     const rows = Math.max(1, proposed.rows - TERMINAL_FIT_GUARD_ROWS)
     if (terminal.cols !== proposed.cols || terminal.rows !== rows) {
+      clearInlineRedrawState()
       terminal.resize(proposed.cols, rows)
+      terminal.refresh(0, Math.max(terminal.rows - 1, 0))
     }
 
     const nextSize = {
@@ -638,6 +644,21 @@ export function TerminalView({
       syncTerminalSize(fitAddon, terminal, force)
     }
 
+    const scheduleResize = (force = false) => {
+      pendingResizeForceRef.current = pendingResizeForceRef.current || force
+
+      if (resizeTimerRef.current !== null) {
+        window.clearTimeout(resizeTimerRef.current)
+      }
+
+      resizeTimerRef.current = window.setTimeout(() => {
+        resizeTimerRef.current = null
+        const shouldForce = pendingResizeForceRef.current
+        pendingResizeForceRef.current = false
+        resize(shouldForce)
+      }, TERMINAL_RESIZE_DEBOUNCE_MS)
+    }
+
     const onDataDispose = terminal.onData((data) => {
       if (terminal.hasSelection()) {
         terminal.clearSelection()
@@ -672,7 +693,7 @@ export function TerminalView({
         }
         if (!wasConnectedRef.current && connected) {
           preserveVisibleBufferRef.current = false
-          window.requestAnimationFrame(() => resize(true))
+          window.requestAnimationFrame(() => scheduleResize(true))
         }
         if (isDisconnecting) {
           terminal.write(buildExitAlternateScreenSequence(), () => {
@@ -687,8 +708,18 @@ export function TerminalView({
       }
     })
 
-    const resizeObserver = new ResizeObserver(() => resize())
+    const resizeObserver = new ResizeObserver(() => scheduleResize())
     resizeObserver.observe(hostRef.current)
+
+    const onWindowFocus = () => {
+      window.requestAnimationFrame(() => scheduleResize(true))
+    }
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        window.requestAnimationFrame(() => scheduleResize(true))
+      }
+    }
 
     const onContextMenu = (event: MouseEvent) => {
       event.preventDefault()
@@ -737,6 +768,8 @@ export function TerminalView({
 
     hostRef.current.addEventListener('contextmenu', onContextMenu)
     window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('focus', onWindowFocus)
+    document.addEventListener('visibilitychange', onVisibilityChange)
 
     // Ask the main process for the actual PTY size once the terminal is mounted.
     if (!bootedTabs.current.has(tabId)) {
@@ -752,7 +785,12 @@ export function TerminalView({
       if (writeFrameRef.current !== null) {
         window.cancelAnimationFrame(writeFrameRef.current)
       }
+      if (resizeTimerRef.current !== null) {
+        window.clearTimeout(resizeTimerRef.current)
+      }
       writeFrameRef.current = null
+      resizeTimerRef.current = null
+      pendingResizeForceRef.current = false
       isWritingRef.current = false
       pendingWriteRef.current = ''
       renderedTranscriptRef.current = ''
@@ -764,6 +802,8 @@ export function TerminalView({
       resizeObserver.disconnect()
       hostRef.current?.removeEventListener('contextmenu', onContextMenu)
       window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('focus', onWindowFocus)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
       terminalRef.current = null
       terminal.dispose()
     }
