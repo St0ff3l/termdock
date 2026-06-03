@@ -11,6 +11,8 @@
 - `\r` 单行重绘式进度条
 - `nano` / `vim` 这类全屏 TUI
 - 连接启动 transcript 的一次性回放
+- 终端内搜索、Web 链接识别、Unicode 11 字符宽度
+- WebGL 加速渲染，初始化失败时回到 xterm 默认渲染
 
 这些能力共用一套 `TerminalView` 写入链路，后续只要调整：
 
@@ -18,6 +20,8 @@
 - transcript hydration / bootText 回放
 - `fitAddon` 行列计算
 - PTY resize / shell ready 时机
+- xterm addon 加载顺序或搜索 UI
+- WebGL renderer 初始化和 context loss fallback
 
 都可能引入回归。
 
@@ -95,6 +99,21 @@ Last login: ...
 - 启动 transcript 会显示
 - 但不会因为 transcript 回放破坏 `nano/vim`
 
+### 2.6 终端搜索、链接和宽字符
+
+在终端里输出一些可搜索内容、URL、宽字符和 Emoji：
+
+```bash
+printf 'TermDock search Search\nhttps://example.com\nPowerline 字符 Emoji 😀\n'
+```
+
+通过标准：
+
+- `⌘F` / `Ctrl+F` 打开终端内搜索框，不触发文件编辑器搜索。
+- 搜索支持上一条/下一条，`Aa` 能切换大小写，`.*` 能切换正则。
+- HTTP/HTTPS 链接悬停可识别，点击能打开链接。
+- 中文、Powerline 字符和 Emoji 不明显挤压或造成光标错位。
+
 ## 3. 当前脆弱点
 
 当前实现里最容易回归的是 transcript hydration，也就是：
@@ -139,4 +158,3 @@ hydration 是“启动体验补偿”，不是实时终端同步机制
 - `nano` 黑屏
 - `vim` 退出后 shell 被污染
 - `apt` 进度条残影
-

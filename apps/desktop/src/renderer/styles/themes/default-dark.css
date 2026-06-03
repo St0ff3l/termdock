@@ -44,7 +44,7 @@
   --terminal-bg: #181818;
   --terminal-text: #e0e0e0;
   --terminal-cmd-bg: rgba(148, 163, 184, 0.16);
-  --terminal-search-highlight: rgba(236, 255, 71, 0.82);
+  --terminal-search-highlight: #f3f4f6;
   --terminal-cmd-text: #f1f5f9;
   --terminal-frame-shadow: inset 0 0 14px rgba(0, 0, 0, 0.3);
   --button-primary-bg: #1687e8;
@@ -1819,6 +1819,13 @@
 :root[data-theme='default-dark'] .terminal-find button:hover,
 :root[data-theme='default'] .terminal-find button:hover {
   background: #363942;
+}
+
+:root:not([data-theme]) .terminal-find button.is-active,
+:root[data-theme='default-dark'] .terminal-find button.is-active,
+:root[data-theme='default'] .terminal-find button.is-active {
+  background: #4b5563;
+  color: #ffffff;
 }
 
 :root:not([data-theme]) .terminal-find-status,

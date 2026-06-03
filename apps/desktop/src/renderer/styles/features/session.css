@@ -123,6 +123,10 @@
   border: 0;
 }
 
+.terminal-find button.is-active {
+  font-weight: 700;
+}
+
 .terminal-find-count {
   flex: 0 0 auto;
   min-width: 40px;

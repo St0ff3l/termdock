@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import { SearchAddon } from '@xterm/addon-search'
+import { Unicode11Addon } from '@xterm/addon-unicode11'
+import { WebglAddon } from '@xterm/addon-webgl'
+import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
 import { copyText } from '../app/app-utils'
 import { t } from '../i18n'
@@ -91,6 +95,12 @@ function rowsForDisplayWidth(width: number, cols: number) {
 const TERMINAL_TRANSCRIPT_LIMIT = 200_000
 const TERMINAL_FIT_GUARD_ROWS = 1
 const TERMINAL_RESIZE_DEBOUNCE_MS = 140
+const TERMINAL_SEARCH_DECORATIONS = {
+  matchBackground: '#4b5563',
+  matchOverviewRuler: '#9ca3af',
+  activeMatchBackground: '#f3f4f6',
+  activeMatchColorOverviewRuler: '#f3f4f6'
+}
 
 function trimTranscript(transcript: string) {
   if (transcript.length <= TERMINAL_TRANSCRIPT_LIMIT) {
@@ -98,6 +108,32 @@ function trimTranscript(transcript: string) {
   }
 
   return transcript.slice(transcript.length - TERMINAL_TRANSCRIPT_LIMIT)
+}
+
+function loadAcceleratedRenderer(terminal: Terminal) {
+  const disposables: Array<{ dispose(): void }> = []
+
+  try {
+    const webglAddon = new WebglAddon()
+    terminal.loadAddon(webglAddon)
+    disposables.push(webglAddon)
+    const contextLossDisposable = webglAddon.onContextLoss(() => {
+      contextLossDisposable.dispose()
+      webglAddon.dispose()
+      console.warn('xterm WebGL renderer context was lost. Falling back to the default renderer.')
+    })
+    disposables.push(contextLossDisposable)
+  } catch (error) {
+    console.warn('Failed to initialize xterm WebGL renderer. Falling back to the default renderer.', error)
+  }
+
+  return {
+    dispose: () => {
+      for (let index = disposables.length - 1; index >= 0; index -= 1) {
+        disposables[index].dispose()
+      }
+    }
+  }
 }
 
 export function TerminalView({
@@ -111,6 +147,7 @@ export function TerminalView({
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const terminalRef = useRef<Terminal | null>(null)
+  const searchAddonRef = useRef<SearchAddon | null>(null)
   const findInputRef = useRef<HTMLInputElement | null>(null)
   const bootTextRef = useRef(bootText)
   const renderedTranscriptRef = useRef('')
@@ -134,6 +171,8 @@ export function TerminalView({
   const [findMiss, setFindMiss] = useState(false)
   const [findMatchCount, setFindMatchCount] = useState(0)
   const [activeFindIndex, setActiveFindIndex] = useState(-1)
+  const [findCaseSensitive, setFindCaseSensitive] = useState(false)
+  const [findRegex, setFindRegex] = useState(false)
   const isMac = window.termdock?.platform === 'darwin'
 
   const shortcuts = {
@@ -155,8 +194,9 @@ export function TerminalView({
     brightBlue: readColor('--text-main', '#f1f5f9'),
     selectionBackground: readColor(
       highlightFind ? '--terminal-search-highlight' : '--terminal-cmd-bg',
-      highlightFind ? 'rgba(236, 255, 71, 0.82)' : 'rgba(148, 163, 184, 0.24)'
-    )
+      highlightFind ? '#f3f4f6' : 'rgba(148, 163, 184, 0.24)'
+    ),
+    selectionForeground: highlightFind ? '#111827' : undefined
   })
 
   const applyTerminalTheme = () => {
@@ -169,6 +209,7 @@ export function TerminalView({
   }
 
   const clearFindSelection = () => {
+    searchAddonRef.current?.clearDecorations()
     const terminal = terminalRef.current
     if (terminal?.hasSelection()) {
       terminal.clearSelection()
@@ -185,64 +226,12 @@ export function TerminalView({
     terminalRef.current?.focus()
   }
 
-  const collectFindMatches = (query: string) => {
-    const terminal = terminalRef.current
-    if (!terminal || !query) {
-      return []
-    }
-
-    const normalizedQuery = query.toLocaleLowerCase()
-    const buffer = terminal.buffer.active
-    const matches: Array<{ row: number; column: number }> = []
-
-    for (let row = 0; row < buffer.length; row += 1) {
-      const line = buffer.getLine(row)?.translateToString(true) ?? ''
-      const haystack = line.toLocaleLowerCase()
-      let searchFrom = 0
-
-      while (searchFrom <= haystack.length - normalizedQuery.length) {
-        const column = haystack.indexOf(normalizedQuery, searchFrom)
-        if (column === -1) {
-          break
-        }
-        matches.push({ row, column })
-        searchFrom = column + Math.max(1, normalizedQuery.length)
-      }
-    }
-
-    return matches
-  }
-
-  const selectFindMatch = (query: string, index: number, matches = collectFindMatches(query)) => {
-    const terminal = terminalRef.current
-    if (!terminal || !query) {
-      setFindMiss(false)
-      setFindMatchCount(0)
-      setActiveFindIndex(-1)
-      clearFindSelection()
-      return false
-    }
-
-    setFindMatchCount(matches.length)
-
-    if (matches.length === 0) {
-      setFindMiss(true)
-      setActiveFindIndex(-1)
-      clearFindSelection()
-      terminal.focus()
-      return false
-    }
-
-    const normalizedIndex = ((index % matches.length) + matches.length) % matches.length
-    const match = matches[normalizedIndex]
-
-    terminal.scrollToLine(match.row)
-    terminal.select(match.column, match.row, query.length)
-    setFindMiss(false)
-    setActiveFindIndex(normalizedIndex)
-    terminal.focus()
-    return true
-  }
+  const buildSearchOptions = (incremental = false) => ({
+    caseSensitive: findCaseSensitive,
+    regex: findRegex,
+    incremental,
+    decorations: TERMINAL_SEARCH_DECORATIONS
+  })
 
   const runCopy = () => {
     const terminal = terminalRef.current
@@ -276,6 +265,7 @@ export function TerminalView({
   }
 
   const searchTerminal = (query: string, direction: 1 | -1 = 1) => {
+    const searchAddon = searchAddonRef.current
     if (!query) {
       setFindMiss(false)
       setFindMatchCount(0)
@@ -284,18 +274,34 @@ export function TerminalView({
       return false
     }
 
-    const matches = collectFindMatches(query)
-    if (matches.length === 0) {
+    if (!searchAddon) {
       setFindMiss(true)
       setFindMatchCount(0)
       setActiveFindIndex(-1)
       clearFindSelection()
-      terminalRef.current?.focus()
       return false
     }
 
-    const nextIndex = activeFindIndex >= 0 ? activeFindIndex + direction : direction === -1 ? matches.length - 1 : 0
-    return selectFindMatch(query, nextIndex, matches)
+    try {
+      const found = direction === -1
+        ? searchAddon.findPrevious(query, buildSearchOptions())
+        : searchAddon.findNext(query, buildSearchOptions())
+
+      if (!found) {
+        setFindMiss(true)
+        setFindMatchCount(0)
+        setActiveFindIndex(-1)
+        clearFindSelection()
+      }
+
+      return found
+    } catch {
+      setFindMiss(true)
+      setFindMatchCount(0)
+      setActiveFindIndex(-1)
+      clearFindSelection()
+      return false
+    }
   }
 
   const openFind = () => {
@@ -595,15 +601,33 @@ export function TerminalView({
       fontSize: 13,
       lineHeight: 1.05,
       cursorBlink: true,
+      allowProposedApi: true,
       allowTransparency: true,
       scrollback: 6000,
       theme: buildTerminalTheme(false),
       convertEol: true
     })
     const fitAddon = new FitAddon()
+    const searchAddon = new SearchAddon({ highlightLimit: 2000 })
+    const unicode11Addon = new Unicode11Addon()
+    const webLinksAddon = new WebLinksAddon((_event, uri) => {
+      window.open(uri, '_blank', 'noopener,noreferrer')
+    })
     terminal.loadAddon(fitAddon)
+    terminal.loadAddon(searchAddon)
+    terminal.loadAddon(unicode11Addon)
+    terminal.loadAddon(webLinksAddon)
+    terminal.unicode.activeVersion = '11'
     terminal.open(hostRef.current)
+    const rendererDisposable = loadAcceleratedRenderer(terminal)
     terminalRef.current = terminal
+    searchAddonRef.current = searchAddon
+
+    const searchResultsDisposable = searchAddon.onDidChangeResults(({ resultIndex, resultCount }) => {
+      setFindMatchCount(resultCount)
+      setActiveFindIndex(resultIndex)
+      setFindMiss(resultCount === 0)
+    })
 
     const osc52Disposable = terminal.parser.registerOscHandler(52, async (payload) => {
       const parsed = splitOscPayload(payload)
@@ -798,12 +822,15 @@ export function TerminalView({
       preserveVisibleBufferRef.current = false
       lastSyncedSizeRef.current = null
       clearInlineRedrawState()
+      rendererDisposable.dispose()
+      searchResultsDisposable.dispose()
       osc52Disposable.dispose()
       resizeObserver.disconnect()
       hostRef.current?.removeEventListener('contextmenu', onContextMenu)
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('focus', onWindowFocus)
       document.removeEventListener('visibilitychange', onVisibilityChange)
+      searchAddonRef.current = null
       terminalRef.current = null
       terminal.dispose()
     }
@@ -867,25 +894,30 @@ export function TerminalView({
       return
     }
 
-    const matches = collectFindMatches(findQuery)
-    setFindMatchCount(matches.length)
-
-    if (matches.length === 0) {
+    const searchAddon = searchAddonRef.current
+    if (!searchAddon) {
       setFindMiss(true)
+      setFindMatchCount(0)
       setActiveFindIndex(-1)
       clearFindSelection()
       return
     }
 
-    setFindMiss(false)
-    if (activeFindIndex === -1) {
-      void selectFindMatch(findQuery, 0, matches)
-      return
+    try {
+      const found = searchAddon.findNext(findQuery, buildSearchOptions(true))
+      if (!found) {
+        setFindMiss(true)
+        setFindMatchCount(0)
+        setActiveFindIndex(-1)
+        clearFindSelection()
+      }
+    } catch {
+      setFindMiss(true)
+      setFindMatchCount(0)
+      setActiveFindIndex(-1)
+      clearFindSelection()
     }
-    if (activeFindIndex >= matches.length) {
-      setActiveFindIndex(matches.length - 1)
-    }
-  }, [activeFindIndex, findOpen, findQuery])
+  }, [findCaseSensitive, findOpen, findQuery, findRegex])
 
   return (
     <>
@@ -918,6 +950,24 @@ export function TerminalView({
           <div className="terminal-find-count" aria-live="polite">
             {findQuery && findMatchCount > 0 ? `${Math.max(activeFindIndex + 1, 1)}/${findMatchCount}` : null}
           </div>
+          <button
+            type="button"
+            className={findCaseSensitive ? 'is-active' : undefined}
+            aria-pressed={findCaseSensitive}
+            title={t.findCaseSensitive}
+            onClick={() => setFindCaseSensitive((value) => !value)}
+          >
+            Aa
+          </button>
+          <button
+            type="button"
+            className={findRegex ? 'is-active' : undefined}
+            aria-pressed={findRegex}
+            title={t.findRegex}
+            onClick={() => setFindRegex((value) => !value)}
+          >
+            .*
+          </button>
           <button type="button" title={t.findPrevious} onClick={() => searchTerminal(findQuery, -1)}>↑</button>
           <button type="button" title={t.findNext} onClick={() => searchTerminal(findQuery, 1)}>↓</button>
           <button type="button" onClick={() => searchTerminal(findQuery, 1)}>{t.find}</button>
