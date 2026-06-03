@@ -90,12 +90,14 @@ export function SessionWorkspace({
   const [filePanelHeight, setFilePanelHeight] = useState(218)
   const workspaceRef = useRef<HTMLElement | null>(null)
   const isResizingFilePanel = useRef(false)
-  const hasAlignedFilePanel = useRef(false)
   const hasUserResizedFilePanel = useRef(false)
+  const isSnappedToDiskHead = useRef(false)
+  const dragStateRef = useRef<{ bottom: number; height: number; snapHeight: number | null } | null>(null)
 
   const clampFilePanelHeight = (workspaceHeight: number, nextHeight: number) => {
-    const maxHeight = Math.max(140, workspaceHeight - 160)
-    return Math.min(maxHeight, Math.max(140, nextHeight))
+    const minHeight = 25 // Allow it to shrink to just the tabs row height
+    const maxHeight = Math.max(minHeight, workspaceHeight - 160)
+    return Math.min(maxHeight, Math.max(minHeight, nextHeight))
   }
 
   const syncFilePanelHeight = (mode: 'align' | 'clamp') => {
@@ -108,16 +110,15 @@ export function SessionWorkspace({
       return
     }
 
-    if (mode === 'align' && !hasUserResizedFilePanel.current) {
+    if (mode === 'align') {
       const diskHeadRect = document.querySelector('.disk-head')?.getBoundingClientRect()
       if (diskHeadRect) {
         const nextHeight = workspaceRect.bottom - diskHeadRect.top
         const clampedHeight = clampFilePanelHeight(workspaceRect.height, nextHeight)
-        if (nextHeight >= 140) {
-          setFilePanelHeight((prev) => prev === clampedHeight ? prev : clampedHeight)
-          hasAlignedFilePanel.current = true
-          return
-        }
+        
+        setFilePanelHeight((prev) => prev === clampedHeight ? prev : clampedHeight)
+        isSnappedToDiskHead.current = true
+        return
       }
     }
 
@@ -132,18 +133,42 @@ export function SessionWorkspace({
       return
     }
 
+    let dragFrame: number | null = null
+
     const onMouseMove = (event: globalThis.MouseEvent) => {
-      if (!isResizingFilePanel.current || !workspaceRef.current) {
+      if (!isResizingFilePanel.current || !dragStateRef.current) {
         return
       }
 
-      const rect = workspaceRef.current.getBoundingClientRect()
-      const nextHeight = rect.bottom - event.clientY
-      setFilePanelHeight(clampFilePanelHeight(rect.height, nextHeight))
+      const { bottom, height, snapHeight } = dragStateRef.current
+      let nextHeight = bottom - event.clientY
+
+      let isSnapped = false
+      if (snapHeight !== null && Math.abs(nextHeight - snapHeight) <= 10) {
+        nextHeight = snapHeight
+        isSnapped = true
+      }
+      isSnappedToDiskHead.current = isSnapped
+
+      if (dragFrame) {
+        window.cancelAnimationFrame(dragFrame)
+      }
+
+      dragFrame = window.requestAnimationFrame(() => {
+        setFilePanelHeight((prev) => {
+          const clamped = clampFilePanelHeight(height, nextHeight)
+          return prev === clamped ? prev : clamped
+        })
+      })
     }
 
     const onMouseUp = () => {
       isResizingFilePanel.current = false
+      dragStateRef.current = null
+      if (dragFrame) {
+        window.cancelAnimationFrame(dragFrame)
+        dragFrame = null
+      }
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
     }
@@ -154,27 +179,31 @@ export function SessionWorkspace({
     return () => {
       window.removeEventListener('mousemove', onMouseMove)
       window.removeEventListener('mouseup', onMouseUp)
+      if (dragFrame) {
+        window.cancelAnimationFrame(dragFrame)
+      }
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
     }
   }, [isFileOnly])
 
   useEffect(() => {
-    hasAlignedFilePanel.current = false
     hasUserResizedFilePanel.current = false
   }, [activeTab.id])
 
   useEffect(() => {
-    if (isFileOnly || hasAlignedFilePanel.current) {
+    if (isFileOnly) {
       return
     }
 
     const frame = window.requestAnimationFrame(() => {
-      syncFilePanelHeight('align')
+      if (!hasUserResizedFilePanel.current || isSnappedToDiskHead.current) {
+        syncFilePanelHeight('align')
+      }
     })
 
     return () => window.cancelAnimationFrame(frame)
-  }, [isFileOnly, activeTab.id])
+  }, [isFileOnly, activeTab.id, activeSession.systemMetrics])
 
   useEffect(() => {
     if (isFileOnly || !workspaceRef.current) {
@@ -183,7 +212,8 @@ export function SessionWorkspace({
 
     const syncAfterLayout = () => {
       window.requestAnimationFrame(() => {
-        syncFilePanelHeight(hasUserResizedFilePanel.current ? 'clamp' : 'align')
+        const mode = !hasUserResizedFilePanel.current || isSnappedToDiskHead.current ? 'align' : 'clamp'
+        syncFilePanelHeight(mode)
       })
     }
 
@@ -217,6 +247,17 @@ export function SessionWorkspace({
           onMouseDown={() => {
             isResizingFilePanel.current = true
             hasUserResizedFilePanel.current = true
+            
+            if (workspaceRef.current) {
+              const rect = workspaceRef.current.getBoundingClientRect()
+              const diskHeadRect = document.querySelector('.disk-head')?.getBoundingClientRect()
+              dragStateRef.current = {
+                bottom: rect.bottom,
+                height: rect.height,
+                snapHeight: diskHeadRect ? rect.bottom - diskHeadRect.top : null
+              }
+            }
+            
             document.body.style.cursor = 'row-resize'
             document.body.style.userSelect = 'none'
           }}

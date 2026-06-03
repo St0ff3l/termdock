@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import type {
   CommandExecutionOptions,
   CommandFolder,
@@ -31,6 +31,8 @@ export function CommandCenter({
   isBusy,
   tabs,
   onExecute,
+  paneWidth,
+  onPaneWidthChange,
 }: {
   activeTab: WorkspaceTab | null
   commandFolders: CommandFolder[]
@@ -38,6 +40,8 @@ export function CommandCenter({
   isBusy: boolean
   tabs: WorkspaceTab[]
   onExecute(commandId: string, args: string[], options: CommandExecutionOptions, scope: SendScope): void
+  paneWidth: number
+  onPaneWidthChange(width: number): void
 }) {
   const grouped = useMemo(() => groupCommands(commandFolders, commandTemplates), [commandFolders, commandTemplates])
   const ungrouped = useMemo(
@@ -54,6 +58,9 @@ export function CommandCenter({
   const [lastRenderedCommand, setLastRenderedCommand] = useState('')
   const [appendCarriageReturn, setAppendCarriageReturn] = useState(true)
   const [sendScope, setSendScope] = useState<SendScope>('current')
+  
+  const splitRef = useRef<HTMLDivElement | null>(null)
+  const isResizingCommandSplit = useRef(false)
 
   const visibleTemplates = useMemo(() => {
     if (activeFolderId === 'all') {
@@ -97,9 +104,55 @@ export function CommandCenter({
     setLastRenderedCommand(rendered)
     onExecute(selectedTemplate.id, args, { appendCarriageReturn }, sendScope)
   }
+
+  useEffect(() => {
+    let dragFrame: number | null = null
+
+    const handleMouseMove = (event: globalThis.MouseEvent) => {
+      if (!isResizingCommandSplit.current || !splitRef.current) return
+
+      const rect = splitRef.current.getBoundingClientRect()
+      const minListWidth = 180
+      const minPreviewWidth = 320
+      const maxListWidth = Math.max(minListWidth, rect.width - minPreviewWidth - 6)
+      const nextWidth = Math.min(maxListWidth, Math.max(minListWidth, event.clientX - rect.left))
+      
+      if (dragFrame) {
+        window.cancelAnimationFrame(dragFrame)
+      }
+      
+      dragFrame = window.requestAnimationFrame(() => {
+        onPaneWidthChange(nextWidth)
+      })
+    }
+
+    const handleMouseUp = () => {
+      if (!isResizingCommandSplit.current) return
+      isResizingCommandSplit.current = false
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+      if (dragFrame) {
+        window.cancelAnimationFrame(dragFrame)
+      }
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+  }, [onPaneWidthChange])
+
   return (
     <section className="command-center">
-      <div className="command-center-body">
+      <div 
+        className="command-center-body" 
+        ref={splitRef}
+        style={{ '--list-pane-width': `${paneWidth}px` } as React.CSSProperties}
+      >
         <section className="command-pane command-pane-list">
           <div className="command-folder-bar">
             <div
@@ -139,18 +192,20 @@ export function CommandCenter({
           </div>
 
           <div className="command-template-list scrollbar-scroll">
-            <table className="command-table">
+            <table className="fs-file-table compact command-table">
+              <colgroup>
+                <col style={{ width: '100%' }} />
+              </colgroup>
               <thead>
                 <tr>
                   <th className="col-name">{t.name}</th>
-                  <th className="col-template">{t.commandTemplate}</th>
                 </tr>
               </thead>
               <tbody>
                 {visibleTemplates.map((template) => (
                   <tr
                     key={template.id}
-                    className={selectedTemplate?.id === template.id ? 'active' : ''}
+                    className={selectedTemplate?.id === template.id ? 'is-selected' : ''}
                     onClick={() => setSelectedCommandId(template.id)}
                   >
                     <td className="col-name">
@@ -158,9 +213,6 @@ export function CommandCenter({
                         <AppIcon name="flash" size={14} />
                       </span>
                       <strong>{template.name}</strong>
-                    </td>
-                    <td className="col-template">
-                      <span className="command-template-inline">{getCommandSummary(template)}</span>
                     </td>
                   </tr>
                 ))}
@@ -171,6 +223,16 @@ export function CommandCenter({
             ) : null}
           </div>
         </section>
+
+        <div
+          className="file-split-resizer"
+          onMouseDown={() => {
+            isResizingCommandSplit.current = true
+            document.body.style.cursor = 'col-resize'
+            document.body.style.userSelect = 'none'
+          }}
+          role="separator"
+        />
 
         <section className="command-pane command-pane-preview">
           <div className="command-pane-head">
@@ -191,7 +253,7 @@ export function CommandCenter({
                         <option value="all-ssh">{t.commandSendAll}</option>
                       </select>
                     </label>
-                    <button type="button" onClick={handleRun} disabled={isBusy || (sendScope === 'current' ? !canRunCurrent : !canRunAny)}>
+                    <button type="button" className="primary-button" onClick={handleRun} disabled={isBusy || (sendScope === 'current' ? !canRunCurrent : !canRunAny)}>
                       <AppIcon name="flash" />
                       {t.send}
                     </button>

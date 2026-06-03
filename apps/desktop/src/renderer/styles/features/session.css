@@ -1,7 +1,7 @@
 .session-workspace {
   display: grid;
   position: relative;
-  grid-template-rows: minmax(160px, 1fr) var(--file-panel-height, 300px);
+  grid-template-rows: minmax(160px, 1fr) minmax(0, var(--file-panel-height, 300px));
   min-height: 0;
   height: 100%;
 }
@@ -243,7 +243,7 @@
   grid-template-columns: max-content minmax(0, 1fr) max-content;
   align-items: center;
   gap: 10px;
-  height: 29px;
+  height: 24px;
   padding: 0 12px;
   border-bottom: 1px solid var(--border-light);
 }
@@ -298,7 +298,7 @@
 
 .fs-file-table th,
 .fs-file-table td {
-  height: 32px;
+  height: 24px;
   padding: 4px 12px;
   overflow: hidden;
   border-bottom: 1px solid var(--border-light);
@@ -406,7 +406,7 @@
 .transfer-strip {
   grid-column: 2;
   grid-row: 3;
-  height: 30px;
+  height: 24px;
   padding: 0 20px;
   border-top: 1px solid var(--border-light);
   font-size: 12px;

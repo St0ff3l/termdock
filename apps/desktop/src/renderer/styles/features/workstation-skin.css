@@ -206,7 +206,7 @@ textarea:focus-visible,
 
 .address-row {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) max-content;
+  grid-template-columns: 48px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   height: 20px;
@@ -220,6 +220,11 @@ textarea:focus-visible,
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 600;
+  transition: color 0.15s ease;
+}
+
+.address-row span.copied-success {
+  color: var(--success);
 }
 
 .address-row strong {
@@ -230,6 +235,19 @@ textarea:focus-visible,
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.address-row strong.copyable {
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.address-row strong.copyable:hover {
+  color: var(--copy-link);
+}
+
+.address-row strong.copied {
+  color: var(--success) !important;
 }
 
 .metric-line {
@@ -382,13 +400,13 @@ textarea:focus-visible,
   margin: 6px -12px 0;
   border-radius: 0;
   font-size: 11px;
+  height: 26px;
 }
 
 .mini-tabs span {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 6px 0;
   cursor: pointer;
   transition: background 0.18s ease, color 0.18s ease;
 }
@@ -405,7 +423,6 @@ textarea:focus-visible,
 .process-row {
   grid-template-columns: minmax(52px, 0.9fr) minmax(38px, 0.48fr) minmax(0, 1fr);
   min-height: 24px;
-  border-bottom: 0;
   font-family: "SF Mono", Menlo, Consolas, monospace;
   font-size: 11px;
 }
@@ -482,8 +499,8 @@ textarea:focus-visible,
 
 .disk-head,
 .disk-row {
-  grid-template-columns: 1.45fr 1fr;
-  height: 25px;
+  grid-template-columns: 1.25fr 1fr;
+  height: 24px;
   font-family: "SF Mono", Menlo, Consolas, monospace;
   font-size: 11px;
 }
@@ -516,14 +533,26 @@ textarea:focus-visible,
 }
 
 .file-tabs {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-left: 0;
+}
+
+.file-tabs-left {
+  width: var(--local-pane-width, 214px);
+  display: flex;
   align-items: center;
   gap: 16px;
   padding-left: 14px;
+  margin-right: 6px;
+  flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 .file-tabs button {
   min-width: 44px;
-  height: 21px;
+  height: 22px;
   border: 0;
   border-radius: 5px;
   font-size: 12px;
@@ -559,7 +588,7 @@ textarea:focus-visible,
 
 .file-tab-actions button {
   min-width: 24px;
-  height: 24px;
+  height: 22px;
   padding: 0 7px;
   border-radius: 5px;
   font-size: 11px;
@@ -592,7 +621,7 @@ textarea:focus-visible,
 }
 
 .file-split {
-  grid-template-columns: var(--local-pane-width, 230px) 6px minmax(0, 1fr);
+  grid-template-columns: var(--local-pane-width, 214px) 6px minmax(0, 1fr);
 }
 
 .file-split-resizer {
@@ -604,7 +633,8 @@ textarea:focus-visible,
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 2px;
+  left: 50%;
+  transform: translateX(-50%);
   width: 1px;
   content: "";
 }
@@ -614,6 +644,10 @@ textarea:focus-visible,
   padding: 0 14px;
   font-size: 11px;
   font-weight: 500;
+}
+
+.pane-path-bar {
+  height: 24px;
 }
 
 .pane-title span {
@@ -629,7 +663,7 @@ textarea:focus-visible,
 .fs-file-table th,
 .fs-file-table td {
   height: 24px;
-  padding: 3px 10px;
+  padding: 0 10px;
 }
 
 .fs-file-table th {

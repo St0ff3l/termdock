@@ -27,13 +27,13 @@
   --selection-bg: #383f48;
   --copy-link: #65a9ff;
   --copy-link-hover: #8bbfff;
-  --folder-accent: #58aaff;
-  --kernel-accent: #5aa7ff;
+  --folder-accent: #65a9ff;
+  --kernel-accent: #65a9ff;
   --mini-tab-active-bg: #294366;
   --mini-tab-active-text: #8bbfff;
   --memory-warn: #ffcc00;
-  --network-tx: rgba(255, 168, 150, 0.45);
-  --network-rx: #7fa0de;
+  --network-tx: #ff7474;
+  --network-rx: #65a9ff;
   --danger: #ff5f57;
   --success: #39d98a;
   --warning: #ffcc00;
@@ -53,7 +53,7 @@
 
   --metric-app: #f6bf26;
   --metric-cache: #54c772;
-  --metric-kernel: #5aa7ff;
+  --metric-kernel: #65a9ff;
   --metric-status-green: #39d98a;
   --metric-status-yellow: #f6bf26;
   --metric-status-red: #ff5f57;
@@ -92,24 +92,6 @@
   background: linear-gradient(180deg, var(--border-dark), var(--border-light));
 }
 
-:root:not([data-theme]) .sidebar-empty-state,
-:root[data-theme='default-dark'] .sidebar-empty-state,
-:root[data-theme='default'] .sidebar-empty-state {
-  border: 1px dashed rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.02);
-}
-
-:root:not([data-theme]) .sidebar-empty-state strong,
-:root[data-theme='default-dark'] .sidebar-empty-state strong,
-:root[data-theme='default'] .sidebar-empty-state strong {
-  color: #d9d9d9;
-}
-
-:root:not([data-theme]) .sidebar-empty-state p,
-:root[data-theme='default-dark'] .sidebar-empty-state p,
-:root[data-theme='default'] .sidebar-empty-state p {
-  color: #8f949d;
-}
 
 :root:not([data-theme]) .sync-dot,
 :root[data-theme='default-dark'] .sync-dot,
@@ -372,11 +354,7 @@
   color: var(--text-main);
 }
 
-:root:not([data-theme]) .disk-row:nth-child(even),
-:root[data-theme='default-dark'] .disk-row:nth-child(even),
-:root[data-theme='default'] .disk-row:nth-child(even) {
-  background: var(--bg-main);
-}
+
 
 :root:not([data-theme]) .disk-row:hover,
 :root[data-theme='default-dark'] .disk-row:hover,
@@ -1655,7 +1633,7 @@
 :root:not([data-theme]) .down,
 :root[data-theme='default-dark'] .down,
 :root[data-theme='default'] .down {
-  color: #54e58e;
+  color: #65a9ff;
 }
 
 :root:not([data-theme]) .network-select,
@@ -1708,14 +1686,7 @@
   background: #202020;
 }
 
-:root:not([data-theme]) .disk-head,
-:root[data-theme='default-dark'] .disk-head,
-:root[data-theme='default'] .disk-head,
-:root:not([data-theme]) .disk-row,
-:root[data-theme='default-dark'] .disk-row,
-:root[data-theme='default'] .disk-row {
-  border-bottom-color: rgba(255, 255, 255, 0.045);
-}
+
 
 :root:not([data-theme]) .disk-head,
 :root[data-theme='default-dark'] .disk-head,
@@ -1731,11 +1702,7 @@
   color: #c2c2c2;
 }
 
-:root:not([data-theme]) .disk-row:nth-child(even),
-:root[data-theme='default-dark'] .disk-row:nth-child(even),
-:root[data-theme='default'] .disk-row:nth-child(even) {
-  background: #222;
-}
+
 
 :root:not([data-theme]) .session-workspace,
 :root[data-theme='default-dark'] .session-workspace,
@@ -1842,8 +1809,16 @@
 
 :root:not([data-theme]) .file-manager,
 :root[data-theme='default-dark'] .file-manager,
-:root[data-theme='default'] .file-manager {
+:root[data-theme='default'] .file-manager,
+:root:not([data-theme]) .command-center,
+:root[data-theme='default-dark'] .command-center,
+:root[data-theme='default'] .command-center {
   background: #191919;
+}
+
+:root:not([data-theme]) .file-manager,
+:root[data-theme='default-dark'] .file-manager,
+:root[data-theme='default'] .file-manager {
   border-top: 1px solid #363636;
 }
 
@@ -1917,13 +1892,19 @@
 :root[data-theme='default'] .local-pane,
 :root:not([data-theme]) .remote-pane,
 :root[data-theme='default-dark'] .remote-pane,
-:root[data-theme='default'] .remote-pane {
+:root[data-theme='default'] .remote-pane,
+:root:not([data-theme]) .command-pane-preview,
+:root[data-theme='default-dark'] .command-pane-preview,
+:root[data-theme='default'] .command-pane-preview {
   background: #1e1e1e;
 }
 
 :root:not([data-theme]) .local-pane,
 :root[data-theme='default-dark'] .local-pane,
-:root[data-theme='default'] .local-pane {
+:root[data-theme='default'] .local-pane,
+:root:not([data-theme]) .command-pane-list,
+:root[data-theme='default-dark'] .command-pane-list,
+:root[data-theme='default'] .command-pane-list {
   background: #1d1d1d;
 }
 
@@ -1987,6 +1968,12 @@
   color: #a6a6a6;
 }
 
+:root:not([data-theme]) .process-row:nth-child(even),
+:root[data-theme='default-dark'] .process-row:nth-child(even),
+:root[data-theme='default'] .process-row:nth-child(even),
+:root:not([data-theme]) .disk-row:nth-child(even),
+:root[data-theme='default-dark'] .disk-row:nth-child(even),
+:root[data-theme='default'] .disk-row:nth-child(even),
 :root:not([data-theme]) .fs-file-table tbody tr:nth-child(even),
 :root[data-theme='default-dark'] .fs-file-table tbody tr:nth-child(even),
 :root[data-theme='default'] .fs-file-table tbody tr:nth-child(even) {

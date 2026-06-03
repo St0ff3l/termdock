@@ -170,10 +170,7 @@
 }
 
 :root[data-theme='default-light'] .fs-file-table th,
-:root[data-theme='default-light'] .system-table th,
-:root[data-theme='default-light'] .disk-row:nth-child(even),
-:root[data-theme='default-light'] .fs-file-table tbody tr:nth-child(even),
-:root[data-theme='default-light'] .system-table tbody tr:nth-child(even) {
+:root[data-theme='default-light'] .system-table th {
   background: #f1f3f6;
 }
 
@@ -279,8 +276,12 @@
     inset 0 0 18px rgba(15, 23, 42, 0.06);
 }
 
-:root[data-theme='default-light'] .file-manager {
+:root[data-theme='default-light'] .file-manager,
+:root[data-theme='default-light'] .command-center {
   background: #fbfcfe;
+}
+
+:root[data-theme='default-light'] .file-manager {
   border-top: 1px solid var(--border-light);
 }
 
@@ -342,11 +343,13 @@
 }
 
 :root[data-theme='default-light'] .local-pane,
-:root[data-theme='default-light'] .remote-pane {
+:root[data-theme='default-light'] .remote-pane,
+:root[data-theme='default-light'] .command-pane-preview {
   background: #ffffff;
 }
 
-:root[data-theme='default-light'] .local-pane {
+:root[data-theme='default-light'] .local-pane,
+:root[data-theme='default-light'] .command-pane-list {
   background: #fbfcfe;
 }
 
@@ -411,6 +414,9 @@
   color: var(--text-muted);
 }
 
+:root[data-theme='default-light'] .process-row:nth-child(even),
+:root[data-theme='default-light'] .disk-row:nth-child(even),
+:root[data-theme='default-light'] .system-table tbody tr:nth-child(even),
 :root[data-theme='default-light'] .fs-file-table tbody tr:nth-child(even) {
   background: rgba(148, 163, 184, 0.06);
 }

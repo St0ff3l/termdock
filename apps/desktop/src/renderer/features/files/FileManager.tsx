@@ -116,7 +116,7 @@ export function FileManager({
 }) {
   const isRemoteConnected = activeSession.connected === true
   const [activeView, setActiveView] = useState<'file' | 'command'>('file')
-  const [localPaneWidth, setLocalPaneWidth] = useState(230)
+  const [localPaneWidth, setLocalPaneWidth] = useState(214)
   const [localPathInput, setLocalPathInput] = useState(localPath)
   const [remotePathInput, setRemotePathInput] = useState(activeSession.remotePath)
   const [selectedLocalPaths, setSelectedLocalPaths] = useState<string[]>([])
@@ -425,10 +425,13 @@ export function FileManager({
       onClick={() => setContextMenu(null)}
       onKeyDown={handleKeyboardShortcuts}
       tabIndex={0}
+      style={{ '--local-pane-width': `${localPaneWidth}px` } as CSSProperties}
     >
       <div className="file-tabs">
-        <button className={activeView === 'file' ? 'active' : ''} type="button" onClick={() => setActiveView('file')}>{t.file}</button>
-        <button className={activeView === 'command' ? 'active' : ''} type="button" onClick={() => setActiveView('command')}>{t.command}</button>
+        <div className="file-tabs-left">
+          <button className={activeView === 'file' ? 'active' : ''} type="button" onClick={() => setActiveView('file')}>{t.file}</button>
+          <button className={activeView === 'command' ? 'active' : ''} type="button" onClick={() => setActiveView('command')}>{t.command}</button>
+        </div>
         <span className={`file-current-path ${clipboardStatusText ? 'is-status-hint' : ''}`}>
           {activeView === 'file'
             ? clipboardStatusText || activeSession.remotePath
@@ -468,9 +471,11 @@ export function FileManager({
           isBusy={isBusy}
           tabs={tabs}
           onExecute={onExecuteCommand}
+          paneWidth={localPaneWidth}
+          onPaneWidthChange={setLocalPaneWidth}
         />
       ) : (
-      <div className="file-split" ref={splitRef} style={{ '--local-pane-width': `${localPaneWidth}px` } as CSSProperties}>
+      <div className="file-split" ref={splitRef}>
         <div
           className="local-pane"
           onMouseDownCapture={() => {

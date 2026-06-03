@@ -21,16 +21,6 @@ export function SystemSidebar({
   activeSession: SessionSnapshot | null
   onOpenSystemInfo(): void
 }) {
-  if (!activeSession || activeSession.connected !== true || !activeSession.systemMetrics) {
-    return (
-      <section className="sys-card sys-card-empty">
-        <div className="sidebar-empty-state">
-          <strong>{activeSession ? t.remoteDisconnected : t.noConnection}</strong>
-          <p>{activeSession ? t.remoteDisconnectedDescription : t.noConnectionDescription}</p>
-        </div>
-      </section>
-    )
-  }
 
   const [sortMode, setSortMode] = useState<'memory' | 'cpu' | 'command'>('cpu')
   const metrics = activeSession?.systemMetrics
@@ -92,8 +82,10 @@ export function SystemSidebar({
       </section>
       <section className="disk-table">
         <div className="disk-head"><span>{t.path}</span><span>{t.availableSize}</span></div>
-        {rows.map((row) => (
+        {rows.length ? rows.map((row) => (
           <div className="disk-row" key={row.path}><span>{row.path}</span><span>{row.usage}</span></div>
+        )) : Array.from({ length: 8 }).map((_, i) => (
+          <div className="disk-row" key={`empty-${i}`}><span></span><span></span></div>
         ))}
       </section>
     </>
@@ -102,23 +94,24 @@ export function SystemSidebar({
 
 function AddressLine({ label, value }: { label: string; value: string }) {
   const canCopy = value && value !== '-'
+  const [copied, setCopied] = useState(false)
 
   return (
     <div className="address-row">
       <span>{label}</span>
-      <strong title={value}>{value}</strong>
-      <button
-        className="copy-link"
-        disabled={!canCopy}
+      <strong
+        className={`${canCopy ? 'copyable' : ''} ${copied ? 'copied' : ''}`}
+        title={canCopy ? (copied ? '已复制' : `${t.copy}: ${value}`) : value}
         onClick={() => {
           if (canCopy) {
             copyText(value)
+            setCopied(true)
+            setTimeout(() => setCopied(false), 1500)
           }
         }}
-        type="button"
       >
-        {t.copy}
-      </button>
+        {copied ? '已复制' : value}
+      </strong>
     </div>
   )
 }
@@ -211,15 +204,16 @@ function getMetricTone(percent: number) {
 }
 
 function ProcessTable({ rows }: { rows: SystemMetrics['topProcesses'] }) {
+  const displayRows = rows.length ? rows : Array.from({ length: 4 }).map(() => ({ memory: '', cpu: '', command: '', elapsedSeconds: 0 }))
   return (
     <div className="process-table scrollbar-scroll">
-      {rows.length ? rows.map((row) => (
-        <div className="process-row" key={`${row.command}-${row.memory}-${row.cpu}-${row.elapsedSeconds}`}>
+      {displayRows.map((row, i) => (
+        <div className="process-row" key={rows.length ? `${row.command}-${row.memory}-${row.cpu}-${row.elapsedSeconds}` : `empty-${i}`}>
           <span>{row.memory}</span>
           <span>{row.cpu}</span>
           <span>{row.command}</span>
         </div>
-      )) : <div className="process-empty" />}
+      ))}
     </div>
   )
 }
