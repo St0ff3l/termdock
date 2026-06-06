@@ -433,21 +433,13 @@ export function App() {
 
       if (desktopApi.platform === 'darwin') {
         if (event.isQuit) {
-          if (hasActive) {
-            setCloseConfirmDialog({ isQuit: true, hasActiveConnections: true })
-          } else {
-            void desktopApi.confirmCloseWindow('quit')
-          }
+          setCloseConfirmDialog({ isQuit: true, hasActiveConnections: hasActive })
         } else {
           void desktopApi.confirmCloseWindow('hide')
         }
       } else {
         if (event.isQuit) {
-          if (hasActive) {
-            setCloseConfirmDialog({ isQuit: true, hasActiveConnections: true })
-          } else {
-            void desktopApi.confirmCloseWindow('quit')
-          }
+          setCloseConfirmDialog({ isQuit: true, hasActiveConnections: hasActive })
         } else {
           setCloseConfirmDialog({ isQuit: false, hasActiveConnections: hasActive })
         }
@@ -2714,6 +2706,8 @@ export function App() {
                 <div style={{ color: 'var(--danger, #ef4444)', marginBottom: '12px', fontWeight: 'bold' }}>
                   {t.closeConfirmActiveWarn}
                 </div>
+              ) : closeConfirmDialog.isQuit ? (
+                <div>{t.closeConfirmQuitMsg}</div>
               ) : null}
               {!closeConfirmDialog.isQuit ? (
                 <div>{t.closeConfirmWindowsMsg}</div>

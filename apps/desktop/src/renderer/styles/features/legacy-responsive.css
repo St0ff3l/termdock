@@ -5,7 +5,7 @@
   }
 
   .quick-panel {
-    width: min(720px, 72vw);
+    width: min(100%, 72vw);
   }
 
   .file-split {
@@ -26,4 +26,3 @@
     grid-template-columns: 1fr;
   }
 }
-

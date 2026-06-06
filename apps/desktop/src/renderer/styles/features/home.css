@@ -4,12 +4,18 @@
   align-items: flex-start;
   min-height: 0;
   height: 100%;
+  padding: clamp(24px, 4vw, 48px) clamp(18px, 3vw, 40px) clamp(20px, 3vw, 32px);
+  box-sizing: border-box;
   overflow: auto;
 }
 
 .quick-panel {
-  width: min(580px, 62vw);
-  margin: 56px 0 0;
+  width: clamp(720px, 60vw, 1080px);
+  max-width: 100%;
+  min-height: 0;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-light);
   overflow: hidden;
@@ -37,7 +43,10 @@
 }
 
 .quick-list {
+  flex: 1;
+  min-height: 0;
   padding: 10px;
+  overflow: auto;
 }
 
 .quick-row {

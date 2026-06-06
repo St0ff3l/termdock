@@ -52,6 +52,15 @@
   white-space: nowrap;
 }
 
+.window-brandmark strong {
+  font-family: "Outfit", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1;
+  margin-left: 2px;
+}
+
 .window-brandmark span {
   font-weight: 500;
   opacity: 0.72;
@@ -611,11 +620,14 @@
 
 .titlebar-brand strong {
   overflow: hidden;
+  font-family: "Outfit", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-size: 15px;
   font-weight: 700;
+  letter-spacing: -0.015em;
   line-height: 1;
   text-overflow: ellipsis;
   white-space: nowrap;
+  margin-left: 2px;
 }
 
 .titlebar-tabarea {

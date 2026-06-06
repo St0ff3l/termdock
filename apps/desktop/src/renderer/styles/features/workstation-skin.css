@@ -847,7 +847,8 @@ textarea:focus-visible,
 }
 
 .quick-panel {
-  width: min(980px, calc(100% - 56px));
+  width: clamp(720px, 60vw, 1080px);
+  max-width: 100%;
 }
 
 .quick-list {

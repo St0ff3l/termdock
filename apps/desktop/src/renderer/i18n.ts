@@ -322,6 +322,7 @@ const zhCN = {
   notReady: '稍后接入',
   closeConfirmTitle: '退出确认',
   closeConfirmActiveWarn: '当前有正在运行的远程连接，退出或关闭窗口可能会中断这些连接。',
+  closeConfirmQuitMsg: '确定要退出 TermDock 吗？',
   closeConfirmWindowsMsg: '请选择如何处理当前窗口：',
   closeConfirmQuit: '直接退出',
   closeConfirmHide: '最小化到系统托盘'
@@ -640,6 +641,7 @@ const enUS: typeof zhCN = {
   notReady: 'Coming later',
   closeConfirmTitle: 'Confirm Exit',
   closeConfirmActiveWarn: 'There are active remote connections running. Exiting or closing the window may disconnect them.',
+  closeConfirmQuitMsg: 'Are you sure you want to quit TermDock?',
   closeConfirmWindowsMsg: 'Please choose how to handle the window:',
   closeConfirmQuit: 'Exit App',
   closeConfirmHide: 'Minimize to Tray'

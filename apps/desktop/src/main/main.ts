@@ -179,9 +179,30 @@ function getAppIconPath() {
   ].find((candidate) => fs.existsSync(candidate))
 }
 
+function getTrayTemplateIconPath() {
+  return [
+    path.join(__dirname, '../../build/trayTemplate.png'),
+    path.join(__dirname, '../../public/trayTemplate.png'),
+    path.join(__dirname, '../../dist/trayTemplate.png')
+  ].find((candidate) => fs.existsSync(candidate))
+}
+
 function getWindowIconOptions() {
   const icon = getAppIconPath()
   return icon ? { icon } : {}
+}
+
+function requestQuitConfirmation() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show()
+    mainWindow.focus()
+    mainWindow.webContents.send('app:window-close-request', { isQuit: true })
+    return
+  }
+
+  isQuitting = true
+  void ipcServices?.workspaceService.shutdown()
+  app.quit()
 }
 
 function loadAppWindow(win: BrowserWindow, searchParams?: Record<string, string>, preferences: UiPreferences = uiPreferences) {
@@ -206,7 +227,9 @@ function loadAppWindow(win: BrowserWindow, searchParams?: Record<string, string>
 }
 
 function createTray() {
-  const iconPath = getAppIconPath()
+  const iconPath = isMac
+    ? getTrayTemplateIconPath() ?? getAppIconPath()
+    : getAppIconPath()
   if (!iconPath) {
     return
   }
@@ -237,8 +260,7 @@ function createTray() {
     {
       label: '退出',
       click: () => {
-        isQuitting = true
-        app.quit()
+        requestQuitConfirmation()
       }
     }
   ])
@@ -642,13 +664,5 @@ app.on('before-quit', (event) => {
   }
 
   event.preventDefault()
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.show()
-    mainWindow.focus()
-    mainWindow.webContents.send('app:window-close-request', { isQuit: true })
-  } else {
-    isQuitting = true
-    void ipcServices?.workspaceService.shutdown()
-    app.quit()
-  }
+  requestQuitConfirmation()
 })
