@@ -837,19 +837,26 @@ export function App() {
 
   const formatAppError = (scope: string, err: unknown, details?: ErrorDetails) => {
     const message = normalizeErrorMessage(err)
-    const likelyPathIssue = /can't cd to|__NOT_DIR__|no such file|not a directory|permission denied|failure/i.test(message)
+    const likelyConcurrentRequestIssue = /another one is still running|forgot to use 'await'|client is closed because user launched a task/i.test(message)
+    const likelyPathIssue = /can't cd to|__NOT_DIR__|no such file|not a directory|permission denied|\b550\b/i.test(message)
     const metadata = details?.item
       ? ` (${t.permission}: ${details.item.permission || '-'}, ${t.ownerGroup}: ${details.item.ownerGroup || '-'})`
       : ''
     const pathText = details?.targetPath ? ` ${details.targetPath}` : ''
 
     if (locale === 'zhCN') {
+      if (details?.targetPath && likelyConcurrentRequestIssue) {
+        return `打开远程目录${pathText}${metadata}失败：远程连接正在处理另一项请求，请稍后重试。原始错误：${message}`
+      }
       if (details?.targetPath && likelyPathIssue) {
         return `无法打开远程目录${pathText}${metadata}。可能是目录不存在、不是目录，或者当前账号没有进入权限。原始错误：${message}`
       }
       return `${scope}${pathText}${metadata}失败：${message}`
     }
 
+    if (details?.targetPath && likelyConcurrentRequestIssue) {
+      return `Failed to open remote directory${pathText}${metadata}: the remote connection is still processing another request. Raw error: ${message}`
+    }
     if (details?.targetPath && likelyPathIssue) {
       return `Could not open remote directory${pathText}${metadata}. It may not exist, may not be a directory, or your account may not have permission to enter it. Raw error: ${message}`
     }
