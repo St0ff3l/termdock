@@ -70,7 +70,7 @@
         "dmg",
         "zip"
       ],
-      "artifactName": "TermDock-${version}-${arch}.${ext}"
+      "artifactName": "TermDock-${version}-macos-${arch}.${ext}"
     },
     "win": {
       "icon": "build/icon.ico",
@@ -84,10 +84,10 @@
           "arch": ["x64"]
         }
       ],
-      "artifactName": "TermDock-${version}-${arch}-setup.${ext}"
+      "artifactName": "TermDock-${version}-windows-${arch}-setup.${ext}"
     },
     "portable": {
-      "artifactName": "TermDock-${version}-${arch}-portable.${ext}"
+      "artifactName": "TermDock-${version}-windows-${arch}-portable.${ext}"
     }
   }
 }
