@@ -405,8 +405,14 @@ export function App() {
   const [showTransfers, setShowTransfers] = useState(false)
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => readInitialTheme(searchParams))
   const [locale, setLocaleState] = useState<AppLocale>(() => readInitialLocale(searchParams))
+  const [closeConfirmDialog, setCloseConfirmDialog] = useState<{ isQuit: boolean; hasActiveConnections: boolean } | null>(null)
 
   useThemeMode(themeMode)
+
+  const workspaceRef = useRef(workspace)
+  useEffect(() => {
+    workspaceRef.current = workspace
+  }, [workspace])
 
   const localTabsRef = useRef(localTabs)
   const previousActiveTransferCountRef = useRef(0)
@@ -414,6 +420,42 @@ export function App() {
   const hasSanitizedStoredPlaceholderRef = useRef(false)
   const desktopApi = window.termdock
   const isWindowsDesktop = false
+
+  useEffect(() => {
+    if (!desktopApi || !isMainWorkspaceWindow) {
+      return
+    }
+
+    const unsubscribe = desktopApi.onWindowCloseRequest((event) => {
+      const hasActive = workspaceRef.current.tabs.some(
+        (tab) => workspaceRef.current.sessions[tab.id]?.connected
+      )
+
+      if (desktopApi.platform === 'darwin') {
+        if (event.isQuit) {
+          if (hasActive) {
+            setCloseConfirmDialog({ isQuit: true, hasActiveConnections: true })
+          } else {
+            void desktopApi.confirmCloseWindow('quit')
+          }
+        } else {
+          void desktopApi.confirmCloseWindow('hide')
+        }
+      } else {
+        if (event.isQuit) {
+          if (hasActive) {
+            setCloseConfirmDialog({ isQuit: true, hasActiveConnections: true })
+          } else {
+            void desktopApi.confirmCloseWindow('quit')
+          }
+        } else {
+          setCloseConfirmDialog({ isQuit: false, hasActiveConnections: hasActive })
+        }
+      }
+    })
+
+    return () => unsubscribe()
+  }, [desktopApi, isMainWorkspaceWindow])
 
   useEffect(() => {
     document.documentElement.dataset.platform = desktopApi?.platform ?? 'browser'
@@ -2649,6 +2691,70 @@ export function App() {
           }}
           supportsRecursive={permissionDialog.supportsRecursive}
         />
+      ) : null}
+
+      {closeConfirmDialog ? (
+        <div className="modal-backdrop">
+          <div className="modal-card confirm-action-dialog">
+            <div className="modal-header">
+              <span>{t.closeConfirmTitle}</span>
+              <button
+                className="icon-button"
+                onClick={() => {
+                  setCloseConfirmDialog(null)
+                  void desktopApi?.confirmCloseWindow('cancel')
+                }}
+                type="button"
+              >
+                ×
+              </button>
+            </div>
+            <div className="confirm-action-dialog__description">
+              {closeConfirmDialog.hasActiveConnections ? (
+                <div style={{ color: 'var(--danger, #ef4444)', marginBottom: '12px', fontWeight: 'bold' }}>
+                  {t.closeConfirmActiveWarn}
+                </div>
+              ) : null}
+              {!closeConfirmDialog.isQuit ? (
+                <div>{t.closeConfirmWindowsMsg}</div>
+              ) : null}
+            </div>
+            <div className="form-actions confirm-action-dialog__actions" style={{ justifyContent: 'flex-end', gap: '8px' }}>
+              <button
+                className="flat-button"
+                onClick={() => {
+                  setCloseConfirmDialog(null)
+                  void desktopApi?.confirmCloseWindow('cancel')
+                }}
+                type="button"
+              >
+                {t.cancel}
+              </button>
+              {!closeConfirmDialog.isQuit ? (
+                <button
+                  className="primary-button"
+                  onClick={() => {
+                    setCloseConfirmDialog(null)
+                    void desktopApi?.confirmCloseWindow('hide')
+                  }}
+                  type="button"
+                >
+                  {t.closeConfirmHide}
+                </button>
+              ) : null}
+              <button
+                className="flat-button danger"
+                onClick={() => {
+                  setCloseConfirmDialog(null)
+                  void desktopApi?.confirmCloseWindow('quit')
+                }}
+                type="button"
+              >
+                {t.closeConfirmQuit}
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </>
   )

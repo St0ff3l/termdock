@@ -319,7 +319,12 @@ const zhCN = {
   commandDetectedParams: '检测到的参数位',
   newCommand: '新建命令',
   settings: '设置',
-  notReady: '稍后接入'
+  notReady: '稍后接入',
+  closeConfirmTitle: '退出确认',
+  closeConfirmActiveWarn: '当前有正在运行的远程连接，退出或关闭窗口可能会中断这些连接。',
+  closeConfirmWindowsMsg: '请选择如何处理当前窗口：',
+  closeConfirmQuit: '直接退出',
+  closeConfirmHide: '最小化到系统托盘'
 }
 
 const enUS: typeof zhCN = {
@@ -632,7 +637,12 @@ const enUS: typeof zhCN = {
   commandDetectedParams: 'Detected Params',
   newCommand: 'New Command',
   settings: 'Settings',
-  notReady: 'Coming later'
+  notReady: 'Coming later',
+  closeConfirmTitle: 'Confirm Exit',
+  closeConfirmActiveWarn: 'There are active remote connections running. Exiting or closing the window may disconnect them.',
+  closeConfirmWindowsMsg: 'Please choose how to handle the window:',
+  closeConfirmQuit: 'Exit App',
+  closeConfirmHide: 'Minimize to Tray'
 }
 
 export const messages = {

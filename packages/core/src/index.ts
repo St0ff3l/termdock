@@ -446,6 +446,8 @@ export interface TermdockDesktopApi {
   onTerminalState(listener: (payload: TerminalStatePayload) => void): () => void
   onWorkspaceSnapshot(listener: (snapshot: WorkspaceSnapshot) => void): () => void
   onSshInteraction(listener: (request: SshInteractionRequest) => void): () => void
+  onWindowCloseRequest(listener: (event: { isQuit: boolean }) => void): () => void
+  confirmCloseWindow(action: 'quit' | 'hide' | 'cancel'): Promise<void>
 }
 
 export interface SessionController {

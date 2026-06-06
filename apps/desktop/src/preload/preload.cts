@@ -172,7 +172,14 @@ const api: TermdockDesktopApi = {
     const wrapped = (_event: unknown, request: SshInteractionRequest) => listener(request)
     ipcRenderer.on('ssh:interaction', wrapped)
     return () => ipcRenderer.off('ssh:interaction', wrapped)
-  }
+  },
+  onWindowCloseRequest: (listener: (event: { isQuit: boolean }) => void) => {
+    const wrapped = (_event: unknown, data: { isQuit: boolean }) => listener(data)
+    ipcRenderer.on('app:window-close-request', wrapped)
+    return () => ipcRenderer.off('app:window-close-request', wrapped)
+  },
+  confirmCloseWindow: (action: 'quit' | 'hide' | 'cancel'): Promise<void> =>
+    ipcRenderer.invoke('app:confirmCloseWindow', action)
 }
 
 try {

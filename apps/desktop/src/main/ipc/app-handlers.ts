@@ -63,4 +63,8 @@ export function registerAppHandlers(options: IpcWindowOptions) {
   ipcMain.handle('app:closeCurrentWindow', (event) => {
     BrowserWindow.fromWebContents(event.sender)?.close()
   })
+
+  ipcMain.handle('app:confirmCloseWindow', (_event, action: 'quit' | 'hide' | 'cancel') => {
+    options.confirmCloseWindow(action)
+  })
 }
