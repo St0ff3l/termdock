@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type DragEvent, type FormEvent, type KeyboardEvent, type MouseEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type FormEvent, type KeyboardEvent, type MouseEvent } from 'react'
 import type {
   CommandExecutionOptions,
   CommandFolder,
@@ -22,7 +22,8 @@ import { t } from '../../i18n'
 import { AppIcon } from '../common/AppIcon'
 import { CommandCenter } from '../commands/CommandCenter'
 import { FileContextMenu } from './FileContextMenu'
-import { FileTable, LocalFileTable, PanePathBar } from './FileTables'
+import { getDisplayFileTypeSortKey } from './file-kind'
+import { FileTable, LocalFileTable, PanePathBar, type RemoteFileSortField, type RemoteFileSortState } from './FileTables'
 
 function areStringArraysEqual(left: string[], right: string[]) {
   if (left === right) {
@@ -37,6 +38,95 @@ function areStringArraysEqual(left: string[], right: string[]) {
     }
   }
   return true
+}
+
+function compareText(left: string, right: string) {
+  return left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' })
+}
+
+function parseSortableSize(value: string) {
+  if (!value || value === '-') {
+    return 0
+  }
+
+  const match = value.trim().match(/^([\d.]+)\s*([A-Za-z]+)$/)
+  if (!match) {
+    return 0
+  }
+
+  const amount = Number.parseFloat(match[1])
+  if (!Number.isFinite(amount)) {
+    return 0
+  }
+
+  const unit = match[2].toUpperCase()
+  const units: Record<string, number> = {
+    B: 1,
+    KB: 1024,
+    MB: 1024 ** 2,
+    GB: 1024 ** 3,
+    TB: 1024 ** 4
+  }
+
+  return amount * (units[unit] ?? 1)
+}
+
+function parseSortableTimestamp(value: string) {
+  if (!value) {
+    return 0
+  }
+
+  const normalized = value.replace(/\//g, '-')
+  const parsed = Date.parse(normalized)
+  return Number.isNaN(parsed) ? 0 : parsed
+}
+
+function compareRemoteFilesByField(
+  left: RemoteFileItem,
+  right: RemoteFileItem,
+  sort: RemoteFileSortState
+) {
+  const direction = sort.direction === 'asc' ? 1 : -1
+
+  switch (sort.field) {
+    case 'size':
+      return (parseSortableSize(left.size) - parseSortableSize(right.size)) * direction
+    case 'type':
+      return compareText(getDisplayFileTypeSortKey(left), getDisplayFileTypeSortKey(right)) * direction
+    case 'modified':
+      return (parseSortableTimestamp(left.modified) - parseSortableTimestamp(right.modified)) * direction
+    case 'permission':
+      return compareText(left.permission ?? '', right.permission ?? '') * direction
+    case 'ownerGroup':
+      return compareText(left.ownerGroup ?? '', right.ownerGroup ?? '') * direction
+    case 'name':
+    default:
+      return compareText(left.name, right.name) * direction
+  }
+}
+
+function sortRemoteFiles(rows: RemoteFileItem[], sort: RemoteFileSortState) {
+  const parentRow = rows.find((row) => row.name === '..') ?? null
+  const sortableRows = rows.filter((row) => row.name !== '..')
+
+  sortableRows.sort((left, right) => {
+    if (sort.field !== 'type' && left.type !== right.type) {
+      return left.type === 'folder' ? -1 : 1
+    }
+
+    const byField = compareRemoteFilesByField(left, right, sort)
+    if (byField !== 0) {
+      return byField
+    }
+
+    if (left.type !== right.type) {
+      return left.type === 'folder' ? -1 : 1
+    }
+
+    return compareText(left.name, right.name)
+  })
+
+  return parentRow ? [parentRow, ...sortableRows] : sortableRows
 }
 
 export function FileManager({
@@ -114,11 +204,13 @@ export function FileManager({
   onToggleRemoteFileAccessMode(): void
   remoteFileAccessMode: 'user' | 'root'
 }) {
+  const defaultRemoteSort = { field: 'name', direction: 'asc' } satisfies RemoteFileSortState
   const isRemoteConnected = activeSession.connected === true
   const [activeView, setActiveView] = useState<'file' | 'command'>('file')
   const [localPaneWidth, setLocalPaneWidth] = useState(214)
   const [localPathInput, setLocalPathInput] = useState(localPath)
   const [remotePathInput, setRemotePathInput] = useState(activeSession.remotePath)
+  const [remoteSort, setRemoteSort] = useState<RemoteFileSortState>(defaultRemoteSort)
   const [selectedLocalPaths, setSelectedLocalPaths] = useState<string[]>([])
   const [selectedRemotePaths, setSelectedRemotePaths] = useState<string[]>([])
   const [localAnchorPath, setLocalAnchorPath] = useState<string | null>(null)
@@ -165,6 +257,18 @@ export function FileManager({
     setRemoteAnchorPath(null)
     setContextMenu((prev) => prev?.pane === 'remote' ? null : prev)
   }, [isRemoteConnected])
+
+  useEffect(() => {
+    setRemoteSort(defaultRemoteSort)
+  }, [activeTab?.id])
+
+  const sortedRemoteRows = useMemo(() => {
+    if (!isRemoteConnected) {
+      return []
+    }
+
+    return sortRemoteFiles(activeSession.remoteFiles, remoteSort)
+  }, [activeSession.remoteFiles, isRemoteConnected, remoteSort])
 
   const selectedRemoteItems = activeSession.remoteFiles.filter((item) => selectedRemotePaths.includes(item.path))
   const selectedRemoteFileItems = selectedRemoteItems.filter((item) => item.type === 'file')
@@ -648,13 +752,21 @@ export function FileManager({
             <FileTable
               cutPaths={remoteCutPaths}
               emptyText={isRemoteConnected ? t.emptyFiles : t.remoteDisconnectedDescription}
-              rows={isRemoteConnected ? activeSession.remoteFiles : []}
+              rows={sortedRemoteRows}
+              sortState={remoteSort}
               selectedPaths={selectedRemotePaths}
+              onToggleSort={(field) => {
+                setRemoteSort((current) => (
+                  current.field === field
+                    ? { field, direction: current.direction === 'asc' ? 'desc' : 'asc' }
+                    : { field, direction: 'asc' }
+                ))
+              }}
               onDragItem={(event, item) => {
                 if (!isRemoteConnected) return
                 event.dataTransfer.effectAllowed = 'copy'
                 const payload = selectedRemotePaths.includes(item.path) ? selectedRemotePaths : [item.path]
-                const previewItems = activeSession.remoteFiles.filter((row) => payload.includes(row.path))
+                const previewItems = sortedRemoteRows.filter((row) => payload.includes(row.path))
                 event.dataTransfer.setData(remoteFileDragType, JSON.stringify(payload))
                 setFileDragPreview(event, previewItems.map((row) => row.name))
               }}
@@ -700,7 +812,7 @@ export function FileManager({
                   currentSelection: selectedRemotePaths,
                   event,
                   itemPath: item.path,
-                  rows: activeSession.remoteFiles
+                  rows: sortedRemoteRows
                 }))
                 setRemoteAnchorPath(startPath)
               }}

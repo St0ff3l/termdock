@@ -1,8 +1,30 @@
+export type AppIconName =
+  | 'brand'
+  | 'grid'
+  | 'menu'
+  | 'server'
+  | 'connections'
+  | 'folder'
+  | 'file'
+  | 'archive'
+  | 'video'
+  | 'audio'
+  | 'image'
+  | 'document'
+  | 'pdf'
+  | 'code'
+  | 'disk'
+  | 'history'
+  | 'refresh'
+  | 'upload'
+  | 'download'
+  | 'flash'
+
 export function AppIcon({
   name,
   size = 14
 }: {
-  name: 'brand' | 'grid' | 'menu' | 'server' | 'connections' | 'folder' | 'file' | 'history' | 'refresh' | 'upload' | 'download' | 'flash'
+  name: AppIconName
   size?: number
 }) {
   const commonProps = {
@@ -62,6 +84,65 @@ export function AppIcon({
         <>
           <path {...commonProps} d="M5 2.5h4.5L13 6v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9.5a1 1 0 0 1 1-1Z" />
           <path {...commonProps} d="M9.5 2.5V6H13" />
+        </>
+      ) : null}
+      {name === 'archive' ? (
+        <>
+          <path {...commonProps} d="M5 2.5h4.5L13 6v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9.5a1 1 0 0 1 1-1Z" />
+          <path {...commonProps} d="M9.5 2.5V6H13" />
+          <path {...commonProps} d="M8 4.1v1.1M8 6.2v1.1M8 8.3v1.1M7 10h2" />
+        </>
+      ) : null}
+      {name === 'video' ? (
+        <>
+          <path {...commonProps} d="M5 2.5h4.5L13 6v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9.5a1 1 0 0 1 1-1Z" />
+          <path {...commonProps} d="M9.5 2.5V6H13" />
+          <path {...commonProps} d="m6.9 7.1 3.1 1.9-3.1 1.9Z" />
+        </>
+      ) : null}
+      {name === 'audio' ? (
+        <>
+          <path {...commonProps} d="M5 2.5h4.5L13 6v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9.5a1 1 0 0 1 1-1Z" />
+          <path {...commonProps} d="M9.5 2.5V6H13" />
+          <path {...commonProps} d="M9.5 7.1v3.1a1 1 0 1 1-1-.9h1" />
+          <path {...commonProps} d="M9.5 7.1 7.7 7.7" />
+        </>
+      ) : null}
+      {name === 'image' ? (
+        <>
+          <path {...commonProps} d="M5 2.5h4.5L13 6v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9.5a1 1 0 0 1 1-1Z" />
+          <path {...commonProps} d="M9.5 2.5V6H13" />
+          <path {...commonProps} d="m6 11 1.9-2 1.4 1.4 1.7-1.8 1 1.1" />
+          <path {...commonProps} d="M7 7.2h.01" />
+        </>
+      ) : null}
+      {name === 'document' ? (
+        <>
+          <path {...commonProps} d="M5 2.5h4.5L13 6v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9.5a1 1 0 0 1 1-1Z" />
+          <path {...commonProps} d="M9.5 2.5V6H13" />
+          <path {...commonProps} d="M6.4 7.6h3.9M6.4 9.2h3.9M6.4 10.8h2.7" />
+        </>
+      ) : null}
+      {name === 'pdf' ? (
+        <>
+          <path {...commonProps} d="M5 2.5h4.5L13 6v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9.5a1 1 0 0 1 1-1Z" />
+          <path {...commonProps} d="M9.5 2.5V6H13" />
+          <path {...commonProps} d="M6.2 10.7V7.4h1.2a.9.9 0 1 1 0 1.8H6.2m2.2 1.5V7.4h.7a1.6 1.6 0 0 1 0 3.3h-.7m2-.1V7.4h1.4" />
+        </>
+      ) : null}
+      {name === 'code' ? (
+        <>
+          <path {...commonProps} d="M5 2.5h4.5L13 6v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9.5a1 1 0 0 1 1-1Z" />
+          <path {...commonProps} d="M9.5 2.5V6H13" />
+          <path {...commonProps} d="m7.1 8.1-1.4 1.2 1.4 1.2M9.1 8.1l1.4 1.2-1.4 1.2" />
+        </>
+      ) : null}
+      {name === 'disk' ? (
+        <>
+          <path {...commonProps} d="M5 2.5h4.5L13 6v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9.5a1 1 0 0 1 1-1Z" />
+          <path {...commonProps} d="M9.5 2.5V6H13" />
+          <circle {...commonProps} cx="8.2" cy="9.4" r="2.2" />
+          <path {...commonProps} d="M8.2 9.4h.01" />
         </>
       ) : null}
       {name === 'history' ? (

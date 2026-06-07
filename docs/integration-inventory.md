@@ -32,11 +32,12 @@ reflowCursorLine: false
 
 ### 尺寸同步原则
 
-TermDock 当前采用“稳定列数 + 动态行数”的策略：
+TermDock 当前采用“拖拽期间冻结列数，稳定后同步真实宽度”的策略：
 
-- 列数按主窗口最小宽度、默认左侧栏宽度和终端 padding 计算。
 - 本地 `terminal.resize(cols, rows)` 和后端 PTY resize 必须使用同一个 `cols`。
-- 窗口变宽时，多出来的空间作为视觉空白，不参与终端逻辑列数。
+- 平稳状态下，列数跟随 `fitAddon.proposeDimensions()` 的真实可见宽度计算，只保留少量 guard cols。
+- 用户横向拖拽窗口时，暂时冻结上一帧 `cols`，避免 `nano/vim`、bash/readline、多行进度条在拖拽过程中连续重排。
+- 拖拽停止后，再把真实宽度对应的 `cols` 一次性同步给本地 xterm 和后端 PTY。
 - 行数继续来自 `fitAddon.proposeDimensions()`，但保留 1 行安全余量，避免 `nano/vim` 底部菜单和文件面板边界互相挤压。
 
 这条边界非常重要。不要恢复成：

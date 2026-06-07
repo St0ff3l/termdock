@@ -64,15 +64,11 @@ function encodeBase64Utf8(value: string) {
 }
 
 const TERMINAL_TRANSCRIPT_LIMIT = 200_000
-const TERMINAL_MIN_WINDOW_WIDTH = 1040
-const TERMINAL_DEFAULT_SIDEBAR_WIDTH = 214
-const TERMINAL_HOST_HORIZONTAL_PADDING = 26
 const TERMINAL_REMOTE_GUARD_COLS = 2
 const TERMINAL_FIT_GUARD_ROWS = 1
 const TERMINAL_RESIZE_PIXEL_EPSILON = 2
-const TERMINAL_MIN_CONTENT_WIDTH = TERMINAL_MIN_WINDOW_WIDTH
-  - TERMINAL_DEFAULT_SIDEBAR_WIDTH
-  - TERMINAL_HOST_HORIZONTAL_PADDING
+const TERMINAL_RESIZE_SETTLE_MS = 140
+const TERMINAL_RESIZE_OUTPUT_QUIET_MS = 260
 const TERMINAL_SEARCH_DECORATIONS = {
   matchBackground: '#4b5563',
   matchOverviewRuler: '#9ca3af',
@@ -106,13 +102,18 @@ export function TerminalView({
   const pendingWriteRef = useRef('')
   const writeFrameRef = useRef<number | null>(null)
   const resizeTimerRef = useRef<number | null>(null)
+  const resizeSettleTimerRef = useRef<number | null>(null)
   const pendingResizeForceRef = useRef(false)
+  const pendingResizeFreezeColsRef = useRef(false)
   const isWritingRef = useRef(false)
   const suppressHydratedChunksUntilRef = useRef(0)
   const preserveVisibleBufferRef = useRef(false)
   const bootedTabs = useRef(new Set<string>())
   const wasConnectedRef = useRef(false)
   const lastSyncedSizeRef = useRef<{ cols: number; rows: number; width: number; height: number } | null>(null)
+  const lastObservedHostRectRef = useRef<{ width: number; height: number } | null>(null)
+  const isHorizontalResizeActiveRef = useRef(false)
+  const lastTerminalOutputAtRef = useRef(0)
   const [hasSelection, setHasSelection] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [findOpen, setFindOpen] = useState(false)
@@ -394,7 +395,15 @@ export function TerminalView({
     return true
   }
 
-  const syncTerminalSize = (fitAddon: FitAddon, terminal: Terminal, force = false) => {
+  const syncTerminalSize = (
+    fitAddon: FitAddon,
+    terminal: Terminal,
+    options: {
+      force?: boolean
+      freezeCols?: boolean
+    } = {}
+  ) => {
+    const { force = false, freezeCols = false } = options
     const host = hostRef.current
     if (!host) {
       return
@@ -412,20 +421,15 @@ export function TerminalView({
 
     // Keep xterm and the remote PTY on the exact same column count. Readline,
     // vim, nano and progress bars all depend on that agreement for wrapping
-    // and cursor-addressing. The column count is capped to the minimum-window
-    // content width so enlarging the app adds local blank space instead of
-    // stretching remote redraw output to the real right edge.
+    // and cursor-addressing. During an active horizontal resize we temporarily
+    // freeze cols, then sync the true width once the drag settles.
     const displayCols = Math.max(1, proposed.cols)
     const rows = Math.max(1, proposed.rows - TERMINAL_FIT_GUARD_ROWS)
-    const cellWidth = width / displayCols
-    const minWindowCols = Math.max(
-      1,
-      Math.floor(TERMINAL_MIN_CONTENT_WIDTH / Math.max(cellWidth, 1)) - TERMINAL_REMOTE_GUARD_COLS
-    )
-    const cols = Math.max(
-      1,
-      Math.min(displayCols - TERMINAL_REMOTE_GUARD_COLS, minWindowCols)
-    )
+    const previousSize = lastSyncedSizeRef.current
+    const liveCols = Math.max(1, displayCols - TERMINAL_REMOTE_GUARD_COLS)
+    const cols = freezeCols && previousSize
+      ? previousSize.cols
+      : liveCols
     if (terminal.cols !== cols || terminal.rows !== rows) {
       terminal.resize(cols, rows)
       terminal.refresh(0, Math.max(terminal.rows - 1, 0))
@@ -437,7 +441,6 @@ export function TerminalView({
       width: Math.floor(width),
       height: Math.floor(height)
     }
-    const previousSize = lastSyncedSizeRef.current
     if (
       !force
       && previousSize
@@ -530,12 +533,13 @@ export function TerminalView({
       replaceTerminalWithTranscript(terminal, bootTextRef.current)
     }
 
-    const resize = (force = false) => {
-      syncTerminalSize(fitAddon, terminal, force)
+    const resize = (force = false, freezeCols = false) => {
+      syncTerminalSize(fitAddon, terminal, { force, freezeCols })
     }
 
-    const scheduleResize = (force = false) => {
+    const scheduleResize = (force = false, freezeCols = false) => {
       pendingResizeForceRef.current = pendingResizeForceRef.current || force
+      pendingResizeFreezeColsRef.current = pendingResizeFreezeColsRef.current || freezeCols
 
       if (resizeTimerRef.current !== null) {
         window.cancelAnimationFrame(resizeTimerRef.current)
@@ -544,9 +548,29 @@ export function TerminalView({
       resizeTimerRef.current = window.requestAnimationFrame(() => {
         resizeTimerRef.current = null
         const shouldForce = pendingResizeForceRef.current
+        const shouldFreezeCols = pendingResizeFreezeColsRef.current
         pendingResizeForceRef.current = false
-        resize(shouldForce)
+        pendingResizeFreezeColsRef.current = false
+        resize(shouldForce, shouldFreezeCols)
       })
+    }
+
+    const scheduleSettledHorizontalResize = () => {
+      if (resizeSettleTimerRef.current !== null) {
+        window.clearTimeout(resizeSettleTimerRef.current)
+      }
+
+      resizeSettleTimerRef.current = window.setTimeout(() => {
+        const quietFor = Date.now() - lastTerminalOutputAtRef.current
+        if (quietFor < TERMINAL_RESIZE_OUTPUT_QUIET_MS) {
+          scheduleSettledHorizontalResize()
+          return
+        }
+
+        resizeSettleTimerRef.current = null
+        isHorizontalResizeActiveRef.current = false
+        window.requestAnimationFrame(() => scheduleResize(true))
+      }, TERMINAL_RESIZE_SETTLE_MS)
     }
 
     const onDataDispose = terminal.onData((data) => {
@@ -561,6 +585,7 @@ export function TerminalView({
 
     const offData = window.termdock?.onTerminalData(({ tabId: nextTabId, chunk }) => {
       if (nextTabId === tabId) {
+        lastTerminalOutputAtRef.current = Date.now()
         if (Date.now() < suppressHydratedChunksUntilRef.current && renderedTranscriptRef.current.endsWith(chunk)) {
           return
         }
@@ -597,7 +622,36 @@ export function TerminalView({
       }
     })
 
-    const resizeObserver = new ResizeObserver(() => scheduleResize())
+    const resizeObserver = new ResizeObserver(() => {
+      const host = hostRef.current
+      if (!host) {
+        return
+      }
+
+      const { width, height } = host.getBoundingClientRect()
+      const lastObservedRect = lastObservedHostRectRef.current
+      lastObservedHostRectRef.current = { width, height }
+
+      const widthChanged = Boolean(
+        lastObservedRect
+        && Math.abs(lastObservedRect.width - width) > TERMINAL_RESIZE_PIXEL_EPSILON
+      )
+
+      if (widthChanged) {
+        isHorizontalResizeActiveRef.current = true
+        scheduleResize(false, true)
+        scheduleSettledHorizontalResize()
+        return
+      }
+
+      if (isHorizontalResizeActiveRef.current) {
+        scheduleResize(false, true)
+        scheduleSettledHorizontalResize()
+        return
+      }
+
+      scheduleResize()
+    })
     resizeObserver.observe(hostRef.current)
 
     const onWindowFocus = () => {
@@ -677,15 +731,23 @@ export function TerminalView({
       if (resizeTimerRef.current !== null) {
         window.cancelAnimationFrame(resizeTimerRef.current)
       }
+      if (resizeSettleTimerRef.current !== null) {
+        window.clearTimeout(resizeSettleTimerRef.current)
+      }
       writeFrameRef.current = null
       resizeTimerRef.current = null
+      resizeSettleTimerRef.current = null
       pendingResizeForceRef.current = false
+      pendingResizeFreezeColsRef.current = false
       isWritingRef.current = false
       pendingWriteRef.current = ''
       renderedTranscriptRef.current = ''
       suppressHydratedChunksUntilRef.current = 0
       preserveVisibleBufferRef.current = false
       lastSyncedSizeRef.current = null
+      lastObservedHostRectRef.current = null
+      isHorizontalResizeActiveRef.current = false
+      lastTerminalOutputAtRef.current = 0
       searchResultsDisposable.dispose()
       osc52Disposable.dispose()
       resizeObserver.disconnect()

@@ -2,6 +2,14 @@ import type { DragEvent, FormEvent, MouseEvent } from 'react'
 import type { LocalFileItem, RemoteFileItem } from '@termdock/core'
 import { t } from '../../i18n'
 import { AppIcon } from '../common/AppIcon'
+import { getDisplayFileIconName, getDisplayFileTypeLabel } from './file-kind'
+
+export type RemoteFileSortField = 'name' | 'size' | 'type' | 'modified' | 'permission' | 'ownerGroup'
+
+export interface RemoteFileSortState {
+  field: RemoteFileSortField
+  direction: 'asc' | 'desc'
+}
 
 export function PanePathBar({
   hint,
@@ -36,6 +44,7 @@ export function FileTable({
   rows,
   compact = false,
   emptyText,
+  sortState,
   cutPaths,
   selectedPaths,
   onClearSelection,
@@ -43,12 +52,14 @@ export function FileTable({
   onDragItem,
   onOpenItem,
   onSelectItem,
+  onToggleSort,
   onSelectionDragEnter,
   onSelectionDragStart
 }: {
   rows: RemoteFileItem[]
   compact?: boolean
   emptyText?: string
+  sortState?: RemoteFileSortState
   cutPaths?: string[]
   selectedPaths?: string[]
   onClearSelection?(): void
@@ -56,9 +67,19 @@ export function FileTable({
   onDragItem?(event: DragEvent<HTMLElement>, item: RemoteFileItem): void
   onOpenItem?(item: RemoteFileItem): void
   onSelectItem?(event: MouseEvent<HTMLTableRowElement>, item: RemoteFileItem): void
+  onToggleSort?(field: RemoteFileSortField): void
   onSelectionDragEnter?(item: RemoteFileItem): void
   onSelectionDragStart?(event: MouseEvent<HTMLTableRowElement>, item: RemoteFileItem): void
 }) {
+  const headerCells: Array<{ field: RemoteFileSortField; label: string }> = [
+    { field: 'name', label: t.fileName },
+    { field: 'size', label: t.size },
+    { field: 'type', label: t.type },
+    { field: 'modified', label: t.modifiedAt },
+    { field: 'permission', label: t.permission },
+    { field: 'ownerGroup', label: t.ownerGroup }
+  ]
+
   return (
     <table
       className={`fs-file-table ${compact ? 'compact' : ''}`}
@@ -70,12 +91,30 @@ export function FileTable({
     >
       <thead>
         <tr>
-          <th>{t.fileName}</th>
-          {!compact ? <th>{t.size}</th> : null}
-          {!compact ? <th>{t.type}</th> : null}
-          {!compact ? <th>{t.modifiedAt}</th> : null}
-          {!compact ? <th>{t.permission}</th> : null}
-          {!compact ? <th>{t.ownerGroup}</th> : null}
+          {headerCells.map((header, index) => {
+            if (compact && index > 0) {
+              return null
+            }
+
+            const isActive = sortState?.field === header.field
+            const directionGlyph = isActive
+              ? (sortState?.direction === 'asc' ? '↑' : '↓')
+              : ''
+
+            return (
+              <th
+                key={header.field}
+                className={onToggleSort ? 'is-sortable' : undefined}
+                onClick={() => onToggleSort?.(header.field)}
+                title={onToggleSort ? `${header.label} - 单击切换排序` : undefined}
+              >
+                <span className={`file-table-heading ${isActive ? 'is-active' : ''}`}>
+                  <span>{header.label}</span>
+                  {!compact ? <span className="file-table-sort-indicator">{directionGlyph}</span> : null}
+                </span>
+              </th>
+            )
+          })}
         </tr>
       </thead>
       <tbody onClick={(event) => {
@@ -83,7 +122,11 @@ export function FileTable({
           onClearSelection?.()
         }
       }}>
-        {rows.length ? rows.map((row) => (
+        {rows.length ? rows.map((row) => {
+          const typeLabel = getDisplayFileTypeLabel(row)
+          const iconName = getDisplayFileIconName(row)
+
+          return (
           <tr
             key={row.path}
             className={`${row.type === 'folder' ? 'is-folder' : 'is-file'} ${selectedPaths?.includes(row.path) ? 'is-selected' : ''} ${cutPaths?.includes(row.path) ? 'is-cut-pending' : ''}`}
@@ -105,17 +148,18 @@ export function FileTable({
                 onMouseDown={(event) => event.stopPropagation()}
                 title={row.type === 'file' ? t.dragTransfer : undefined}
               >
-                <AppIcon name={row.type === 'folder' ? 'folder' : 'file'} />
+                <AppIcon name={iconName} />
               </span>
               {row.name}
             </td>
             {!compact ? <td>{row.size}</td> : null}
-            {!compact ? <td>{row.type === 'folder' ? t.folder : row.type}</td> : null}
+            {!compact ? <td>{typeLabel}</td> : null}
             {!compact ? <td>{row.modified}</td> : null}
             {!compact ? <td>{row.permission ?? ''}</td> : null}
             {!compact ? <td>{row.ownerGroup ?? ''}</td> : null}
           </tr>
-        )) : (
+          )
+        }) : (
           <tr><td colSpan={compact ? 1 : 6}>{emptyText ?? t.emptyFiles}</td></tr>
         )}
       </tbody>
@@ -165,7 +209,10 @@ export function LocalFileTable({
           onClearSelection()
         }
       }}>
-        {rows.map((row) => (
+        {rows.map((row) => {
+          const iconName = getDisplayFileIconName(row)
+
+          return (
           <tr
             key={`${row.path}:${row.name}`}
             className={`${row.type === 'folder' ? 'is-folder' : 'is-file'} ${selectedPaths.includes(row.path) ? 'is-selected' : ''} ${cutPaths?.includes(row.path) ? 'is-cut-pending' : ''}`}
@@ -187,12 +234,13 @@ export function LocalFileTable({
                 onMouseDown={(event) => event.stopPropagation()}
                 title={row.name !== '..' ? t.dragTransfer : undefined}
               >
-                <AppIcon name={row.type === 'folder' ? 'folder' : 'file'} />
+                <AppIcon name={iconName} />
               </span>
               {row.name}
             </td>
           </tr>
-        ))}
+          )
+        })}
       </tbody>
     </table>
   )

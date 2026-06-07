@@ -14,8 +14,11 @@ export class LiveFtpSessionController extends BaseFileSessionController implemen
 
   private readonly ftp = new BasicFtpClient(20000)
   private readonly entryDebugInfo = new Map<string, string>()
+  private readonly resolvedEntryTypes = new Map<string, RemoteFileItem['type']>()
   private readonly defaultParseList: (rawList: string) => FileInfo[]
   private listingMode: 'auto' | 'classic-list' = 'auto'
+  private mlstMode: 'auto' | 'disabled' = 'auto'
+  private sizeMode: 'auto' | 'disabled' = 'auto'
   private currentRemotePath: string
   private operationQueue: Promise<unknown> = Promise.resolve()
 
@@ -66,6 +69,7 @@ export class LiveFtpSessionController extends BaseFileSessionController implemen
         appWarn(`[TermDock][FTP] Failed to open remote path ${nextPath}: ${enriched}`)
         throw new Error(enriched)
       }
+      this.resolvedEntryTypes.set(nextPath, 'folder')
       this.currentRemotePath = await this.ftp.pwd()
       return this.readRemoteDirectory(this.currentRemotePath)
     })
@@ -76,6 +80,7 @@ export class LiveFtpSessionController extends BaseFileSessionController implemen
       const localPath = this.tempFilePath(targetPath)
       try {
         await this.ftp.downloadTo(localPath, targetPath)
+        this.resolvedEntryTypes.set(targetPath, 'file')
         return decodeBuffer(await readFile(localPath), encoding)
       } finally {
         void unlink(localPath).catch(() => undefined)
@@ -90,6 +95,7 @@ export class LiveFtpSessionController extends BaseFileSessionController implemen
         await writeFile(localPath, encodeText(content, encoding))
         await this.ensureRemoteDirectoryInternal(path.posix.dirname(targetPath))
         await this.ftp.uploadFrom(localPath, targetPath)
+        this.resolvedEntryTypes.set(targetPath, 'file')
       } finally {
         void unlink(localPath).catch(() => undefined)
       }
@@ -107,6 +113,11 @@ export class LiveFtpSessionController extends BaseFileSessionController implemen
   async renameRemotePath(targetPath: string, nextPath: string): Promise<void> {
     await this.runWithConnectedClient(async () => {
       await this.ftp.rename(targetPath, nextPath)
+      const knownType = this.resolvedEntryTypes.get(targetPath)
+      this.resolvedEntryTypes.delete(targetPath)
+      if (knownType) {
+        this.resolvedEntryTypes.set(nextPath, knownType)
+      }
     })
   }
 
@@ -114,9 +125,11 @@ export class LiveFtpSessionController extends BaseFileSessionController implemen
     await this.runWithConnectedClient(async () => {
       if (targetType === 'folder') {
         await this.ftp.removeDir(targetPath)
+        this.resolvedEntryTypes.delete(targetPath)
         return
       }
       await this.ftp.remove(targetPath)
+      this.resolvedEntryTypes.delete(targetPath)
     })
   }
 
@@ -133,6 +146,7 @@ export class LiveFtpSessionController extends BaseFileSessionController implemen
   async ensureRemoteDirectory(targetPath: string): Promise<void> {
     await this.runWithConnectedClient(async () => {
       await this.ensureRemoteDirectoryInternal(targetPath)
+      this.resolvedEntryTypes.set(targetPath, 'folder')
     })
   }
 
@@ -150,6 +164,7 @@ export class LiveFtpSessionController extends BaseFileSessionController implemen
       try {
         await this.ensureRemoteDirectoryInternal(path.posix.dirname(remotePath))
         await this.ftp.uploadFrom(localPath, remotePath)
+        this.resolvedEntryTypes.set(remotePath, 'file')
         onProgress({ percent: 100, transferredBytes: total, totalBytes: total })
       } finally {
         this.ftp.trackProgress()
@@ -289,6 +304,7 @@ export class LiveFtpSessionController extends BaseFileSessionController implemen
     }
 
     this.listingMode = 'classic-list'
+    this.mlstMode = 'disabled'
     appLog(`[TermDock][FTP] Switching listing mode to classic LIST for current session: ${targetPath}`)
     this.setClassicListCommands()
     const retriedEntries = await this.ftp.list(targetPath)
@@ -301,28 +317,126 @@ export class LiveFtpSessionController extends BaseFileSessionController implemen
   }
 
   private async resolveDirectoryFlag(targetPath: string, entry: FileInfo, previousPath: string) {
+    const candidatePath = path.posix.join(targetPath, entry.name)
+    const cachedType = this.resolvedEntryTypes.get(candidatePath)
+    if (cachedType === 'folder') {
+      entry.type = FileType.Directory
+      return true
+    }
+    if (cachedType === 'file') {
+      entry.type = FileType.File
+      return false
+    }
+
     if (entry.type === FileType.Directory || entry.isDirectory) {
       entry.type = FileType.Directory
+      this.resolvedEntryTypes.set(candidatePath, 'folder')
       return true
     }
 
     if (entry.type !== FileType.Unknown) {
       entry.type = FileType.File
+      this.resolvedEntryTypes.set(candidatePath, 'file')
       return false
     }
 
-    const candidatePath = path.posix.join(targetPath, entry.name)
+    if (this.mlstMode === 'auto') {
+      const mlsdResolved = await this.tryResolveTypeWithMlst(candidatePath)
+      if (mlsdResolved) {
+        entry.type = mlsdResolved === 'folder' ? FileType.Directory : FileType.File
+        this.resolvedEntryTypes.set(candidatePath, mlsdResolved)
+        return mlsdResolved === 'folder'
+      }
+    }
+
+    if (this.sizeMode === 'auto') {
+      const sizeResolved = await this.tryResolveTypeWithSize(candidatePath, entry)
+      if (sizeResolved) {
+        entry.type = FileType.File
+        this.resolvedEntryTypes.set(candidatePath, 'file')
+        return false
+      }
+    }
+
     try {
       await this.ftp.cd(candidatePath)
       entry.type = FileType.Directory
+      this.resolvedEntryTypes.set(candidatePath, 'folder')
       appLog(`[TermDock][FTP] Directory probe succeeded for ${candidatePath}`)
       return true
     } catch {
       entry.type = FileType.File
+      this.resolvedEntryTypes.set(candidatePath, 'file')
       return false
     } finally {
       await this.ftp.cd(previousPath).catch(() => undefined)
     }
+  }
+
+  private async tryResolveTypeWithMlst(targetPath: string): Promise<RemoteFileItem['type'] | null> {
+    try {
+      const response = await this.ftp.sendIgnoringError(`MLST ${await this.protectFtpPath(targetPath)}`)
+      if (response.code < 200 || response.code >= 300) {
+        this.mlstMode = 'disabled'
+        return null
+      }
+
+      const factLine = response.message
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .find((line) => /^\S+=\S+;/.test(line))
+      if (!factLine) {
+        this.mlstMode = 'disabled'
+        return null
+      }
+
+      const parsed = new FileInfo(path.posix.basename(targetPath))
+      enrichFromMlsdLine(parsed as FileInfoWithRaw, factLine)
+      if (parsed.type === FileType.Directory) {
+        appLog(`[TermDock][FTP] MLST resolved directory for ${targetPath}`)
+        return 'folder'
+      }
+      if (parsed.type === FileType.File || parsed.type === FileType.SymbolicLink) {
+        appLog(`[TermDock][FTP] MLST resolved file for ${targetPath}`)
+        return 'file'
+      }
+      this.mlstMode = 'disabled'
+      return null
+    } catch {
+      this.mlstMode = 'disabled'
+      return null
+    }
+  }
+
+  private async tryResolveTypeWithSize(targetPath: string, entry: FileInfo): Promise<boolean> {
+    try {
+      const response = await this.ftp.sendIgnoringError(`SIZE ${await this.protectFtpPath(targetPath)}`)
+      if (response.code >= 200 && response.code < 300) {
+        const size = Number.parseInt(response.message.slice(4), 10)
+        if (Number.isFinite(size)) {
+          entry.size = size
+        }
+        appLog(`[TermDock][FTP] SIZE resolved file for ${targetPath}`)
+        return true
+      }
+
+      if (isUnsupportedFtpCommand(response.code)) {
+        this.sizeMode = 'disabled'
+      }
+      return false
+    } catch {
+      this.sizeMode = 'disabled'
+      return false
+    }
+  }
+
+  private async protectFtpPath(targetPath: string) {
+    const ftpWithWhitespaceGuard = this.ftp as BasicFtpClient & {
+      protectWhitespace?(path: string): Promise<string>
+    }
+    return ftpWithWhitespaceGuard.protectWhitespace
+      ? ftpWithWhitespaceGuard.protectWhitespace(targetPath)
+      : targetPath
   }
 }
 
@@ -344,6 +458,10 @@ function looksLikeStructuredFtpLine(rawLine: string) {
   return /^\S+=\S+;/.test(rawLine)
     || /^\d{2}-\d{2}-\d{2}\s+\d{2}:\d{2}(AM|PM)/i.test(rawLine)
     || /^[\-ldpscbD]/.test(rawLine)
+}
+
+function isUnsupportedFtpCommand(code: number) {
+  return code === 500 || code === 501 || code === 502 || code === 504
 }
 
 function validateMode(mode: string) {
@@ -389,10 +507,14 @@ function enrichFtpListing(files: FileInfo[], rawList: string) {
     .filter((line) => line.trim() !== '')
     .filter((line) => !line.startsWith('total'))
     .filter((line) => !/type=(cdir|pdir)/i.test(line))
+    .filter((line) => {
+      const rawName = extractRawEntryName(line)
+      return rawName !== '.' && rawName !== '..'
+    })
 
   return files.map((file, index) => {
     const enriched = file as FileInfoWithRaw
-    const rawLine = lines[index]
+    const rawLine = findMatchingRawLine(lines, file.name, index)
     if (!rawLine) {
       return enriched
     }
@@ -401,6 +523,36 @@ function enrichFtpListing(files: FileInfo[], rawList: string) {
     enrichFromRawLine(enriched, rawLine)
     return enriched
   })
+}
+
+function findMatchingRawLine(lines: string[], fileName: string, fallbackIndex: number) {
+  for (let index = fallbackIndex; index < lines.length; index += 1) {
+    const line = lines[index]
+    if (extractRawEntryName(line) === fileName) {
+      return line
+    }
+  }
+
+  return lines[fallbackIndex]
+}
+
+function extractRawEntryName(rawLine: string) {
+  if (/^\S+=\S+;/.test(rawLine) || rawLine.startsWith(' ')) {
+    const separatorIndex = rawLine.indexOf(' ')
+    return separatorIndex >= 0 ? rawLine.slice(separatorIndex + 1).trim() : rawLine.trim()
+  }
+
+  const dosMatch = rawLine.match(/^\S+\s+\S+\s+(?:<DIR>|[0-9]+)\s+(.+)$/i)
+  if (dosMatch?.[1]) {
+    return dosMatch[1].trim()
+  }
+
+  const unixMatch = rawLine.match(/^[bcdelfmpSs-][rwxStTsL-]{9}\+?\s+\d+\s+(?:(?:\S+(?:\s+\S+)*)\s+)?(?:(?:\S+(?:\s+\S+)*)\s+)?(?:\d+(?:,\s*\d+)?)\s+(?:(?:\d+[-/]\d+[-/]\d+)|(?:\S{3}\s+\d{1,2})|(?:\d{1,2}\s+\S{3})|(?:\d{1,2}月\s+\d{1,2}日))\s+(?:(?:\d+(?::\d+)?)|(?:\d{4}年))\s+(.*)$/)
+  if (unixMatch?.[1]) {
+    return unixMatch[1].replace(/\s+->\s+.*$/, '').trim()
+  }
+
+  return rawLine.trim()
 }
 
 function enrichFromRawLine(file: FileInfoWithRaw, rawLine: string) {

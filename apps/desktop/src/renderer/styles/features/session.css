@@ -314,6 +314,29 @@
   letter-spacing: 0.5px;
 }
 
+.fs-file-table th.is-sortable {
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.file-table-heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.file-table-heading.is-active {
+  color: var(--text-main);
+}
+
+.file-table-sort-indicator {
+  display: inline-block;
+  min-width: 10px;
+  color: var(--text-muted);
+}
+
 .fs-file-table tbody tr {
   transition: background 0.15s;
 }
