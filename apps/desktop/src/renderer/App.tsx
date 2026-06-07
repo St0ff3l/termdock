@@ -1364,7 +1364,7 @@ export function App() {
   }
 
   const handleTabContextAction = async (
-    action: 'copy' | 'connect' | 'connectAll' | 'disconnect' | 'close' | 'closeOthers' | 'closeAll'
+    action: 'copy' | 'clone' | 'connect' | 'connectAll' | 'disconnect' | 'close' | 'closeOthers' | 'closeAll'
   ) => {
     if (!tabContextMenu) {
       return
@@ -1375,6 +1375,29 @@ export function App() {
 
     if (action === 'copy') {
       navigator.clipboard?.writeText?.(target.title)
+      return
+    }
+
+    if (action === 'clone') {
+      if (target.kind !== 'session' || !desktopApi) {
+        return
+      }
+
+      const sourceTab = workspace.tabs.find((tab) => tab.id === target.id)
+      if (!sourceTab) {
+        return
+      }
+
+      try {
+        setIsBusy(true)
+        const snapshot = await desktopApi.openProfile(sourceTab.profileId)
+        applySnapshot(snapshot)
+        setActiveLocalTabId(null)
+      } catch (err) {
+        reportError(setError, '克隆连接标签页', err)
+      } finally {
+        setIsBusy(false)
+      }
       return
     }
 

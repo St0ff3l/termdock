@@ -18,7 +18,7 @@ export function TabContextMenu({
   canCloseCurrent: boolean
   canCloseOthers: boolean
   isSessionTab: boolean
-  onAction(action: 'copy' | 'connect' | 'connectAll' | 'disconnect' | 'close' | 'closeOthers' | 'closeAll'): void
+  onAction(action: 'copy' | 'clone' | 'connect' | 'connectAll' | 'disconnect' | 'close' | 'closeOthers' | 'closeAll'): void
   onClose(): void
   position: { x: number; y: number }
   tabStatus: WorkspaceTab['status'] | null
@@ -31,6 +31,7 @@ export function TabContextMenu({
       className="tab-context-menu"
       items={[
         { label: t.copyTab, action: () => onAction('copy') },
+        { label: t.cloneTab, disabled: !isSessionTab, action: () => onAction('clone') },
         { separator: true },
         { label: t.connect, disabled: !canConnect, action: () => onAction('connect') },
         { label: t.connectAll, disabled: !isSessionTab || !canConnectAll, action: () => onAction('connectAll') },

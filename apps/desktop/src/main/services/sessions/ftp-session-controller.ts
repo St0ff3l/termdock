@@ -14,12 +14,15 @@ export class LiveFtpSessionController extends BaseFileSessionController implemen
 
   private readonly ftp = new BasicFtpClient(20000)
   private readonly entryDebugInfo = new Map<string, string>()
+  private readonly defaultParseList: (rawList: string) => FileInfo[]
   private currentRemotePath: string
   private operationQueue: Promise<unknown> = Promise.resolve()
 
   constructor(id: string, profile: FtpProfile) {
     super(id, 'ftp', profile)
     this.currentRemotePath = profile.remotePath || '/'
+    this.defaultParseList = this.ftp.parseList.bind(this.ftp)
+    this.ftp.parseList = (rawList: string) => enrichFtpListing(this.defaultParseList(rawList), rawList)
   }
 
   override async connect(): Promise<void> {
@@ -197,18 +200,17 @@ export class LiveFtpSessionController extends BaseFileSessionController implemen
 
   private async readRemoteDirectory(targetPath: string): Promise<RemoteFileItem[]> {
     const entries = await this.ftp.list(targetPath)
-    const previousPath = await this.ftp.pwd()
     const rows = entries
       .filter((entry) => entry.name !== '.' && entry.name !== '..')
     appLog(`[TermDock][FTP] Listing remote directory ${targetPath} (${rows.length} entries)`)
     const items: RemoteFileItem[] = []
 
     for (const entry of rows) {
-      const isDirectory = await this.isFtpDirectoryEntry(targetPath, entry, previousPath)
+      const isDirectory = entry.type === FileType.Directory || entry.isDirectory
       const item = toResolvedFtpRemoteFileItem(targetPath, entry, isDirectory)
       const debugInfo = describeFtpEntry(targetPath, entry, isDirectory)
       this.entryDebugInfo.set(item.path, debugInfo)
-      if (entry.type === FileType.Unknown || isDirectory !== (entry.type === FileType.Directory || entry.isDirectory)) {
+      if ((entry as FileInfoWithRaw).rawLine || entry.type === FileType.Unknown) {
         appLog(`[TermDock][FTP] Resolved remote entry: ${debugInfo}`)
       }
       items.push(item)
@@ -272,26 +274,6 @@ export class LiveFtpSessionController extends BaseFileSessionController implemen
     this.operationQueue = nextOperation.then(() => undefined, () => undefined)
     return nextOperation
   }
-
-  private async isFtpDirectoryEntry(targetPath: string, entry: FileInfo, previousPath: string) {
-    if (entry.type === FileType.Directory || entry.isDirectory) {
-      return true
-    }
-    if (entry.type !== FileType.Unknown) {
-      return false
-    }
-
-    const candidatePath = path.posix.join(targetPath, entry.name)
-    try {
-      await this.ftp.cd(candidatePath)
-      appLog(`[TermDock][FTP] Directory probe succeeded for ${candidatePath}`)
-      return true
-    } catch {
-      return false
-    } finally {
-      await this.ftp.cd(previousPath).catch(() => undefined)
-    }
-  }
 }
 
 function validateMode(mode: string) {
@@ -313,7 +295,8 @@ function describeFtpEntry(basePath: string, entry: FileInfo, isDirectory: boolea
     `permissions=${formatPermissionsForDebug(entry)}`,
     `owner=${entry.user || '-'}`,
     `group=${entry.group || '-'}`,
-    `modified=${entry.modifiedAt?.toISOString?.() ?? (entry.rawModifiedAt || '-')}`
+    `modified=${entry.modifiedAt?.toISOString?.() ?? (entry.rawModifiedAt || '-')}`,
+    `rawLine=${(entry as FileInfoWithRaw).rawLine ?? '-'}`
   ].join(', ')
 }
 
@@ -323,4 +306,128 @@ function formatPermissionsForDebug(entry: FileInfo) {
   }
 
   return `u:${entry.permissions.user ?? 0},g:${entry.permissions.group ?? 0},w:${entry.permissions.world ?? 0}`
+}
+
+type FileInfoWithRaw = FileInfo & {
+  rawLine?: string
+}
+
+function enrichFtpListing(files: FileInfo[], rawList: string) {
+  const lines = rawList
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd())
+    .filter((line) => line.trim() !== '')
+    .filter((line) => !line.startsWith('total'))
+    .filter((line) => !/type=(cdir|pdir)/i.test(line))
+
+  return files.map((file, index) => {
+    const enriched = file as FileInfoWithRaw
+    const rawLine = lines[index]
+    if (!rawLine) {
+      return enriched
+    }
+
+    enriched.rawLine = rawLine
+    enrichFromRawLine(enriched, rawLine)
+    return enriched
+  })
+}
+
+function enrichFromRawLine(file: FileInfoWithRaw, rawLine: string) {
+  if (/^\S+=\S+;/.test(rawLine) || rawLine.startsWith(' ')) {
+    enrichFromMlsdLine(file, rawLine)
+    return
+  }
+
+  if (/^\d{2}-\d{2}-\d{2}\s+\d{2}:\d{2}(AM|PM)/i.test(rawLine)) {
+    enrichFromDosLine(file, rawLine)
+    return
+  }
+
+  enrichFromUnixLine(file, rawLine)
+}
+
+function enrichFromMlsdLine(file: FileInfoWithRaw, rawLine: string) {
+  const separatorIndex = rawLine.indexOf(' ')
+  if (separatorIndex < 0) {
+    return
+  }
+
+  const facts = rawLine.slice(0, separatorIndex).split(';')
+  for (const fact of facts) {
+    const equalsIndex = fact.indexOf('=')
+    if (equalsIndex < 0) {
+      continue
+    }
+
+    const key = fact.slice(0, equalsIndex).toLowerCase()
+    const value = fact.slice(equalsIndex + 1)
+
+    if (key === 'type') {
+      const normalized = value.toLowerCase()
+      if (normalized === 'file') {
+        file.type = FileType.File
+      } else if (normalized === 'dir' || normalized === 'cdir' || normalized === 'pdir' || normalized === 'folder' || normalized === 'directory') {
+        file.type = FileType.Directory
+      } else if (normalized.includes('slink') || normalized.includes('symlink')) {
+        file.type = FileType.SymbolicLink
+      }
+      continue
+    }
+
+    if (key === 'size' || key === 'sizd') {
+      const size = Number.parseInt(value, 10)
+      if (Number.isFinite(size)) {
+        file.size = size
+      }
+      continue
+    }
+
+    if (key === 'unix.mode') {
+      const digits = value.slice(-3)
+      if (digits.length === 3) {
+        file.permissions = {
+          user: Number.parseInt(digits[0] ?? '0', 10),
+          group: Number.parseInt(digits[1] ?? '0', 10),
+          world: Number.parseInt(digits[2] ?? '0', 10)
+        }
+      }
+    }
+  }
+}
+
+function enrichFromDosLine(file: FileInfoWithRaw, rawLine: string) {
+  const match = rawLine.match(/^\S+\s+\S+\s+(<DIR>|[0-9]+)\s+/i)
+  if (!match) {
+    return
+  }
+
+  if (match[1]?.toUpperCase() === '<DIR>') {
+    file.type = FileType.Directory
+    return
+  }
+
+  file.type = FileType.File
+  const size = Number.parseInt(match[1] ?? '', 10)
+  if (Number.isFinite(size)) {
+    file.size = size
+  }
+}
+
+function enrichFromUnixLine(file: FileInfoWithRaw, rawLine: string) {
+  const typeToken = rawLine[0]
+  if (typeToken === 'd') {
+    file.type = FileType.Directory
+  } else if (typeToken === 'l') {
+    file.type = FileType.SymbolicLink
+  } else if (typeToken === '-' || typeToken === 'f') {
+    file.type = FileType.File
+  }
+
+  const parts = rawLine.trim().split(/\s+/)
+  const sizeToken = parts[4]
+  const size = Number.parseInt(sizeToken ?? '', 10)
+  if (Number.isFinite(size)) {
+    file.size = size
+  }
 }
