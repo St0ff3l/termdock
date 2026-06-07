@@ -10,9 +10,9 @@ function formatSize(bytes: number) {
   let value = bytes
   let unit = -1
   do {
-    value /= 1024
+    value /= 1000
     unit += 1
-  } while (value >= 1024 && unit < units.length - 1)
+  } while (value >= 1000 && unit < units.length - 1)
   return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unit]}`
 }
 
