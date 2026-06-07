@@ -852,6 +852,7 @@ export function App() {
   const activeTransferCount = workspace.transfers.filter(isActiveTransfer).length
   const showSidebar = activeTab !== null && activeSession !== null && activeLocalTab?.kind !== 'home'
   const resolvedSidebarWidth = showSidebar ? (isSystemSidebarCollapsed ? 44 : sidebarWidth) : 0
+  const brandWidth = showSidebar && !isSystemSidebarCollapsed ? sidebarWidth : 214
 
   const normalizeErrorMessage = (err: unknown) => {
     const rawMessage = err instanceof Error ? err.message : String(err)
@@ -2490,7 +2491,8 @@ export function App() {
       <div
         className={`fs-shell ${isWindowsDesktop ? 'has-window-menubar' : ''}`}
         style={{
-          '--sidebar-width': `${resolvedSidebarWidth}px`
+          '--sidebar-width': `${resolvedSidebarWidth}px`,
+          '--brand-width': `${brandWidth}px`
         } as CSSProperties}
       >
         {isWindowsDesktop ? (
@@ -2560,7 +2562,15 @@ export function App() {
               activeSession={activeSession}
               collapsed={isSystemSidebarCollapsed}
               onOpenSystemInfo={handleOpenSystemInfo}
-              onToggleCollapsed={() => setIsSystemSidebarCollapsed((prev) => !prev)}
+              onToggleCollapsed={() => {
+                setIsSystemSidebarCollapsed((prev) => {
+                  const nextCollapsed = !prev
+                  if (!nextCollapsed) {
+                    setSidebarWidth(214)
+                  }
+                  return nextCollapsed
+                })
+              }}
             />
             {!isSystemSidebarCollapsed ? (
               <div

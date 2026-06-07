@@ -58,10 +58,21 @@ export function SystemSidebar({
         title={collapsed ? t.showSystemSidebar : t.hideSystemSidebar}
         type="button"
       >
-        <span className="system-sidebar-toggle-icon" aria-hidden="true">
-          <i className="panel-edge" />
-          <i className="panel-body" />
-        </span>
+        <svg
+          className="system-sidebar-toggle-icon"
+          width="14"
+          height="14"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <rect x="1.5" y="1.5" width="13" height="13" rx="2.5" />
+          <path d="M5.25 1.5V14.5" />
+        </svg>
       </button>
       {!collapsed ? (
         <>

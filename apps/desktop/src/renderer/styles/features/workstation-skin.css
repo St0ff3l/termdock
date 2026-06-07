@@ -61,7 +61,7 @@ textarea:focus-visible,
 .fs-tabbar {
   grid-column: 1 / -1;
   grid-row: 1;
-  grid-template-columns: var(--sidebar-width, 214px) minmax(0, 1fr);
+  grid-template-columns: var(--brand-width, 214px) minmax(0, 1fr);
   height: 48px;
   z-index: 10;
   position: relative;
@@ -903,7 +903,7 @@ textarea:focus-visible,
   }
 
   .fs-tabbar {
-    grid-template-columns: var(--sidebar-width, 200px) minmax(0, 1fr);
+    grid-template-columns: var(--brand-width, 200px) minmax(0, 1fr);
   }
 
   .file-split {
