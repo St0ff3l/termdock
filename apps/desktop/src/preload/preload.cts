@@ -46,6 +46,8 @@ const api: TermdockDesktopApi = {
     ipcRenderer.invoke('app:toggleMaximizeCurrentWindow'),
   closeCurrentWindow: (): Promise<void> =>
     ipcRenderer.invoke('app:closeCurrentWindow'),
+  requestQuitApp: (): Promise<void> =>
+    ipcRenderer.invoke('app:requestQuitApp'),
   getSnapshot: (): Promise<WorkspaceSnapshot> => ipcRenderer.invoke('workspace:getSnapshot'),
   createProfile: (input: CreateProfileInput): Promise<WorkspaceSnapshot> =>
     ipcRenderer.invoke('workspace:createProfile', input),
@@ -179,6 +181,11 @@ const api: TermdockDesktopApi = {
     const wrapped = (_event: unknown, data: { isQuit: boolean }) => listener(data)
     ipcRenderer.on('app:window-close-request', wrapped)
     return () => ipcRenderer.off('app:window-close-request', wrapped)
+  },
+  onRequestCloseActiveWorkspaceItem: (listener: () => void) => {
+    const wrapped = () => listener()
+    ipcRenderer.on('app:close-active-workspace-item-request', wrapped)
+    return () => ipcRenderer.off('app:close-active-workspace-item-request', wrapped)
   },
   confirmCloseWindow: (action: 'quit' | 'hide' | 'cancel'): Promise<void> =>
     ipcRenderer.invoke('app:confirmCloseWindow', action)

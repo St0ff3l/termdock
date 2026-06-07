@@ -4,6 +4,8 @@ const zhCN = {
   systemInfo: '系统信息',
   systemInfoDescription: '查看当前主机的系统概览、资源占用、网络与文件系统状态。',
   systemInfoTabTitle: '系统信息',
+  showSystemSidebar: '显示系统占用侧栏',
+  hideSystemSidebar: '隐藏系统占用侧栏',
   noConnection: '暂时无连接',
   noConnectionDescription: '打开一个连接后，这里会显示主机状态、资源占用和网络监控。',
   remoteDisconnected: '远程连接已断开',
@@ -329,7 +331,13 @@ const zhCN = {
   closeConfirmQuitMsg: '确定要退出 TermDock 吗？',
   closeConfirmWindowsMsg: '请选择如何处理当前窗口：',
   closeConfirmQuit: '直接退出',
-  closeConfirmHide: '最小化到系统托盘'
+  closeConfirmHide: '最小化到系统托盘',
+  closeShortcutConnectingTitle: '连接尚未完成',
+  closeShortcutConnectingDescription: '“{name}” 仍在连接中。现在关闭会中断这次连接，确定继续吗？',
+  closeShortcutLastActiveTitle: '关闭当前连接',
+  closeShortcutLastActiveDescription: '“{name}” 是当前最后一个活跃连接。关闭后会先退回首页新标签页，确定继续吗？',
+  closeShortcutCloseTab: '关闭标签页',
+  closeShortcutQuitConfirm: '退出应用'
 }
 
 const enUS: typeof zhCN = {
@@ -338,6 +346,8 @@ const enUS: typeof zhCN = {
   systemInfo: 'System Info',
   systemInfoDescription: 'View host overview, resource usage, network, and filesystem status.',
   systemInfoTabTitle: 'System Info',
+  showSystemSidebar: 'Show system usage sidebar',
+  hideSystemSidebar: 'Hide system usage sidebar',
   noConnection: 'No Connection',
   noConnectionDescription: 'Open a connection to see host status, resource usage, and network monitoring here.',
   remoteDisconnected: 'Remote connection closed',
@@ -652,7 +662,13 @@ const enUS: typeof zhCN = {
   closeConfirmQuitMsg: 'Are you sure you want to quit TermDock?',
   closeConfirmWindowsMsg: 'Please choose how to handle the window:',
   closeConfirmQuit: 'Exit App',
-  closeConfirmHide: 'Minimize to Tray'
+  closeConfirmHide: 'Minimize to Tray',
+  closeShortcutConnectingTitle: 'Connection Still Starting',
+  closeShortcutConnectingDescription: '"{name}" is still connecting. Closing it now will interrupt that connection. Continue?',
+  closeShortcutLastActiveTitle: 'Close Current Connection',
+  closeShortcutLastActiveDescription: '"{name}" is the last active connection. Closing it will return you to a new home tab first. Continue?',
+  closeShortcutCloseTab: 'Close Tab',
+  closeShortcutQuitConfirm: 'Exit App'
 }
 
 export const messages = {

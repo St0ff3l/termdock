@@ -29,6 +29,7 @@ import { FileEditorModal } from './features/files/FileEditorModal'
 import { FilePermissionModal } from './features/files/FilePermissionModal'
 import { RootAccessModal } from './features/files/RootAccessModal'
 import { AppIcon } from './features/common/AppIcon'
+import { ConfirmActionDialog } from './features/common/ConfirmActionDialog'
 import { TabBar, type OrderedTabEntry, type TabContextTarget } from './features/layout/TabBar'
 import { TabContextMenu } from './features/layout/TabContextMenu'
 import { SystemSidebar } from './features/system/SystemSidebar'
@@ -58,6 +59,7 @@ type StoredMainTabUiState = {
   activeLocalTabId: string | null
   nextHomeTabNumber: number
   tabOrder: string[]
+  isSystemSidebarCollapsed: boolean
 }
 
 function formatSystemInfoTabTitle(sourceTabTitle: string) {
@@ -252,7 +254,8 @@ function readStoredMainTabUiState(enabled: boolean): StoredMainTabUiState | null
       nextHomeTabNumber: typeof parsed.nextHomeTabNumber === 'number' && Number.isFinite(parsed.nextHomeTabNumber)
         ? Math.max(1, Math.floor(parsed.nextHomeTabNumber))
         : 1,
-      tabOrder
+      tabOrder,
+      isSystemSidebarCollapsed: parsed.isSystemSidebarCollapsed === true
     }
   } catch {
     return null
@@ -400,6 +403,7 @@ export function App() {
     target: TabContextTarget
   } | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(214)
+  const [isSystemSidebarCollapsed, setIsSystemSidebarCollapsed] = useState(() => storedMainTabUiState?.isSystemSidebarCollapsed === true)
   const [isResizingSidebar, setIsResizingSidebar] = useState(false)
   const [fileEditor, setFileEditor] = useState<FileContentSnapshot | null>(
     isFileEditorWindow && fileEditorWindowSource && fileEditorWindowPath && fileEditorWindowName
@@ -444,6 +448,11 @@ export function App() {
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => readInitialTheme(searchParams))
   const [locale, setLocaleState] = useState<AppLocale>(() => readInitialLocale(searchParams))
   const [closeConfirmDialog, setCloseConfirmDialog] = useState<{ isQuit: boolean; hasActiveConnections: boolean } | null>(null)
+  const [shortcutCloseConfirm, setShortcutCloseConfirm] = useState<{
+    tabId: string
+    title: string
+    variant: 'connecting' | 'active-last-session'
+  } | null>(null)
 
   useThemeMode(themeMode)
 
@@ -486,6 +495,18 @@ export function App() {
 
     return () => unsubscribe()
   }, [desktopApi, isMainWorkspaceWindow])
+
+  useEffect(() => {
+    if (!desktopApi || !isMainWorkspaceWindow) {
+      return
+    }
+
+    const unsubscribe = desktopApi.onRequestCloseActiveWorkspaceItem(() => {
+      void handleShortcutCloseActiveWorkspaceItem()
+    })
+
+    return () => unsubscribe()
+  }, [desktopApi, isMainWorkspaceWindow, activeLocalTabId, isBusy, localTabs, workspace.activeTabId, workspace.tabs])
 
   useEffect(() => {
     document.documentElement.dataset.platform = desktopApi?.platform ?? 'browser'
@@ -758,9 +779,10 @@ export function App() {
       localTabs,
       activeLocalTabId,
       nextHomeTabNumber,
-      tabOrder
+      tabOrder,
+      isSystemSidebarCollapsed
     })
-  }, [activeLocalTabId, hasLoadedInitialSnapshot, isMainWorkspaceWindow, localTabs, nextHomeTabNumber, tabOrder])
+  }, [activeLocalTabId, hasLoadedInitialSnapshot, isMainWorkspaceWindow, isSystemSidebarCollapsed, localTabs, nextHomeTabNumber, tabOrder])
 
   useEffect(() => {
     if (!isResizingSidebar) {
@@ -829,6 +851,7 @@ export function App() {
     : null
   const activeTransferCount = workspace.transfers.filter(isActiveTransfer).length
   const showSidebar = activeTab !== null && activeSession !== null && activeLocalTab?.kind !== 'home'
+  const resolvedSidebarWidth = showSidebar ? (isSystemSidebarCollapsed ? 44 : sidebarWidth) : 0
 
   const normalizeErrorMessage = (err: unknown) => {
     const rawMessage = err instanceof Error ? err.message : String(err)
@@ -888,6 +911,10 @@ export function App() {
 
   const closeCurrentWindow = () => {
     void desktopApi?.closeCurrentWindow()
+  }
+
+  const requestQuitApp = () => {
+    void desktopApi?.requestQuitApp()
   }
 
   const openCreateModal = () => {
@@ -1235,6 +1262,29 @@ export function App() {
     return snapshot
   }
 
+  const closeHomeTabById = (homeTabId: string) => {
+    setLocalTabs((prev) => {
+      const remaining = prev.filter((tab) => tab.id !== homeTabId)
+
+      if (remaining.length === 0 && workspace.tabs.length === 0) {
+        setActiveLocalTabId('home-1')
+        setNextHomeTabNumber(2)
+        setTabOrder((prevOrder) => {
+          const filtered = prevOrder.filter((key) => key !== homeTabKey(homeTabId))
+          return filtered.includes('home:home-1') ? filtered : ['home:home-1', ...filtered]
+        })
+        return [{ id: 'home-1', kind: 'home', title: t.untitledTab }]
+      }
+
+      if (activeLocalTabId === homeTabId) {
+        setActiveLocalTabId(remaining.at(-1)?.id ?? null)
+      }
+
+      setTabOrder((prevOrder) => prevOrder.filter((key) => key !== homeTabKey(homeTabId)))
+      return remaining
+    })
+  }
+
   const handleCloseTab = async (event: MouseEvent<HTMLButtonElement>, tabId: string) => {
     event.stopPropagation()
     if (!desktopApi) {
@@ -1298,27 +1348,7 @@ export function App() {
 
   const handleCloseHomeTab = (event: MouseEvent<HTMLButtonElement>, homeTabId: string) => {
     event.stopPropagation()
-
-    setLocalTabs((prev) => {
-      const remaining = prev.filter((tab) => tab.id !== homeTabId)
-
-      if (remaining.length === 0 && workspace.tabs.length === 0) {
-        setActiveLocalTabId('home-1')
-        setNextHomeTabNumber(2)
-        setTabOrder((prevOrder) => {
-          const filtered = prevOrder.filter((key) => key !== homeTabKey(homeTabId))
-          return filtered.includes('home:home-1') ? filtered : ['home:home-1', ...filtered]
-        })
-        return [{ id: 'home-1', kind: 'home', title: t.untitledTab }]
-      }
-
-      if (activeLocalTabId === homeTabId) {
-        setActiveLocalTabId(remaining.at(-1)?.id ?? null)
-      }
-
-      setTabOrder((prevOrder) => prevOrder.filter((key) => key !== homeTabKey(homeTabId)))
-      return remaining
-    })
+    closeHomeTabById(homeTabId)
   }
 
   const closeHomeTabs = (
@@ -1360,6 +1390,75 @@ export function App() {
 
     if (lastSnapshot) {
       applySnapshot(lastSnapshot)
+    }
+  }
+
+  const handleShortcutCloseActiveWorkspaceItem = async () => {
+    if (!desktopApi || isBusy) {
+      return
+    }
+
+    const activeLocalTab = activeLocalTabId
+      ? localTabs.find((tab) => tab.id === activeLocalTabId) ?? null
+      : null
+    const activeSessionTab = !activeLocalTab && workspace.activeTabId
+      ? workspace.tabs.find((tab) => tab.id === workspace.activeTabId) ?? null
+      : null
+    const totalClosableItems = localTabs.length + workspace.tabs.length
+
+    if (activeLocalTab) {
+      if (totalClosableItems <= 1) {
+        closeCurrentWindow()
+        return
+      }
+
+      closeHomeTabById(activeLocalTab.id)
+      return
+    }
+
+    if (activeSessionTab) {
+      const isLastSessionTab = workspace.tabs.length === 1
+      const needsDisconnectConfirm = isLastSessionTab
+        && (activeSessionTab.status === 'connecting' || activeSessionTab.status === 'connected')
+
+      if (needsDisconnectConfirm) {
+        setShortcutCloseConfirm({
+          tabId: activeSessionTab.id,
+          title: activeSessionTab.title,
+          variant: activeSessionTab.status === 'connecting' ? 'connecting' : 'active-last-session'
+        })
+        return
+      }
+
+      try {
+        setIsBusy(true)
+        await closeSessionTabById(activeSessionTab.id)
+      } catch (err) {
+        reportError(setError, '关闭当前标签页', err)
+      } finally {
+        setIsBusy(false)
+      }
+      return
+    }
+
+    requestQuitApp()
+  }
+
+  const confirmShortcutCloseConnectingTab = async () => {
+    if (!shortcutCloseConfirm) {
+      return
+    }
+
+    const { tabId } = shortcutCloseConfirm
+    setShortcutCloseConfirm(null)
+
+    try {
+      setIsBusy(true)
+      await closeSessionTabById(tabId)
+    } catch (err) {
+      reportError(setError, '关闭正在连接的标签页', err)
+    } finally {
+      setIsBusy(false)
     }
   }
 
@@ -2388,7 +2487,12 @@ export function App() {
 
   return (
     <>
-      <div className={`fs-shell ${isWindowsDesktop ? 'has-window-menubar' : ''}`} style={{ '--sidebar-width': `${sidebarWidth}px` } as CSSProperties}>
+      <div
+        className={`fs-shell ${isWindowsDesktop ? 'has-window-menubar' : ''}`}
+        style={{
+          '--sidebar-width': `${resolvedSidebarWidth}px`
+        } as CSSProperties}
+      >
         {isWindowsDesktop ? (
           <div className="window-menubar">
             <div className="window-brandmark" aria-label={t.appTitle}>
@@ -2450,14 +2554,22 @@ export function App() {
         />
 
         {showSidebar ? (
-          <aside className="fs-sidebar" style={{ position: 'relative' }}>
-            <SystemSidebar activeProfile={activeProfile} activeSession={activeSession} onOpenSystemInfo={handleOpenSystemInfo} />
-            <div
-              aria-label={t.resizeSidebar}
-              className={`sidebar-resizer ${isResizingSidebar ? 'is-active' : ''}`}
-              onMouseDown={() => setIsResizingSidebar(true)}
-              role="separator"
+          <aside className={`fs-sidebar ${isSystemSidebarCollapsed ? 'is-collapsed' : ''}`} style={{ position: 'relative' }}>
+            <SystemSidebar
+              activeProfile={activeProfile}
+              activeSession={activeSession}
+              collapsed={isSystemSidebarCollapsed}
+              onOpenSystemInfo={handleOpenSystemInfo}
+              onToggleCollapsed={() => setIsSystemSidebarCollapsed((prev) => !prev)}
             />
+            {!isSystemSidebarCollapsed ? (
+              <div
+                aria-label={t.resizeSidebar}
+                className={`sidebar-resizer ${isResizingSidebar ? 'is-active' : ''}`}
+                onMouseDown={() => setIsResizingSidebar(true)}
+                role="separator"
+              />
+            ) : null}
           </aside>
         ) : null}
 
@@ -2762,6 +2874,24 @@ export function App() {
             void handleSubmitPermissions(options)
           }}
           supportsRecursive={permissionDialog.supportsRecursive}
+        />
+      ) : null}
+
+      {shortcutCloseConfirm ? (
+        <ConfirmActionDialog
+          confirmLabel={t.closeShortcutCloseTab}
+          description={
+            (shortcutCloseConfirm.variant === 'connecting'
+              ? t.closeShortcutConnectingDescription
+              : t.closeShortcutLastActiveDescription)
+              .replace('{name}', shortcutCloseConfirm.title)
+          }
+          isSubmitting={isBusy}
+          onClose={() => setShortcutCloseConfirm(null)}
+          onConfirm={() => {
+            void confirmShortcutCloseConnectingTab()
+          }}
+          title={shortcutCloseConfirm.variant === 'connecting' ? t.closeShortcutConnectingTitle : t.closeShortcutLastActiveTitle}
         />
       ) : null}
 
