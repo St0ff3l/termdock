@@ -388,6 +388,7 @@ export interface TermdockDesktopApi {
   minimizeCurrentWindow(): Promise<void>
   toggleMaximizeCurrentWindow(): Promise<void>
   closeCurrentWindow(): Promise<void>
+  requestQuitApp(): Promise<void>
   getSnapshot(): Promise<WorkspaceSnapshot>
   createFolder(name: string, parentId?: string): Promise<WorkspaceSnapshot>
   updateFolder(folderId: string, updates: Partial<ConnectionFolder>): Promise<WorkspaceSnapshot>
@@ -448,6 +449,7 @@ export interface TermdockDesktopApi {
   onWorkspaceSnapshot(listener: (snapshot: WorkspaceSnapshot) => void): () => void
   onSshInteraction(listener: (request: SshInteractionRequest) => void): () => void
   onWindowCloseRequest(listener: (event: { isQuit: boolean }) => void): () => void
+  onRequestCloseActiveWorkspaceItem(listener: () => void): () => void
   confirmCloseWindow(action: 'quit' | 'hide' | 'cancel'): Promise<void>
 }
 

@@ -213,6 +213,62 @@ function requestQuitConfirmation() {
   app.quit()
 }
 
+function requestCloseFocusedWindow() {
+  const focusedWindow = BrowserWindow.getFocusedWindow()
+  const targetWindow = focusedWindow ?? mainWindow
+
+  if (!targetWindow || targetWindow.isDestroyed()) {
+    return
+  }
+
+  if (targetWindow === mainWindow) {
+    targetWindow.webContents.send('app:close-active-workspace-item-request')
+    return
+  }
+
+  targetWindow.close()
+}
+
+function installApplicationMenu() {
+  if (!isMac) {
+    Menu.setApplicationMenu(null)
+    return
+  }
+
+  const menu = Menu.buildFromTemplate([
+    {
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        {
+          label: `Quit ${app.name}`,
+          accelerator: 'CmdOrCtrl+Q',
+          click: () => {
+            requestQuitConfirmation()
+          }
+        }
+      ]
+    },
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' },
+        {
+          label: 'Close',
+          accelerator: 'CmdOrCtrl+W',
+          click: () => {
+            requestCloseFocusedWindow()
+          }
+        },
+        { role: 'front' }
+      ]
+    }
+  ])
+
+  Menu.setApplicationMenu(menu)
+}
+
 function loadAppWindow(win: BrowserWindow, searchParams?: Record<string, string>, preferences: UiPreferences = uiPreferences) {
   const query = {
     ...(searchParams ?? {}),
@@ -326,6 +382,19 @@ function createMainWindow() {
     }
     event.preventDefault()
     win.webContents.send('app:window-close-request', { isQuit: false })
+  })
+  win.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') {
+      return
+    }
+
+    const isCloseShortcut = input.key.toLowerCase() === 'w' && (input.meta || input.control)
+    if (!isCloseShortcut) {
+      return
+    }
+
+    event.preventDefault()
+    win.webContents.send('app:close-active-workspace-item-request')
   })
 
   win.on('closed', () => {
@@ -589,6 +658,7 @@ function openFileEditorWindow(parent: BrowserWindow, input: {
 app.whenReady().then(() => {
   initAppLogger(app.getPath('userData'))
   readUiPreferences()
+  installApplicationMenu()
   createTray()
   const appIconPath = getAppIconPath()
   if (isMac && appIconPath) {
@@ -613,6 +683,9 @@ app.whenReady().then(() => {
     openCommandFormWindow,
     openFileEditorWindow,
     openLogsDirectory,
+    requestQuitApp: () => {
+      requestQuitConfirmation()
+    },
     confirmCloseWindow: (action) => {
       if (action === 'quit') {
         isQuitting = true
@@ -654,6 +727,12 @@ app.whenReady().then(() => {
   createMainWindow()
 
   app.on('activate', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show()
+      mainWindow.focus()
+      return
+    }
+
     if (BrowserWindow.getAllWindows().length === 0) {
       createMainWindow()
     }

@@ -15,6 +15,7 @@ export class LiveFtpSessionController extends BaseFileSessionController implemen
   private readonly ftp = new BasicFtpClient(20000)
   private readonly entryDebugInfo = new Map<string, string>()
   private readonly defaultParseList: (rawList: string) => FileInfo[]
+  private listingMode: 'auto' | 'classic-list' = 'auto'
   private currentRemotePath: string
   private operationQueue: Promise<unknown> = Promise.resolve()
 
@@ -199,18 +200,19 @@ export class LiveFtpSessionController extends BaseFileSessionController implemen
   }
 
   private async readRemoteDirectory(targetPath: string): Promise<RemoteFileItem[]> {
-    const entries = await this.ftp.list(targetPath)
+    const entries = await this.listRemoteDirectoryEntries(targetPath)
+    const previousPath = await this.ftp.pwd()
     const rows = entries
       .filter((entry) => entry.name !== '.' && entry.name !== '..')
     appLog(`[TermDock][FTP] Listing remote directory ${targetPath} (${rows.length} entries)`)
     const items: RemoteFileItem[] = []
 
     for (const entry of rows) {
-      const isDirectory = entry.type === FileType.Directory || entry.isDirectory
+      const isDirectory = await this.resolveDirectoryFlag(targetPath, entry, previousPath)
       const item = toResolvedFtpRemoteFileItem(targetPath, entry, isDirectory)
       const debugInfo = describeFtpEntry(targetPath, entry, isDirectory)
       this.entryDebugInfo.set(item.path, debugInfo)
-      if ((entry as FileInfoWithRaw).rawLine || entry.type === FileType.Unknown) {
+      if ((entry as FileInfoWithRaw).rawLine || entry.type === FileType.Unknown || isDirectory !== entry.isDirectory) {
         appLog(`[TermDock][FTP] Resolved remote entry: ${debugInfo}`)
       }
       items.push(item)
@@ -274,6 +276,74 @@ export class LiveFtpSessionController extends BaseFileSessionController implemen
     this.operationQueue = nextOperation.then(() => undefined, () => undefined)
     return nextOperation
   }
+
+  private async listRemoteDirectoryEntries(targetPath: string) {
+    if (this.listingMode === 'classic-list') {
+      this.setClassicListCommands()
+      return this.ftp.list(targetPath)
+    }
+
+    const initialEntries = await this.ftp.list(targetPath)
+    if (!shouldRetryWithClassicList(initialEntries)) {
+      return initialEntries
+    }
+
+    this.listingMode = 'classic-list'
+    appLog(`[TermDock][FTP] Switching listing mode to classic LIST for current session: ${targetPath}`)
+    this.setClassicListCommands()
+    const retriedEntries = await this.ftp.list(targetPath)
+    return retriedEntries
+  }
+
+  private setClassicListCommands() {
+    const ftpWithListCommands = this.ftp as BasicFtpClient & { availableListCommands?: string[] }
+    ftpWithListCommands.availableListCommands = ['LIST -a', 'LIST']
+  }
+
+  private async resolveDirectoryFlag(targetPath: string, entry: FileInfo, previousPath: string) {
+    if (entry.type === FileType.Directory || entry.isDirectory) {
+      entry.type = FileType.Directory
+      return true
+    }
+
+    if (entry.type !== FileType.Unknown) {
+      entry.type = FileType.File
+      return false
+    }
+
+    const candidatePath = path.posix.join(targetPath, entry.name)
+    try {
+      await this.ftp.cd(candidatePath)
+      entry.type = FileType.Directory
+      appLog(`[TermDock][FTP] Directory probe succeeded for ${candidatePath}`)
+      return true
+    } catch {
+      entry.type = FileType.File
+      return false
+    } finally {
+      await this.ftp.cd(previousPath).catch(() => undefined)
+    }
+  }
+}
+
+function shouldRetryWithClassicList(entries: FileInfo[]) {
+  if (!entries.length) {
+    return false
+  }
+
+  return entries.every((entry) => {
+    const rawLine = (entry as FileInfoWithRaw).rawLine?.trim()
+    if (entry.type !== FileType.Unknown || !rawLine) {
+      return false
+    }
+    return !looksLikeStructuredFtpLine(rawLine)
+  })
+}
+
+function looksLikeStructuredFtpLine(rawLine: string) {
+  return /^\S+=\S+;/.test(rawLine)
+    || /^\d{2}-\d{2}-\d{2}\s+\d{2}:\d{2}(AM|PM)/i.test(rawLine)
+    || /^[\-ldpscbD]/.test(rawLine)
 }
 
 function validateMode(mode: string) {

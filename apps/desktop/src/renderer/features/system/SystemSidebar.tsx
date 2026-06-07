@@ -15,13 +15,16 @@ function parseMemory(memStr: string): number {
 export function SystemSidebar({
   activeProfile,
   activeSession,
-  onOpenSystemInfo
+  collapsed,
+  onOpenSystemInfo,
+  onToggleCollapsed
 }: {
   activeProfile: ConnectionProfile | null
   activeSession: SessionSnapshot | null
+  collapsed: boolean
   onOpenSystemInfo(): void
+  onToggleCollapsed(): void
 }) {
-
   const [sortMode, setSortMode] = useState<'memory' | 'cpu' | 'command'>('cpu')
   const metrics = activeSession?.systemMetrics
   const internalIp = metrics?.ip || '-'
@@ -47,48 +50,64 @@ export function SystemSidebar({
   }, [metrics?.topProcesses, sortMode])
 
   return (
-    <>
-      <section className="sys-card">
-        <div className="connection-summary">
-          <AddressLine label={t.privateIp} value={internalIp} />
-          <AddressLine label={t.accessAddress} value={accessAddress} />
-        </div>
-        <button className="system-title" onClick={onOpenSystemInfo} type="button">{t.systemInfo}</button>
-        <div className="metric-line"><span>{t.running}</span><strong className="value">{formatUptime(metrics?.uptime)}</strong></div>
-        <div className="metric-line"><span>{t.load}</span><strong className="value">{metrics?.load ?? '-'}</strong></div>
-        <Meter
-          label={t.cpu}
-          value={metrics?.cpuPercent ?? 0}
-          tone={getMetricTone(metrics?.cpuPercent ?? 0).replace('status-', '')}
-          caption=""
-          percent={metrics ? `${metrics.cpuPercent}%` : '-'}
-        />
-        <MemoryMeter metrics={metrics} />
-        <Meter
-          label={t.swap}
-          value={metrics?.swapPercent ?? 0}
-          tone={getMetricTone(metrics?.swapPercent ?? 0).replace('status-', '')}
-          caption={metrics?.swapUsage ?? '-'}
-          percent={metrics ? `${metrics.swapPercent}%` : '-'}
-          dotTone={getMetricTone(metrics?.swapPercent ?? 0)}
-        />
-        <div className="mini-tabs">
-          <span className={sortMode === 'memory' ? 'active' : ''} onClick={() => setSortMode('memory')}>{t.memory}</span>
-          <span className={sortMode === 'cpu' ? 'active' : ''} onClick={() => setSortMode('cpu')}>{t.cpu}</span>
-          <span className={sortMode === 'command' ? 'active' : ''} onClick={() => setSortMode('command')}>{t.command}</span>
-        </div>
-        <ProcessTable rows={sortedProcesses} />
-        <NetworkPanel metrics={metrics} />
-      </section>
-      <section className="disk-table">
-        <div className="disk-head"><span>{t.path}</span><span>{t.availableSize}</span></div>
-        {rows.length ? rows.map((row) => (
-          <div className="disk-row" key={row.path}><span>{row.path}</span><span>{row.usage}</span></div>
-        )) : Array.from({ length: 8 }).map((_, i) => (
-          <div className="disk-row" key={`empty-${i}`}><span></span><span></span></div>
-        ))}
-      </section>
-    </>
+    <div className={`system-sidebar-layout ${collapsed ? 'is-collapsed' : ''}`}>
+      <button
+        aria-label={collapsed ? t.showSystemSidebar : t.hideSystemSidebar}
+        className={`system-sidebar-toggle ${collapsed ? 'is-collapsed' : ''}`}
+        onClick={onToggleCollapsed}
+        title={collapsed ? t.showSystemSidebar : t.hideSystemSidebar}
+        type="button"
+      >
+        <span className="system-sidebar-toggle-icon" aria-hidden="true">
+          <i className="panel-edge" />
+          <i className="panel-body" />
+        </span>
+      </button>
+      {!collapsed ? (
+        <>
+          <section className="sys-card">
+            <div className="connection-summary">
+              <AddressLine label={t.privateIp} value={internalIp} />
+              <AddressLine label={t.accessAddress} value={accessAddress} />
+            </div>
+            <button className="system-title" onClick={onOpenSystemInfo} type="button">{t.systemInfo}</button>
+            <div className="metric-line"><span>{t.running}</span><strong className="value">{formatUptime(metrics?.uptime)}</strong></div>
+            <div className="metric-line"><span>{t.load}</span><strong className="value">{metrics?.load ?? '-'}</strong></div>
+            <Meter
+              label={t.cpu}
+              value={metrics?.cpuPercent ?? 0}
+              tone={getMetricTone(metrics?.cpuPercent ?? 0).replace('status-', '')}
+              caption=""
+              percent={metrics ? `${metrics.cpuPercent}%` : '-'}
+            />
+            <MemoryMeter metrics={metrics} />
+            <Meter
+              label={t.swap}
+              value={metrics?.swapPercent ?? 0}
+              tone={getMetricTone(metrics?.swapPercent ?? 0).replace('status-', '')}
+              caption={metrics?.swapUsage ?? '-'}
+              percent={metrics ? `${metrics.swapPercent}%` : '-'}
+              dotTone={getMetricTone(metrics?.swapPercent ?? 0)}
+            />
+            <div className="mini-tabs">
+              <span className={sortMode === 'memory' ? 'active' : ''} onClick={() => setSortMode('memory')}>{t.memory}</span>
+              <span className={sortMode === 'cpu' ? 'active' : ''} onClick={() => setSortMode('cpu')}>{t.cpu}</span>
+              <span className={sortMode === 'command' ? 'active' : ''} onClick={() => setSortMode('command')}>{t.command}</span>
+            </div>
+            <ProcessTable rows={sortedProcesses} />
+            <NetworkPanel metrics={metrics} />
+          </section>
+          <section className="disk-table">
+            <div className="disk-head"><span>{t.path}</span><span>{t.availableSize}</span></div>
+            {rows.length ? rows.map((row) => (
+              <div className="disk-row" key={row.path}><span>{row.path}</span><span>{row.usage}</span></div>
+            )) : Array.from({ length: 8 }).map((_, i) => (
+              <div className="disk-row" key={`empty-${i}`}><span></span><span></span></div>
+            ))}
+          </section>
+        </>
+      ) : null}
+    </div>
   )
 }
 
