@@ -36,6 +36,9 @@ jobs:
       - name: Build renderer + main
         run: npm run build -w @termdock/desktop
 
+      - name: Remove optional cpu-features native module
+        run: node -e "require('fs').rmSync('node_modules/cpu-features', { recursive: true, force: true })"
+
       - name: Package macOS (${{ matrix.arch }})
         run: |
           cd apps/desktop
@@ -74,6 +77,9 @@ jobs:
 
       - name: Build renderer + main
         run: npm run build -w @termdock/desktop
+
+      - name: Remove optional cpu-features native module
+        run: node -e "require('fs').rmSync('node_modules/cpu-features', { recursive: true, force: true })"
 
       - name: Package Windows (${{ matrix.arch }})
         run: |
