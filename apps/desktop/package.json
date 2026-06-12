@@ -55,7 +55,6 @@
     "appId": "com.termdock.desktop",
     "productName": "TermDock",
     "asar": true,
-    "npmRebuild": false,
     "directories": {
       "output": "release"
     },

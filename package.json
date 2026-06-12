@@ -13,7 +13,8 @@
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "release:mac": "npm run release:mac -w @termdock/desktop",
-    "release:win": "npm run release:win -w @termdock/desktop"
+    "release:win": "npm run release:win -w @termdock/desktop",
+    "postinstall": "node ./vendor/cpu-features-shim/apply-shim.mjs"
   },
   "engines": {
     "node": ">=22.12.0"
