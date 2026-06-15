@@ -14,7 +14,9 @@ import type {
 } from '@termdock/core'
 import { LiveFtpSessionController, LiveSshSessionController } from '../session-controllers.js'
 
-type LiveSessionController = LiveSshSessionController | LiveFtpSessionController
+export type LiveSessionController = LiveSshSessionController | LiveFtpSessionController
+
+export const REMOTE_SESSION_DISCONNECTED_MESSAGE = '会话已断开，请先重连。'
 
 export class WorkspaceSessionRuntime {
   private static readonly NETWORK_HISTORY_LIMIT = 600
@@ -26,6 +28,8 @@ export class WorkspaceSessionRuntime {
   private readonly tabSenders = new Map<string, WebContents>()
   private readonly invalidSenders = new WeakSet<WebContents>()
   private readonly senderLifecycleListeners = new WeakSet<WebContents>()
+  private readonly remoteFileOperations = new Map<string, Promise<void>>()
+  private readonly metricsPausedRemoteFileOperations = new Set<string>()
   private readonly pendingSshInteractions = new Map<string, {
     tabId: string
     resolve(response: SshInteractionResponse): void
@@ -79,6 +83,7 @@ export class WorkspaceSessionRuntime {
     this.stopMetricsPolling(tabId)
     await this.liveControllers.get(tabId)?.disconnect()
     this.liveControllers.delete(tabId)
+    this.remoteFileOperations.delete(tabId)
     this.tabSenders.delete(tabId)
     this.sessions.delete(tabId)
   }
@@ -115,14 +120,58 @@ export class WorkspaceSessionRuntime {
 
   requireController(tabId: string) {
     const controller = this.liveControllers.get(tabId)
-    if (!controller) {
-      throw new Error(`Session not found: ${tabId}`)
+    const session = this.sessions.get(tabId)
+    if (!controller || !session?.connected) {
+      throw new Error(REMOTE_SESSION_DISCONNECTED_MESSAGE)
     }
     return controller
   }
 
   getController(tabId: string) {
     return this.liveControllers.get(tabId)
+  }
+
+  hasRemoteFileOperation(tabId: string) {
+    return this.remoteFileOperations.has(tabId)
+  }
+
+  hasMetricsPausedRemoteFileOperation(tabId: string) {
+    return this.metricsPausedRemoteFileOperations.has(tabId)
+  }
+
+  async runRemoteFileOperation<T>(
+    tabId: string,
+    operation: (controller: LiveSessionController, current: SessionSnapshot) => Promise<T>,
+    options?: { pauseMetrics?: boolean }
+  ): Promise<T> {
+    const previous = this.remoteFileOperations.get(tabId) ?? Promise.resolve()
+    let releaseCurrent: () => void = () => undefined
+    const currentOperation = previous.catch(() => undefined).then(() => new Promise<void>((resolve) => {
+      releaseCurrent = resolve
+    }))
+
+    this.remoteFileOperations.set(tabId, currentOperation)
+    await previous.catch(() => undefined)
+
+    try {
+      const controller = this.liveControllers.get(tabId)
+      const current = this.sessions.get(tabId)
+      if (!controller || !current?.connected) {
+        throw new Error(REMOTE_SESSION_DISCONNECTED_MESSAGE)
+      }
+      if (options?.pauseMetrics) {
+        this.metricsPausedRemoteFileOperations.add(tabId)
+      }
+      return await operation(controller, current)
+    } finally {
+      if (options?.pauseMetrics) {
+        this.metricsPausedRemoteFileOperations.delete(tabId)
+      }
+      releaseCurrent()
+      if (this.remoteFileOperations.get(tabId) === currentOperation) {
+        this.remoteFileOperations.delete(tabId)
+      }
+    }
   }
 
   resolveSshInteraction(requestId: string, response: SshInteractionResponse) {
@@ -320,72 +369,66 @@ export class WorkspaceSessionRuntime {
   }
 
   async refreshRemoteFiles(tabId: string) {
-    const controller = this.requireController(tabId)
-    const current = this.sessions.get(tabId)
-    if (!current) {
-      return
-    }
-
-    const remoteFiles = await controller.listRemoteFiles()
-    this.sessions.set(tabId, {
-      ...current,
-      remotePath: controller.getRemotePath(),
-      fileAccessMode: controller.getFileAccessMode(),
-      remoteFiles
-    })
+    await this.runRemoteFileOperation(tabId, async (controller, current) => {
+      const remoteFiles = await controller.listRemoteFiles()
+      const latest = this.sessions.get(tabId) ?? current
+      this.sessions.set(tabId, {
+        ...latest,
+        remotePath: controller.getRemotePath(),
+        fileAccessMode: controller.getFileAccessMode(),
+        hasReusableSudoAuth: controller.type === 'ssh' ? controller.hasReusableSudoAuth() : false,
+        remoteFiles
+      })
+    }, { pauseMetrics: true })
   }
 
   async setFileAccessMode(tabId: string, mode: 'user' | 'root', options?: RemoteFileAccessOptions) {
-    const controller = this.requireController(tabId)
-    const current = this.sessions.get(tabId)
-    if (!current) {
-      throw new Error(`Session not found: ${tabId}`)
-    }
-
-    const previousMode = controller.getFileAccessMode()
-    if (previousMode === mode) {
-      return
-    }
-
-    const nextSudoUser = options?.sudoUser?.trim() || current.sudoUser || 'root'
-
-    await controller.setFileAccessMode(mode, options)
-    try {
-      const remoteFiles = await controller.listRemoteFiles()
-      this.sessions.set(tabId, {
-        ...current,
-        fileAccessMode: controller.getFileAccessMode(),
-        sudoUser: nextSudoUser,
-        hasReusableSudoAuth: controller.type === 'ssh' ? controller.hasReusableSudoAuth() : false,
-        remotePath: controller.getRemotePath(),
-        remoteFiles
-      })
-      await this.emitSnapshotForTab(tabId)
-    } catch (error) {
-      if (mode === 'root') {
-        try {
-          await controller.setFileAccessMode(previousMode, { sudoUser: current.sudoUser })
-        } catch {
-          // Keep the original error; this rollback is best-effort.
-        }
+    await this.runRemoteFileOperation(tabId, async (controller, current) => {
+      const previousMode = controller.getFileAccessMode()
+      if (previousMode === mode) {
+        return
       }
-      throw error
-    }
+
+      const nextSudoUser = options?.sudoUser?.trim() || current.sudoUser || 'root'
+
+      await controller.setFileAccessMode(mode, options)
+      try {
+        const remoteFiles = await controller.listRemoteFiles()
+        const latest = this.sessions.get(tabId) ?? current
+        this.sessions.set(tabId, {
+          ...latest,
+          fileAccessMode: controller.getFileAccessMode(),
+          sudoUser: nextSudoUser,
+          hasReusableSudoAuth: controller.type === 'ssh' ? controller.hasReusableSudoAuth() : false,
+          remotePath: controller.getRemotePath(),
+          remoteFiles
+        })
+        await this.emitSnapshotForTab(tabId)
+      } catch (error) {
+        if (mode === 'root') {
+          try {
+            await controller.setFileAccessMode(previousMode, { sudoUser: current.sudoUser })
+          } catch {
+            // Keep the original error; this rollback is best-effort.
+          }
+        }
+        throw error
+      }
+    }, { pauseMetrics: true })
   }
 
   async openRemotePath(tabId: string, targetPath: string) {
-    const controller = this.requireController(tabId)
-    const current = this.sessions.get(tabId)
-    if (!current) {
-      throw new Error(`Session not found: ${tabId}`)
-    }
-
-    const remoteFiles = await controller.openRemotePath(targetPath)
-    this.sessions.set(tabId, {
-      ...current,
-      remotePath: controller.getRemotePath(),
-      remoteFiles
-    })
+    await this.runRemoteFileOperation(tabId, async (controller, current) => {
+      const remoteFiles = await controller.openRemotePath(targetPath)
+      const latest = this.sessions.get(tabId) ?? current
+      this.sessions.set(tabId, {
+        ...latest,
+        remotePath: controller.getRemotePath(),
+        fileAccessMode: controller.getFileAccessMode(),
+        hasReusableSudoAuth: controller.type === 'ssh' ? controller.hasReusableSudoAuth() : false,
+        remoteFiles
+      })
+    }, { pauseMetrics: true })
   }
 
   async emitSnapshot(sender: WebContents) {
@@ -429,13 +472,18 @@ export class WorkspaceSessionRuntime {
 
     if (!current.remoteFiles.length) {
       try {
-        const remoteFiles = await controller.listRemoteFiles()
-        nextSnapshot = {
-          ...nextSnapshot,
-          remotePath: controller.getRemotePath(),
-          fileAccessMode: controller.getFileAccessMode(),
-          remoteFiles
-        }
+        await this.runRemoteFileOperation(tabId, async (latestController, latestSession) => {
+          const remoteFiles = await latestController.listRemoteFiles()
+          const freshSession = this.sessions.get(tabId) ?? latestSession
+          nextSnapshot = {
+            ...freshSession,
+            remotePath: latestController.getRemotePath(),
+            fileAccessMode: latestController.getFileAccessMode(),
+            hasReusableSudoAuth: latestController.type === 'ssh' ? latestController.hasReusableSudoAuth() : false,
+            remoteFiles
+          }
+          this.sessions.set(tabId, nextSnapshot)
+        }, { pauseMetrics: true })
         changed = true
       } catch {
         // Keep the existing session data; this restoration is best-effort.
@@ -490,7 +538,7 @@ export class WorkspaceSessionRuntime {
   }
 
   private async refreshMetricsForTab(tabId: string, controller: LiveSshSessionController) {
-    if (this.metricsRefreshInFlight.has(tabId)) {
+    if (this.metricsRefreshInFlight.has(tabId) || this.hasMetricsPausedRemoteFileOperation(tabId)) {
       return
     }
 

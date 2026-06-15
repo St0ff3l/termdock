@@ -12,6 +12,7 @@ import {
   type CommandExecutionResult,
   type CreateProfileInput,
   type RemoteFileAccessOptions,
+  type RemoteFileItem,
   type SshInteractionResponse,
   type SessionSnapshot,
   type PermissionChangeOptions,
@@ -22,7 +23,7 @@ import {
 } from '@termdock/core'
 import type { ProfileRepository } from '@termdock/storage'
 import { seedCommandFolders, seedCommandTemplates, seedProfiles, seedTransfers } from './workspace/seed-data.js'
-import { WorkspaceSessionRuntime } from './workspace/workspace-session-runtime.js'
+import { WorkspaceSessionRuntime, type LiveSessionController } from './workspace/workspace-session-runtime.js'
 import { WorkspaceTabsState } from './workspace/workspace-tabs.js'
 import { WorkspaceTransfersState } from './workspace/workspace-transfers.js'
 
@@ -394,18 +395,18 @@ export class WorkspaceService {
     sender: WebContents,
     options?: TransferTargetOptions
   ): Promise<WorkspaceSnapshot> {
-    const controller = this.sessionRuntime.requireController(tabId)
+    const controllerForCancel = this.sessionRuntime.requireController(tabId)
     const transferId = this.addTransfer('upload', path.basename(localPath), tabId, sender)
     const targetRemotePath = path.posix.join(remoteDirectory, options?.targetName ?? path.basename(localPath))
     const transferState = { canceled: false }
     const transferTracker = createTransferSpeedTracker()
     this.setTransferCancel(transferId, async () => {
       transferState.canceled = true
-      await controller.abortTransfer()
+      await controllerForCancel.abortTransfer()
     })
 
     try {
-      await this.uploadLocalEntry(controller, localPath, remoteDirectory, transferState, (progress) => {
+      await this.uploadLocalEntry(controllerForCancel, localPath, remoteDirectory, transferState, (progress) => {
         if (transferState.canceled) {
           return
         }
@@ -425,7 +426,17 @@ export class WorkspaceService {
         speed: undefined,
         message: undefined
       }, sender)
-      await this.refreshRemoteFiles(tabId)
+      await this.sessionRuntime.runRemoteFileOperation(tabId, async (controller, current) => {
+        const remoteFiles = await controller.listRemoteFiles()
+        const latest = this.sessionRuntime.get(tabId) ?? current
+        this.sessionRuntime.set(tabId, {
+          ...latest,
+          remotePath: controller.getRemotePath(),
+          fileAccessMode: controller.getFileAccessMode(),
+          hasReusableSudoAuth: controller.type === 'ssh' ? controller.hasReusableSudoAuth() : false,
+          remoteFiles
+        })
+      })
     } catch (error) {
       if (transferState.canceled) {
         return this.getSnapshot()
@@ -450,18 +461,19 @@ export class WorkspaceService {
     sender: WebContents,
     options?: TransferTargetOptions
   ): Promise<WorkspaceSnapshot> {
-    const controller = this.sessionRuntime.requireController(tabId)
+    const controllerForCancel = this.sessionRuntime.requireController(tabId)
     const localPath = path.join(localDirectory, options?.targetName ?? path.posix.basename(remotePath))
     const transferId = this.addTransfer('download', path.posix.basename(remotePath), tabId, sender)
     const transferState = { canceled: false }
     const transferTracker = createTransferSpeedTracker()
     this.setTransferCancel(transferId, async () => {
       transferState.canceled = true
-      await controller.abortTransfer()
+      await controllerForCancel.abortTransfer()
     })
 
     try {
-      await controller.downloadFile(remotePath, localPath, (progress) => {
+      this.ensureTransferActive(transferState)
+      await controllerForCancel.downloadFile(remotePath, localPath, (progress) => {
         if (transferState.canceled) {
           return
         }
@@ -510,80 +522,82 @@ export class WorkspaceService {
       return this.downloadFile(tabId, remotePath, localDirectory, sender, options)
     }
 
-    const controller = this.sessionRuntime.requireController(tabId)
+    const controllerForCancel = this.sessionRuntime.requireController(tabId)
     const transferName = options?.targetName ?? (path.posix.basename(remotePath) || 'folder')
     const localRootPath = path.join(localDirectory, transferName)
     const transferId = this.addTransfer('download', transferName, tabId, sender)
     const transferState = { canceled: false }
     this.setTransferCancel(transferId, async () => {
       transferState.canceled = true
-      await controller.abortTransfer()
+      await controllerForCancel.abortTransfer()
     })
 
     try {
-      const { directories, files } = await this.collectRemoteDownloadEntries(controller, remotePath, transferState)
-      await mkdir(localRootPath, { recursive: true })
+      await this.sessionRuntime.runRemoteFileOperation(tabId, async (controller) => {
+        const { directories, files } = await this.collectRemoteDownloadEntries(controller, remotePath, transferState)
+        await mkdir(localRootPath, { recursive: true })
 
-      for (const directory of directories) {
-        this.ensureTransferActive(transferState)
-        await mkdir(path.join(localRootPath, ...directory.split('/')), { recursive: true })
-      }
+        for (const directory of directories) {
+          this.ensureTransferActive(transferState)
+          await mkdir(path.join(localRootPath, ...directory.split('/')), { recursive: true })
+        }
 
-      if (!files.length) {
+        if (!files.length) {
+          await this.updateTransfer(transferId, {
+            progress: 100,
+            status: 'done',
+            speed: undefined,
+            message: undefined
+          }, sender)
+          return
+        }
+
+        let completedFiles = 0
+        const totalFiles = files.length
+
+        for (const file of files) {
+          this.ensureTransferActive(transferState)
+          const localFilePath = path.join(localRootPath, ...file.relativePath.split('/'))
+          await mkdir(path.dirname(localFilePath), { recursive: true })
+          await controller.downloadFile(file.remotePath, localFilePath, (progress) => {
+            if (transferState.canceled) {
+              return
+            }
+
+            const currentFraction = Math.max(0, Math.min(1, progress.percent / 100))
+            const overallPercent = Math.max(
+              1,
+              Math.min(99, Math.round(((completedFiles + currentFraction) / totalFiles) * 100))
+            )
+
+            void this.updateTransfer(transferId, {
+              progress: overallPercent,
+              status: 'running',
+              speed: undefined,
+              message: localFilePath
+            }, sender)
+          })
+
+          completedFiles += 1
+          await this.updateTransfer(transferId, {
+            progress: Math.max(1, Math.min(99, Math.round((completedFiles / totalFiles) * 100))),
+            status: 'running',
+            speed: undefined,
+            message: localFilePath
+          }, sender)
+        }
+
+        if (transferState.canceled) {
+          return
+        }
+
         await this.updateTransfer(transferId, {
           progress: 100,
           status: 'done',
           speed: undefined,
           message: undefined
         }, sender)
-        return this.getSnapshot()
-      }
-
-      let completedFiles = 0
-      const totalFiles = files.length
-
-      for (const file of files) {
-        this.ensureTransferActive(transferState)
-        const localFilePath = path.join(localRootPath, ...file.relativePath.split('/'))
-        await mkdir(path.dirname(localFilePath), { recursive: true })
-        await controller.downloadFile(file.remotePath, localFilePath, (progress) => {
-          if (transferState.canceled) {
-            return
-          }
-
-          const currentFraction = Math.max(0, Math.min(1, progress.percent / 100))
-          const overallPercent = Math.max(
-            1,
-            Math.min(99, Math.round(((completedFiles + currentFraction) / totalFiles) * 100))
-          )
-
-          void this.updateTransfer(transferId, {
-            progress: overallPercent,
-            status: 'running',
-            speed: undefined,
-            message: localFilePath
-          }, sender)
-        })
-
-        completedFiles += 1
-        await this.updateTransfer(transferId, {
-          progress: Math.max(1, Math.min(99, Math.round((completedFiles / totalFiles) * 100))),
-          status: 'running',
-          speed: undefined,
-          message: localFilePath
-        }, sender)
-      }
-
-      if (transferState.canceled) {
-        return this.getSnapshot()
-      }
-
-      await this.updateTransfer(transferId, {
-        progress: 100,
-        status: 'done',
-        speed: undefined,
-        message: undefined
-      }, sender)
+      })
     } catch (error) {
       if (transferState.canceled) {
         return this.getSnapshot()
@@ -602,64 +616,66 @@ export class WorkspaceService {
   }
 
   async readRemoteFile(tabId: string, targetPath: string, encoding?: string): Promise<string> {
-    return this.sessionRuntime.requireController(tabId).readRemoteFile(targetPath, encoding)
+    return this.sessionRuntime.runRemoteFileOperation(tabId, (controller) =>
+      controller.readRemoteFile(targetPath, encoding)
+    )
   }
 
   async writeRemoteFile(tabId: string, targetPath: string, content: string, encoding?: string): Promise<WorkspaceSnapshot> {
-    const controller = this.sessionRuntime.requireController(tabId)
-    await controller.writeRemoteFile(targetPath, content, encoding)
-    await this.refreshRemoteFiles(tabId)
-    return this.getSnapshot()
+    return this.runRemoteFileMutation(tabId, async (controller) => {
+      await controller.writeRemoteFile(targetPath, content, encoding)
+      return controller.listRemoteFiles()
+    })
   }
 
   async createRemoteDirectory(tabId: string, parentPath: string, name: string): Promise<WorkspaceSnapshot> {
-    const controller = this.sessionRuntime.requireController(tabId)
-    await controller.ensureRemoteDirectory(path.posix.join(parentPath, name))
-    await this.refreshRemoteFiles(tabId)
-    return this.getSnapshot()
+    return this.runRemoteFileMutation(tabId, async (controller) => {
+      await controller.ensureRemoteDirectory(path.posix.join(parentPath, name))
+      return controller.listRemoteFiles()
+    })
   }
 
   async createRemoteFile(tabId: string, parentPath: string, name: string): Promise<WorkspaceSnapshot> {
-    const controller = this.sessionRuntime.requireController(tabId)
-    await controller.writeRemoteFile(path.posix.join(parentPath, name), '')
-    await this.refreshRemoteFiles(tabId)
-    return this.getSnapshot()
+    return this.runRemoteFileMutation(tabId, async (controller) => {
+      await controller.writeRemoteFile(path.posix.join(parentPath, name), '')
+      return controller.listRemoteFiles()
+    })
   }
 
   async copyRemotePath(tabId: string, targetPath: string, destinationPath: string, targetType: 'file' | 'folder'): Promise<WorkspaceSnapshot> {
-    const controller = this.sessionRuntime.requireController(tabId)
-    await controller.copyRemotePath(targetPath, destinationPath, targetType)
-    await this.refreshRemoteFiles(tabId)
-    return this.getSnapshot()
+    return this.runRemoteFileMutation(tabId, async (controller) => {
+      await controller.copyRemotePath(targetPath, destinationPath, targetType)
+      return controller.listRemoteFiles()
+    })
   }
 
   async moveRemotePath(tabId: string, targetPath: string, destinationPath: string): Promise<WorkspaceSnapshot> {
-    const controller = this.sessionRuntime.requireController(tabId)
-    await controller.moveRemotePath(targetPath, destinationPath)
-    await this.refreshRemoteFiles(tabId)
-    return this.getSnapshot()
+    return this.runRemoteFileMutation(tabId, async (controller) => {
+      await controller.moveRemotePath(targetPath, destinationPath)
+      return controller.listRemoteFiles()
+    })
   }
 
   async renameRemotePath(tabId: string, targetPath: string, newName: string): Promise<WorkspaceSnapshot> {
-    const controller = this.sessionRuntime.requireController(tabId)
-    const nextPath = path.posix.join(path.posix.dirname(targetPath), newName)
-    await controller.renameRemotePath(targetPath, nextPath)
-    await this.refreshRemoteFiles(tabId)
-    return this.getSnapshot()
+    return this.runRemoteFileMutation(tabId, async (controller) => {
+      const nextPath = path.posix.join(path.posix.dirname(targetPath), newName)
+      await controller.renameRemotePath(targetPath, nextPath)
+      return controller.listRemoteFiles()
+    })
   }
 
   async deleteRemotePath(tabId: string, targetPath: string, targetType: 'file' | 'folder'): Promise<WorkspaceSnapshot> {
-    const controller = this.sessionRuntime.requireController(tabId)
-    await controller.deleteRemotePath(targetPath, targetType)
-    await this.refreshRemoteFiles(tabId)
-    return this.getSnapshot()
+    return this.runRemoteFileMutation(tabId, async (controller) => {
+      await controller.deleteRemotePath(targetPath, targetType)
+      return controller.listRemoteFiles()
+    })
   }
 
   async changeRemotePermissions(tabId: string, targetPath: string, options: PermissionChangeOptions): Promise<WorkspaceSnapshot> {
-    const controller = this.sessionRuntime.requireController(tabId)
-    await controller.changeRemotePermissions(targetPath, options)
-    await this.refreshRemoteFiles(tabId)
-    return this.getSnapshot()
+    return this.runRemoteFileMutation(tabId, async (controller) => {
+      await controller.changeRemotePermissions(targetPath, options)
+      return controller.listRemoteFiles()
+    })
   }
 
   async writeToTerminal(tabId: string, data: string): Promise<void> {
@@ -867,6 +883,24 @@ export class WorkspaceService {
 
   private async refreshRemoteFiles(tabId: string) {
     await this.sessionRuntime.refreshRemoteFiles(tabId)
+  }
+
+  private async runRemoteFileMutation(
+    tabId: string,
+    action: (controller: LiveSessionController) => Promise<RemoteFileItem[]>
+  ): Promise<WorkspaceSnapshot> {
+    return this.sessionRuntime.runRemoteFileOperation(tabId, async (controller, current) => {
+      const remoteFiles = await action(controller)
+      const latest = this.sessionRuntime.get(tabId) ?? current
+      this.sessionRuntime.set(tabId, {
+        ...latest,
+        remotePath: controller.getRemotePath(),
+        fileAccessMode: controller.getFileAccessMode(),
+        hasReusableSudoAuth: controller.type === 'ssh' ? controller.hasReusableSudoAuth() : false,
+        remoteFiles
+      })
+      return this.getSnapshot()
+    })
   }
 
   private addTransfer(direction: 'upload' | 'download', name: string, tabId: string, sender: WebContents) {
