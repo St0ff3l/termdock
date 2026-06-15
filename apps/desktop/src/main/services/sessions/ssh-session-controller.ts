@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { createReadStream } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { readFile, stat, writeFile } from 'node:fs/promises'
@@ -642,7 +643,7 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
         })
       })
     } catch (error) {
-      await this.uploadFileViaShell(localPath, remotePath, onProgress, error)
+      await this.uploadFileViaShell(localPath, remotePath, onProgress, error, false)
     }
   }
 
@@ -1015,14 +1016,20 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
     privileged = this.fileAccessMode === 'root'
   ): Promise<void> {
     this.ensureShellFileFallback(cause)
-    const payload = await readFile(localPath)
-    const total = Math.max(payload.byteLength, 1)
-    onProgress({ percent: 20, transferredBytes: Math.round(total * 0.2), totalBytes: total })
-    await this.execShellFileCommand(
-      `base64 -d > ${shellQuote(remotePath)}`,
-      undefined,
+    const fileInfo = await stat(localPath)
+    const total = Math.max(fileInfo.size, 1)
+    onProgress({ percent: 1, transferredBytes: 0, totalBytes: total })
+    await this.streamLocalFileToShellCommand(
+      localPath,
+      `cat > ${shellQuote(remotePath)}`,
       privileged,
-      `${payload.toString('base64')}\n`
+      (transferredBytes) => {
+        onProgress({
+          percent: Math.min(99, Math.max(1, Math.round((transferredBytes / total) * 100))),
+          transferredBytes,
+          totalBytes: total
+        })
+      }
     )
     onProgress({ percent: 100, transferredBytes: total, totalBytes: total })
   }
@@ -1191,6 +1198,135 @@ printf "%s\\n" ${shellQuote(outputEndMarker)}
     }
 
     return this.execCommand(`sudo -n -u ${shellQuote(sudoUser)} sh -lc ${shellQuote(command)}`, options, true, stdinPayload)
+  }
+
+  private async streamLocalFileToShellCommand(
+    localPath: string,
+    command: string,
+    privileged: boolean,
+    onProgress?: (transferredBytes: number) => void
+  ): Promise<void> {
+    const execClient = await this.ensureExecConnection()
+    return new Promise<void>((resolve, reject) => {
+      let settled = false
+      let transferredBytes = 0
+      let stdout = ''
+      let stderr = ''
+      let readStream = createReadStream(localPath)
+      let channel: ClientChannel | undefined
+
+      const safeResolve = () => {
+        if (!settled) {
+          settled = true
+          clearTimeout(timeoutId)
+          resolve()
+        }
+      }
+
+      const safeReject = (error: Error) => {
+        if (!settled) {
+          settled = true
+          clearTimeout(timeoutId)
+          try {
+            readStream.destroy()
+          } catch {
+            // ignore
+          }
+          try {
+            channel?.destroy()
+          } catch {
+            // ignore
+          }
+          reject(error)
+        }
+      }
+
+      const timeoutId = setTimeout(() => {
+        safeReject(new Error('文件上传超时'))
+      }, 10 * 60 * 1000)
+
+      const handlePrivilegeError = (message: string): boolean => {
+        if (!privileged) {
+          return false
+        }
+        if (/incorrect password|authentication failure|3 incorrect password attempts|sorry, try again|no password was provided|密码错误|认证失败|对不起，请重试|未提供密码/i.test(message)) {
+          this.sudoPassword = undefined
+          safeReject(new Error('sudo 密码错误，请重新输入。'))
+          return true
+        }
+        if (/password is required|a password is required|no tty present|a terminal is required|sorry, you must have a tty|需要密码|必须输入密码/i.test(message)) {
+          safeReject(new Error('未检测到可复用的 sudo 授权，需要提供 sudo 密码。'))
+          return true
+        }
+        return false
+      }
+
+      const handleExec = (error: Error | undefined, stream: ClientChannel) => {
+        if (error) {
+          safeReject(error)
+          return
+        }
+
+        channel = stream
+        stream.on('data', (chunk: Buffer) => {
+          stdout += chunk.toString('utf8')
+          void handlePrivilegeError(stdout)
+        })
+        stream.stderr.on('data', (chunk: Buffer) => {
+          stderr += chunk.toString('utf8')
+          void handlePrivilegeError(stderr)
+        })
+
+        readStream.on('data', (chunk: Buffer) => {
+          transferredBytes += chunk.byteLength
+          onProgress?.(transferredBytes)
+          if (!stream.write(chunk)) {
+            readStream.pause()
+          }
+        })
+        stream.on('drain', () => {
+          readStream.resume()
+        })
+        readStream.on('error', (readError) => {
+          safeReject(readError instanceof Error ? readError : new Error(String(readError)))
+        })
+        readStream.on('end', () => {
+          stream.end()
+        })
+        stream.on('close', (code?: number) => {
+          if (code && code !== 0) {
+            const errMessage = stderr.trim() || stdout.trim()
+            if (handlePrivilegeError(errMessage)) {
+              return
+            }
+            safeReject(new Error(errMessage || `Command exited with code ${code}`))
+            return
+          }
+          safeResolve()
+        })
+
+        if (privileged && this.sudoPassword) {
+          stream.write(`${this.sudoPassword}\n`)
+        }
+      }
+
+      try {
+        const execCommand = privileged
+          ? this.sudoPassword
+            ? `sudo -S -p '' -u ${shellQuote(this.sudoUser || 'root')} sh -lc ${shellQuote(command)}`
+            : `sudo -n -u ${shellQuote(this.sudoUser || 'root')} sh -lc ${shellQuote(command)}`
+          : `sh -lc ${shellQuote(command)}`
+
+        if (privileged && this.sudoPassword) {
+          execClient.exec(execCommand, { pty: true }, handleExec)
+          return
+        }
+
+        execClient.exec(execCommand, handleExec)
+      } catch (execError) {
+        safeReject(execError instanceof Error ? execError : new Error(String(execError)))
+      }
+    })
   }
 
   private async verifyRootFileAccess(): Promise<void> {
