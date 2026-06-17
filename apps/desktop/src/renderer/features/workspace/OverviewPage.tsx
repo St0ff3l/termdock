@@ -7,6 +7,7 @@ export function OverviewPage({
   onOpenProfile,
   onOpenNewConnection,
   onOpenConnectionManager,
+  onOpenCommandManager,
   onOpenDocs
 }: {
   profiles: ConnectionProfile[]
@@ -14,6 +15,7 @@ export function OverviewPage({
   onOpenProfile(profileId: string): void
   onOpenNewConnection(): void
   onOpenConnectionManager(): void
+  onOpenCommandManager(): void
   onOpenDocs(): void
 }) {
   const recentProfiles = profiles.slice(0, 6)
@@ -151,15 +153,15 @@ export function OverviewPage({
         <div className="action-grid">
           <button
             className="action-card"
-            onClick={onOpenNewConnection}
+            onClick={onOpenCommandManager}
             type="button"
           >
             <div className="action-icon">
-              <span className="material-symbols-outlined">add_circle</span>
+              <span className="material-symbols-outlined">terminal</span>
             </div>
             <div className="action-content">
-              <h3 className="action-title">新建连接</h3>
-              <p className="action-desc">创建新的远程连接配置</p>
+              <h3 className="action-title">{t.commandManager}</h3>
+              <p className="action-desc">管理你的快捷命令模板</p>
             </div>
           </button>
           <button

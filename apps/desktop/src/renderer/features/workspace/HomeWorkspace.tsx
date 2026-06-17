@@ -3,15 +3,18 @@ import { useState } from 'react'
 import { t } from '../../i18n'
 import { OverviewPage } from './OverviewPage'
 import { QuickLinksPage } from './QuickLinksPage'
+import { TabBar } from '../layout/TabBar'
 
 export function HomeWorkspace({
   profiles,
   folders = [],
-  onOpen
+  onOpen,
+  tabBarProps
 }: {
   profiles: ConnectionProfile[]
   folders?: ConnectionFolder[]
   onOpen(profileId: string): void
+  tabBarProps: any
 }) {
   const [activeTab, setActiveTab] = useState<'overview' | 'quick-links' | 'ssh-manager' | 'settings'>('overview')
 
@@ -26,6 +29,12 @@ export function HomeWorkspace({
   const handleOpenConnectionManager = () => {
     if (desktopApi) {
       void desktopApi.openConnectionManagerWindow()
+    }
+  }
+
+  const handleOpenCommandManager = () => {
+    if (desktopApi) {
+      void desktopApi.openCommandManagerWindow()
     }
   }
 
@@ -45,6 +54,7 @@ export function HomeWorkspace({
     <section className="home-workspace">
       {/* SideNavBar Component */}
       <aside className="home-sidebar">
+        <div className="sidebar-drag-handle" />
         {/* macOS style Window Controls */}
         <div className="window-controls-decorator">
           <div className="dot dot-close"></div>
@@ -78,11 +88,11 @@ export function HomeWorkspace({
           </button>
           <button
             className={`sidebar-nav-link`}
-            onClick={handleOpenNewConnection}
+            onClick={handleOpenCommandManager}
             type="button"
           >
             <span className="material-symbols-outlined">terminal</span>
-            <span>{t.newConnection}</span>
+            <span>{t.commandManager}</span>
           </button>
           <button
             className={`sidebar-nav-link ${activeTab === 'ssh-manager' ? 'active' : ''}`}
@@ -117,6 +127,9 @@ export function HomeWorkspace({
 
       {/* Main Content Area */}
       <main className="home-main-content">
+        <div className="home-tabs-bar">
+          <TabBar {...tabBarProps} />
+        </div>
         <div className="home-content-body scrollbar-scroll">
           {activeTab === 'overview' && (
             <OverviewPage
@@ -125,6 +138,7 @@ export function HomeWorkspace({
               onOpenProfile={onOpen}
               onOpenNewConnection={handleOpenNewConnection}
               onOpenConnectionManager={handleOpenConnectionManager}
+              onOpenCommandManager={handleOpenCommandManager}
               onOpenDocs={handleOpenDocs}
             />
           )}
