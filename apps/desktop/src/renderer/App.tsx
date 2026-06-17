@@ -2737,20 +2737,6 @@ export function App() {
       >
         {isWindowsDesktop ? (
           <div className="window-menubar">
-            <div className="window-menu-items">
-              <button type="button" onClick={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect()
-                void desktopApi?.showWindowMenu('file', Math.round(rect.left), Math.round(rect.bottom))
-              }}>File</button>
-              <button type="button" onClick={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect()
-                void desktopApi?.showWindowMenu('view', Math.round(rect.left), Math.round(rect.bottom))
-              }}>View</button>
-              <button type="button" onClick={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect()
-                void desktopApi?.showWindowMenu('window', Math.round(rect.left), Math.round(rect.bottom))
-              }}>Window</button>
-            </div>
             <div className="window-control-buttons">
               <button aria-label="Minimize" type="button" onClick={() => { void desktopApi?.minimizeCurrentWindow() }}>
                 <svg width="10" height="10" viewBox="0 0 10 10"><line x1="1" y1="5" x2="9" y2="5" stroke="currentColor" strokeWidth="1" /></svg>
