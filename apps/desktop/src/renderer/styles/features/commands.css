@@ -172,7 +172,7 @@
 }
 
 .command-folder-tabs button:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-inset);
   color: var(--text-main);
 }
 
@@ -185,7 +185,7 @@
 }
 
 .command-folder-tabs button small {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--surface-chip);
   padding: 1px 5px;
   border-radius: 10px;
   font-size: 9px;
@@ -415,7 +415,7 @@
 .command-runner-head button.primary-button {
   background: var(--button-primary-bg);
   border-color: var(--button-primary-border);
-  color: #fff;
+  color: var(--button-primary-text);
 }
 .command-runner-head button.primary-button:hover:not(:disabled) {
   background: var(--button-primary-hover);
@@ -448,13 +448,13 @@
   display: block;
   padding: 8px 10px;
   border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface-inset);
   font-family: "SF Mono", Menlo, Consolas, monospace;
   font-size: 10px;
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--text-main);
-  border: 1px solid rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--surface-inset-border);
 }
 
 .command-runner-controls {
@@ -536,7 +536,7 @@
 .command-target-select select:active {
   outline: none;
   border-color: var(--copy-link);
-  box-shadow: 0 0 0 2px rgba(64, 150, 255, 0.15), 0 1px 2px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 0 0 2px var(--accent-tint), 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .command-select-arrow {
@@ -594,7 +594,7 @@
 .custom-select-trigger:focus {
   outline: none;
   border-color: var(--copy-link);
-  box-shadow: 0 0 0 2px rgba(64, 150, 255, 0.15), 0 1px 2px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 0 0 2px var(--accent-tint), 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .custom-select-dropdown {
@@ -637,12 +637,12 @@
 }
 
 .custom-select-option:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface-hover);
   color: var(--text-main);
 }
 
 .custom-select-option.is-active {
-  background: rgba(64, 150, 255, 0.08);
+  background: var(--accent-tint-weak);
   color: var(--copy-link);
   font-weight: 600;
 }
@@ -662,7 +662,7 @@
   flex-direction: column;
   border: 1px solid var(--border-light);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.015);
+  background: var(--surface-inset);
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.15);
   overflow: hidden;
 }
@@ -672,7 +672,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 6px 10px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-inset);
   border-bottom: 1px solid var(--border-light);
 }
 
@@ -731,17 +731,17 @@
 }
 
 .session-send-target-item:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface-hover);
   color: var(--text-main);
 }
 
 .session-send-target-item.is-checked {
-  background: rgba(64, 150, 255, 0.06);
+  background: var(--accent-tint-weak);
   color: var(--text-main);
 }
 
 .session-send-target-item.is-checked:hover {
-  background: rgba(64, 150, 255, 0.09);
+  background: var(--accent-tint);
 }
 
 .session-send-target-icon {
@@ -764,14 +764,14 @@
   color: var(--text-muted);
   font-weight: 600;
   opacity: 0.8;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-chip);
   padding: 1px 4px;
   border-radius: 4px;
   flex-shrink: 0;
 }
 
 .session-send-target-item.is-checked .session-send-target-index {
-  background: rgba(64, 150, 255, 0.15);
+  background: var(--accent-tint);
   color: var(--copy-link);
 }
 
@@ -784,8 +784,8 @@
 
 .session-send-target-current-badge {
   font-size: 9px;
-  background: rgba(52, 199, 89, 0.15);
-  color: #34c759;
+  background: var(--success-surface);
+  color: var(--success-text);
   padding: 1px 4px;
   border-radius: 4px;
   font-weight: 600;
@@ -793,7 +793,7 @@
   text-transform: uppercase;
   flex-shrink: 0;
   letter-spacing: 0.3px;
-  border: 1px solid rgba(52, 199, 89, 0.1);
+  border: 1px solid var(--success-border);
 }
 
 .session-send-target-remember {
@@ -865,7 +865,7 @@
 .command-toggle input[type='checkbox']:focus-visible,
 .command-editor-checkbox-row input[type='checkbox']:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 0 2px var(--input-focus-ring);
 }
 
 /* Circular checkboxes with central scale-in dots for Send TargetPicker & Terminal Dock Option rows */
@@ -958,7 +958,7 @@
 .session-send-target-header input:focus-visible,
 .terminal-dock-option-row input:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px rgba(64, 150, 255, 0.25);
+  box-shadow: 0 0 0 2px var(--accent-focus-ring);
 }
 
 .session-send-target-remember-inline {
@@ -1591,4 +1591,48 @@
   .command-target-select {
     justify-content: flex-start;
   }
+}
+
+/* ============================================================
+   UIUXPro Max:命令管理器/编辑器内所有可点击元素的统一焦点环兜底
+   (键盘可达性 — 凡未单独声明 focus 的交互元素都有可见焦点环)
+   ============================================================ */
+.command-folder-tabs button:focus-visible,
+.command-folder-add:focus-visible,
+.command-select-config-btn:focus-visible,
+.custom-select-option:focus-visible,
+.session-send-target-item:focus-visible,
+.session-send-target-remember-inline:focus-visible,
+.command-manager-item:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-focus-ring);
+}
+
+/* disabled 态统一:降透明 + 禁用光标(覆盖未单独声明的) */
+.command-folder-tabs button:disabled,
+.command-select-config-btn:disabled,
+.custom-select-trigger:disabled,
+.command-manager-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 头部/提交/参数区按钮的焦点环与禁用态 */
+.command-runner-head button:focus-visible,
+.command-manager-sidebar-head button:focus-visible,
+.command-manager-submit button:focus-visible,
+.command-param-hints button:focus-visible,
+.command-center-actions button:focus-visible,
+.command-select-config-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-focus-ring);
+}
+
+.command-runner-head button:disabled,
+.command-manager-sidebar-head button:disabled,
+.command-manager-submit button:disabled,
+.command-param-hints button:disabled,
+.command-center-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

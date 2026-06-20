@@ -49,13 +49,25 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  min-height: 44px;
   padding: 12px 24px;
   border-radius: 10px;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
   border: 1px solid transparent;
+}
+
+.hero-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-focus-ring);
+}
+
+.hero-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .hero-btn-primary {
@@ -68,8 +80,8 @@
   color: inherit;
 }
 
-.hero-btn-primary:hover {
-  box-shadow: 0 6px 24px rgba(255, 255, 255, 0.25);
+.hero-btn-primary:hover:not(:disabled) {
+  box-shadow: 0 6px 24px var(--accent-tint);
   transform: translateY(-2px);
 }
 
@@ -79,7 +91,7 @@
   border-color: var(--border-light);
 }
 
-.hero-btn-secondary:hover {
+.hero-btn-secondary:hover:not(:disabled) {
   background: var(--bg-hover);
   border-color: var(--text-muted);
   transform: translateY(-2px);
@@ -125,23 +137,23 @@
 }
 
 .stat-icon-total {
-  background: rgba(96, 165, 250, 0.15);
-  color: #60a5fa;
+  background: var(--type-total-surface);
+  color: var(--type-total);
 }
 
 .stat-icon-ssh {
-  background: rgba(52, 211, 153, 0.15);
-  color: #34d399;
+  background: var(--type-ssh-surface);
+  color: var(--type-ssh);
 }
 
 .stat-icon-sftp {
-  background: rgba(56, 189, 248, 0.15);
-  color: #38bdf8;
+  background: var(--type-sftp-surface);
+  color: var(--type-sftp);
 }
 
 .stat-icon-ftp {
-  background: rgba(192, 132, 252, 0.15);
-  color: #c084fc;
+  background: var(--type-ftp-surface);
+  color: var(--type-ftp);
 }
 
 .stat-content {
@@ -221,18 +233,18 @@
 }
 
 .recent-icon-ssh {
-  background: rgba(52, 211, 153, 0.15);
-  color: #34d399;
+  background: var(--type-ssh-surface);
+  color: var(--type-ssh);
 }
 
 .recent-icon-sftp {
-  background: rgba(56, 189, 248, 0.15);
-  color: #38bdf8;
+  background: var(--type-sftp-surface);
+  color: var(--type-sftp);
 }
 
 .recent-icon-ftp {
-  background: rgba(192, 132, 252, 0.15);
-  color: #c084fc;
+  background: var(--type-ftp-surface);
+  color: var(--type-ftp);
 }
 
 .type-badge {
@@ -245,18 +257,18 @@
 }
 
 .type-badge-ssh {
-  background: rgba(52, 211, 153, 0.15);
-  color: #34d399;
+  background: var(--type-ssh-surface);
+  color: var(--type-ssh);
 }
 
 .type-badge-sftp {
-  background: rgba(56, 189, 248, 0.15);
-  color: #38bdf8;
+  background: var(--type-sftp-surface);
+  color: var(--type-sftp);
 }
 
 .type-badge-ftp {
-  background: rgba(192, 132, 252, 0.15);
-  color: #c084fc;
+  background: var(--type-ftp-surface);
+  color: var(--type-ftp);
 }
 
 .recent-card-body {
@@ -306,19 +318,29 @@
   border: 1px solid var(--border-light);
   color: var(--text-muted);
   cursor: pointer;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 8px;
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
 .recent-action:hover {
-  color: var(--text-main);
-  background-color: var(--bg-hover);
-  border-color: var(--text-main);
+  color: var(--accent-primary);
+  background-color: var(--accent-tint-weak);
+  border-color: var(--accent-primary);
+}
+
+.recent-action:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-focus-ring);
+}
+
+.recent-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* Quick Actions Grid */
@@ -338,14 +360,19 @@
   padding: 20px;
   text-align: left;
   cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
   box-shadow: var(--shadow-sm);
 }
 
 .action-card:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
-  border-color: var(--text-muted);
+  border-color: var(--accent-primary);
+}
+
+.action-card:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-focus-ring);
 }
 
 .action-icon {

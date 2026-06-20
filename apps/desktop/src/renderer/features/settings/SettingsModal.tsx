@@ -10,7 +10,8 @@ export function SettingsModal({
   onOpenConnectionManager,
   onOpenLogsDirectory,
   onClose,
-  standalone = false
+  standalone = false,
+  inline = false
 }: {
   theme: 'default-dark' | 'default-light'
   onSetTheme(value: 'default-dark' | 'default-light'): void
@@ -21,6 +22,7 @@ export function SettingsModal({
   onOpenLogsDirectory(): void
   onClose(): void
   standalone?: boolean
+  inline?: boolean
 }) {
   const [activeTab, setActiveTab] = useState<'general' | 'tools' | 'system'>('general')
   const desktopApi = window.termdock
@@ -42,7 +44,7 @@ export function SettingsModal({
 
   const content = (
     <div
-      className={`modal-card manager-modal connection-manager-modal settings-modal ${standalone ? 'standalone' : ''}`}
+      className={`modal-card manager-modal connection-manager-modal settings-modal ${standalone ? 'standalone' : ''} ${inline ? 'manager-inline' : ''}`}
       onClick={(event) => event.stopPropagation()}
     >
       <div className="connection-manager-header">
@@ -50,9 +52,11 @@ export function SettingsModal({
           <span className="material-symbols-outlined">settings</span>
           <span>{t.settings}</span>
         </span>
-        <div className="connection-manager-header-actions">
-          <button aria-label={t.closeTab} className="manager-close-button" onClick={onClose} title={t.closeTab} type="button">×</button>
-        </div>
+        {!inline && (
+          <div className="connection-manager-header-actions">
+            <button aria-label={t.closeTab} className="manager-close-button" onClick={onClose} title={t.closeTab} type="button">×</button>
+          </div>
+        )}
       </div>
       <div className="connection-manager-layout">
         <aside className="connection-manager-sidebar" aria-label={t.settings}>
@@ -213,6 +217,10 @@ export function SettingsModal({
       </div>
     </div>
   )
+
+  if (inline) {
+    return content
+  }
 
   if (standalone) {
     return <div className="manager-window">{content}</div>

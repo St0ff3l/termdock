@@ -71,13 +71,13 @@
 }
 
 .terminal-host .xterm .xterm-selection div {
-  background: rgba(148, 163, 184, 0.24) !important;
+  background: var(--terminal-selection-bg) !important;
 }
 
 .terminal-host .xterm .xterm-screen ::selection,
 .terminal-host .xterm textarea::selection {
   color: var(--terminal-text);
-  background: rgba(148, 163, 184, 0.24);
+  background: var(--terminal-selection-bg);
 }
 
 .terminal-host .xterm-viewport {
@@ -258,11 +258,11 @@
 }
 
 .terminal-dock-history-wrapper:hover {
-  background: rgba(255, 255, 255, 0.03) !important;
+  background: var(--surface-inset) !important;
 }
 
 .terminal-dock-history-wrapper.is-active {
-  background: rgba(255, 255, 255, 0.06) !important;
+  background: var(--surface-hover) !important;
 }
 
 .terminal-dock-history-left {
@@ -1353,7 +1353,7 @@
 .permission-checkline input:focus-visible,
 .permission-radioline input:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 0 2px var(--input-focus-ring);
 }
 
 .context-menu {
@@ -1569,7 +1569,7 @@
   border: 1px solid var(--border-light);
   border-radius: 6px;
   color: var(--text-muted);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-inset);
   transition: all 0.2s ease;
   margin-left: 24px;
   margin-right: 12px;
@@ -1578,7 +1578,7 @@
 
 .connection-manager-search:focus-within {
   border-color: var(--text-muted);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-hover);
 }
 
 .connection-manager-search input {
@@ -1640,16 +1640,16 @@
 }
 
 .connection-manager-header-actions .connection-manager-action-button.primary-button {
-  background: var(--bg-card);
-  border-color: var(--border-light);
-  color: var(--text-main);
+  background: var(--button-primary-bg);
+  border-color: var(--button-primary-border);
+  color: var(--button-primary-text);
 }
 
 .connection-manager-header-actions .connection-manager-action-button.primary-button:hover:not(:disabled) {
-  background: var(--text-main) !important;
-  color: var(--bg-main) !important;
-  border-color: var(--text-main);
-  box-shadow: 0 4px 12px rgba(255, 255, 255, 0.15);
+  background: var(--button-primary-hover) !important;
+  color: var(--button-primary-text) !important;
+  border-color: var(--button-primary-hover);
+  box-shadow: 0 4px 12px var(--accent-tint);
 }
 
 .manager-close-button {
@@ -1671,8 +1671,13 @@
 }
 
 .manager-close-button:hover {
-  background: rgba(239, 68, 68, 0.1) !important;
+  background: var(--danger-surface) !important;
   color: var(--danger) !important;
+}
+
+.manager-close-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--danger-border);
 }
 
 .connection-manager-layout {
@@ -1720,6 +1725,12 @@
   background: var(--bg-hover) !important;
   color: var(--text-main) !important;
   font-weight: 500;
+}
+
+.connection-manager-sidebar-item:focus-visible {
+  outline: none;
+  color: var(--text-main) !important;
+  box-shadow: 0 0 0 2px var(--accent-focus-ring);
 }
 
 .connection-manager-sidebar-icon {
@@ -1981,6 +1992,8 @@
   background: transparent;
   color: var(--text-muted);
   opacity: 0.62;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease, opacity 0.2s ease, box-shadow 0.2s ease;
 }
 
 .manager-icon-action:hover {
@@ -1989,12 +2002,28 @@
   opacity: 1;
 }
 
+.manager-icon-action:focus-visible {
+  outline: none;
+  opacity: 1;
+  box-shadow: 0 0 0 2px var(--accent-focus-ring);
+}
+
+.manager-icon-action:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 .manager-icon-action.danger {
   color: var(--text-muted);
 }
 
 .manager-icon-action.danger:hover {
   color: var(--danger);
+  background: var(--danger-surface);
+}
+
+.manager-icon-action.danger:focus-visible {
+  box-shadow: 0 0 0 2px var(--danger-border);
 }
 
 .manager-inline-input {
@@ -2083,7 +2112,7 @@
   z-index: 20;
   display: flex;
   align-items: center;
-  background: var(--text-main) !important; /* In closed state, matches button background (white in dark mode) */
+  background: var(--button-primary-bg) !important; /* In closed state, matches button background (brand blue) */
   border: none;
   border-radius: 21px; /* Circular plus button when closed, matches capsule */
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25), 0 1px 3px rgba(0, 0, 0, 0.15);
@@ -2159,30 +2188,40 @@
 }
 
 .drawer-option-btn.secondary-btn {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--surface-chip);
+  border: 1px solid var(--border-light);
   color: var(--text-main);
 }
 
 .drawer-option-btn.secondary-btn:hover {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.2);
+  background: var(--surface-hover);
+  border-color: var(--border-dark);
   color: var(--text-main);
 }
 
+.drawer-option-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-focus-ring);
+}
+
+.drawer-option-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .drawer-option-btn.primary-btn {
-  background: var(--text-main) !important;
-  border: 1px solid var(--text-main) !important;
-  color: var(--bg-main) !important;
+  background: var(--button-primary-bg) !important;
+  border: 1px solid var(--button-primary-border) !important;
+  color: var(--button-primary-text) !important;
 }
 
 .drawer-option-btn.primary-btn * {
-  color: var(--bg-main) !important;
+  color: var(--button-primary-text) !important;
 }
 
 .drawer-option-btn.primary-btn:hover {
-  background: rgba(255, 255, 255, 0.9) !important;
-  border-color: rgba(255, 255, 255, 0.9) !important;
+  background: var(--button-primary-hover) !important;
+  border-color: var(--button-primary-hover) !important;
 }
 
 /* Trigger Button (Rounded Square Plus when closed, circle X when open) */
@@ -2193,8 +2232,8 @@
   width: 42px;
   height: 42px;
   border: none;
-  background: transparent !important; /* Let parent background show (white square closed, glass capsule open) */
-  color: var(--bg-main) !important;
+  background: transparent !important; /* Let parent background show (brand-blue square closed, glass capsule open) */
+  color: var(--button-primary-text) !important;
   cursor: pointer;
   transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1),
               color 0.3s cubic-bezier(0.25, 0.8, 0.25, 1),
@@ -2212,7 +2251,12 @@
 }
 
 .drawer-trigger-btn * {
-  color: var(--bg-main) !important;
+  color: var(--button-primary-text) !important;
+}
+
+.drawer-trigger-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-focus-ring);
 }
 
 /* Rotate plus to X and turn to circular button when expanded */

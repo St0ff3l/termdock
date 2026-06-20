@@ -325,10 +325,10 @@
 .modal-error {
   margin-top: 12px;
   padding: 12px 14px;
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.3);
+  background: var(--danger-surface);
+  border: 1px solid var(--danger-border);
   border-radius: 10px;
-  color: #fca5a5;
+  color: var(--danger-text);
   font-size: 13px;
   line-height: 1.5;
 }
@@ -378,7 +378,7 @@
 .connection-form select:focus {
   outline: none;
   border-color: var(--text-muted);
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.05);
+  box-shadow: 0 0 0 3px var(--input-focus-ring);
 }
 
 .connection-form input:hover,
@@ -405,7 +405,7 @@
 .ssh-grid textarea:focus {
   outline: none;
   border-color: var(--text-muted);
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.05);
+  box-shadow: 0 0 0 3px var(--input-focus-ring);
 }
 
 .ssh-grid textarea {
@@ -483,7 +483,7 @@
 .ssh-checkbox input:focus-visible,
 .checkbox-row input:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 0 3px var(--input-focus-ring);
 }
 
 .ssh-checkbox input:hover:not(:disabled),
@@ -519,23 +519,35 @@
   border-color: var(--text-muted);
 }
 
+.flat-button:focus-visible,
+.primary-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-focus-ring);
+}
+
 .flat-button.danger {
-  color: #f87171;
+  color: var(--danger-text);
 }
 
 .flat-button.danger:hover {
-  background: rgba(239, 68, 68, 0.1);
-  border-color: rgba(239, 68, 68, 0.3);
+  background: var(--danger-surface);
+  border-color: var(--danger-border);
+}
+
+.flat-button.danger:focus-visible {
+  box-shadow: 0 0 0 3px var(--danger-border);
 }
 
 .primary-button {
-  background: var(--text-main);
-  color: var(--bg-main);
-  border-color: var(--text-main);
+  background: var(--button-primary-bg);
+  color: var(--button-primary-text);
+  border-color: var(--button-primary-border);
 }
 
-.primary-button:hover {
-  box-shadow: 0 4px 20px rgba(255, 255, 255, 0.2);
+.primary-button:hover:not(:disabled) {
+  background: var(--button-primary-hover);
+  border-color: var(--button-primary-hover);
+  box-shadow: 0 4px 20px var(--accent-tint);
   transform: translateY(-1px);
 }
 

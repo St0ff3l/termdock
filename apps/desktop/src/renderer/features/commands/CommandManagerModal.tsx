@@ -20,7 +20,8 @@ export function CommandManagerModal({
   onCreateCommand,
   onUpdateCommand,
   onDeleteCommand,
-  standalone = false
+  standalone = false,
+  inline = false
 }: {
   commandFolders: CommandFolder[]
   commandTemplates: CommandTemplate[]
@@ -33,6 +34,7 @@ export function CommandManagerModal({
   onUpdateCommand(commandId: string, input: CommandTemplateInput): void
   onDeleteCommand(commandId: string): void
   standalone?: boolean
+  inline?: boolean
 }) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
   const [activeFolderId, setActiveFolderId] = useState<'all' | string>('all')
@@ -418,7 +420,7 @@ export function CommandManagerModal({
   const emptyMessage = isSearching ? t.noMatchingCommands : t.commandEmpty
 
   const content = (
-    <div className={`modal-card manager-modal connection-manager-modal command-manager-modal ${standalone ? 'standalone' : ''}`}>
+    <div className={`modal-card manager-modal connection-manager-modal command-manager-modal ${standalone ? 'standalone' : ''} ${inline ? 'manager-inline' : ''}`}>
       <div className="connection-manager-header">
         <span className="connection-manager-title">
           <span className="material-symbols-outlined">terminal</span>
@@ -434,9 +436,11 @@ export function CommandManagerModal({
             onChange={(event) => setSearchQuery(event.target.value)}
           />
         </label>
-        <div className="connection-manager-header-actions">
-          <button aria-label={t.closeTab} className="manager-close-button" onClick={onClose} title={t.closeTab} type="button">×</button>
-        </div>
+        {!inline && (
+          <div className="connection-manager-header-actions">
+            <button aria-label={t.closeTab} className="manager-close-button" onClick={onClose} title={t.closeTab} type="button">×</button>
+          </div>
+        )}
       </div>
       <div className="connection-manager-layout">
         <aside className="connection-manager-sidebar" aria-label={t.commandCategory}>
@@ -552,7 +556,9 @@ export function CommandManagerModal({
 
   return (
     <>
-      {standalone ? (
+      {inline ? (
+        content
+      ) : standalone ? (
         <div className="manager-window">{content}</div>
       ) : (
         <div className="modal-backdrop">{content}</div>

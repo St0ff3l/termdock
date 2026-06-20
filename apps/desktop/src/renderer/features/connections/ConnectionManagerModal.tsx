@@ -20,7 +20,8 @@ export function ConnectionManagerModal({
   onDeleteFolder,
   onUpdateFolder,
   onUpdateOrder,
-  standalone = false
+  standalone = false,
+  inline = false
 }: {
   profiles: ConnectionProfile[]
   folders: ConnectionFolder[]
@@ -34,6 +35,7 @@ export function ConnectionManagerModal({
   onUpdateFolder(folderId: string, updates: Partial<ConnectionFolder>): void
   onUpdateOrder(id: string, newParentId: string | undefined, newOrder: number): void
   standalone?: boolean
+  inline?: boolean
 }) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
   const [activeFolderId, setActiveFolderId] = useState<'all' | string>('all')
@@ -407,7 +409,7 @@ export function ConnectionManagerModal({
   const emptyMessage = isSearching ? t.noMatchingConnections : t.noConnections
 
   const content = (
-    <div className={`modal-card manager-modal connection-manager-modal ${standalone ? 'standalone' : ''}`}>
+    <div className={`modal-card manager-modal connection-manager-modal ${standalone ? 'standalone' : ''} ${inline ? 'manager-inline' : ''}`}>
       <div className="connection-manager-header">
         <span className="connection-manager-title">
           <span className="material-symbols-outlined">settings_ethernet</span>
@@ -423,9 +425,11 @@ export function ConnectionManagerModal({
             onChange={(event) => setSearchQuery(event.target.value)}
           />
         </label>
-        <div className="connection-manager-header-actions">
-          <button aria-label={t.closeTab} className="manager-close-button" onClick={onClose} title={t.closeTab} type="button">×</button>
-        </div>
+        {!inline && (
+          <div className="connection-manager-header-actions">
+            <button aria-label={t.closeTab} className="manager-close-button" onClick={onClose} title={t.closeTab} type="button">×</button>
+          </div>
+        )}
       </div>
       <div className="connection-manager-layout">
         <aside className="connection-manager-sidebar" aria-label={t.folder}>
@@ -547,7 +551,9 @@ export function ConnectionManagerModal({
 
   return (
     <>
-      {standalone ? (
+      {inline ? (
+        content
+      ) : standalone ? (
         <div className="manager-window">{content}</div>
       ) : (
         <div className="modal-backdrop">{content}</div>

@@ -39,6 +39,9 @@ export function WorkspaceStage({
   clipboardStatusText,
   localCutPaths,
   remoteCutPaths,
+  profiles,
+  theme,
+  locale,
   onCopyItems,
   onCutItems,
   onClearCutState,
@@ -47,7 +50,6 @@ export function WorkspaceStage({
   onTerminalDockSendScopeChange,
   onTerminalDockSelectedTabIdsChange,
   onOpenCommandManager,
-  profiles,
   onChooseUploadFiles,
   onDownloadFiles,
   onDropUpload,
@@ -67,6 +69,23 @@ export function WorkspaceStage({
   remoteFileAccessMode,
   onRefresh,
   onUploadFiles,
+  onCreateConnection,
+  onEditConnection,
+  onDeleteConnection,
+  onCreateConnectionFolder,
+  onDeleteConnectionFolder,
+  onUpdateConnectionFolder,
+  onUpdateConnectionOrder,
+  onCreateCommand,
+  onUpdateCommand,
+  onDeleteCommand,
+  onCreateCommandFolder,
+  onDeleteCommandFolder,
+  onUpdateCommandFolder,
+  onUpdateCommandOrder,
+  onSetTheme,
+  onSetLocale,
+  onOpenLogsDirectory,
   tabBarProps
 }: {
   activeLocalTab: ActiveLocalTab
@@ -87,6 +106,9 @@ export function WorkspaceStage({
   clipboardStatusText: string | null
   localCutPaths: string[]
   remoteCutPaths: string[]
+  profiles: ConnectionProfile[]
+  theme: 'default-dark' | 'default-light'
+  locale: 'zhCN' | 'enUS'
   onCopyItems(pane: 'local' | 'remote', items: Array<LocalFileItem | RemoteFileItem>): void
   onCutItems(pane: 'local' | 'remote', items: Array<LocalFileItem | RemoteFileItem>): void
   onClearCutState(): void
@@ -95,7 +117,6 @@ export function WorkspaceStage({
   onTerminalDockSendScopeChange(scope: SendScope, rememberSelection: boolean): void
   onTerminalDockSelectedTabIdsChange(tabIds: string[], rememberSelection: boolean): void
   onOpenCommandManager(): void
-  profiles: ConnectionProfile[]
   onChooseUploadFiles(): void
   onDownloadFiles(items: RemoteFileItem[], targetDirectory?: string): void
   onDropUpload(event: DragEvent<HTMLDivElement>): void
@@ -115,6 +136,23 @@ export function WorkspaceStage({
   remoteFileAccessMode: 'user' | 'root'
   onRefresh(): void
   onUploadFiles(items: LocalFileItem[]): void
+  onCreateConnection(): void
+  onEditConnection(profile: ConnectionProfile): void
+  onDeleteConnection(profileId: string): void
+  onCreateConnectionFolder(name: string): void
+  onDeleteConnectionFolder(folderId: string): void
+  onUpdateConnectionFolder(folderId: string, updates: Partial<ConnectionFolder>): void
+  onUpdateConnectionOrder(id: string, newParentId: string | undefined, newOrder: number): void
+  onCreateCommand(input: any): void
+  onUpdateCommand(commandId: string, input: any): void
+  onDeleteCommand(commandId: string): void
+  onCreateCommandFolder(name: string): void
+  onDeleteCommandFolder(folderId: string): void
+  onUpdateCommandFolder(folderId: string, updates: Partial<CommandFolder>): void
+  onUpdateCommandOrder(id: string, newParentId: string | undefined, newOrder: number): void
+  onSetTheme(value: 'default-dark' | 'default-light'): void
+  onSetLocale(value: 'zhCN' | 'enUS'): void
+  onOpenLogsDirectory(): void
   tabBarProps: any
 }) {
   if (activeLocalTab?.kind === 'system') {
@@ -172,7 +210,28 @@ export function WorkspaceStage({
   return (
     <HomeWorkspace
       folders={folders}
+      commandFolders={commandFolders}
+      commandTemplates={commandTemplates}
+      theme={theme}
+      locale={locale}
       onOpen={onOpenProfile}
+      onCreateConnection={onCreateConnection}
+      onEditConnection={onEditConnection}
+      onDeleteConnection={onDeleteConnection}
+      onCreateConnectionFolder={onCreateConnectionFolder}
+      onDeleteConnectionFolder={onDeleteConnectionFolder}
+      onUpdateConnectionFolder={onUpdateConnectionFolder}
+      onUpdateConnectionOrder={onUpdateConnectionOrder}
+      onCreateCommand={onCreateCommand}
+      onUpdateCommand={onUpdateCommand}
+      onDeleteCommand={onDeleteCommand}
+      onCreateCommandFolder={onCreateCommandFolder}
+      onDeleteCommandFolder={onDeleteCommandFolder}
+      onUpdateCommandFolder={onUpdateCommandFolder}
+      onUpdateCommandOrder={onUpdateCommandOrder}
+      onSetTheme={onSetTheme}
+      onSetLocale={onSetLocale}
+      onOpenLogsDirectory={onOpenLogsDirectory}
       profiles={profiles}
       tabBarProps={tabBarProps}
     />

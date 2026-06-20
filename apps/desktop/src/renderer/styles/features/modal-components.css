@@ -44,7 +44,7 @@
 .file-action-field input:focus {
   outline: none;
   border-color: var(--text-muted);
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.05);
+  box-shadow: 0 0 0 3px var(--input-focus-ring);
 }
 
 .file-action-field input:hover {
@@ -101,15 +101,15 @@
   margin-top: 16px;
   margin-bottom: 12px;
   padding: 12px 14px;
-  background: rgba(96, 165, 250, 0.1);
-  border: 1px solid rgba(96, 165, 250, 0.3);
+  background: var(--info-surface);
+  border: 1px solid var(--info-border);
   border-radius: 10px;
 }
 
 .root-access-note-title {
   font-size: 13px;
   font-weight: 600;
-  color: #60a5fa;
+  color: var(--info-text);
   margin-bottom: 6px;
 }
 
@@ -266,7 +266,7 @@
 .permission-checkline input:focus-visible,
 .permission-radioline input:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 0 3px var(--input-focus-ring);
 }
 
 .permission-checkline input:hover:not(:disabled),
@@ -307,6 +307,11 @@
   background: var(--bg-hover);
   border-color: var(--text-main);
   color: var(--text-main);
+}
+
+.icon-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-focus-ring);
 }
 
 .icon-button:disabled {
@@ -478,7 +483,7 @@
 
 .connection-manager-search:focus-within {
   border-color: var(--text-muted);
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.05);
+  box-shadow: 0 0 0 3px var(--input-focus-ring);
 }
 
 .connection-manager-search input {
@@ -676,10 +681,15 @@
   background: var(--bg-hover);
 }
 
+.theme-card:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-focus-ring);
+}
+
 .theme-card.active {
-  border-color: var(--primary);
+  border-color: var(--accent-primary);
   background: var(--bg-hover);
-  box-shadow: 0 0 0 1px var(--primary);
+  box-shadow: 0 0 0 1px var(--accent-primary);
 }
 
 .theme-card-preview {
@@ -784,11 +794,15 @@
   background: var(--bg-hover);
 }
 
+.lang-card:focus-visible {
+  box-shadow: 0 0 0 3px var(--accent-focus-ring);
+}
+
 .lang-card.active {
-  border-color: var(--primary);
+  border-color: var(--accent-primary);
   background: var(--bg-hover);
   font-weight: 500;
-  box-shadow: 0 0 0 1px var(--primary);
+  box-shadow: 0 0 0 1px var(--accent-primary);
 }
 
 .tools-shortcuts-grid {

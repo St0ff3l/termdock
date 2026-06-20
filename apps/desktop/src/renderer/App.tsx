@@ -2,6 +2,7 @@ import { startTransition, useEffect, useMemo, useRef, useState, type CSSProperti
 import type {
   CommandExecutionOptions,
   CommandTemplateInput,
+  ConnectionFolder,
   ConnectionFormMode,
   ConnectionProfile,
   CreateProfileInput,
@@ -1240,6 +1241,58 @@ export function App() {
       applySnapshot(snapshot)
     } catch (err) {
       reportError(setError, '删除命令模板', err)
+    } finally {
+      setIsBusy(false)
+    }
+  }
+
+  const createConnectionFolder = async (name: string) => {
+    if (!desktopApi) return
+    try {
+      setIsBusy(true)
+      const snapshot = await desktopApi.createFolder(name)
+      applySnapshot(snapshot)
+    } catch (err) {
+      reportError(setError, '新建连接分类', err)
+    } finally {
+      setIsBusy(false)
+    }
+  }
+
+  const updateConnectionFolder = async (folderId: string, updates: Partial<ConnectionFolder>) => {
+    if (!desktopApi) return
+    try {
+      setIsBusy(true)
+      const snapshot = await desktopApi.updateFolder(folderId, updates)
+      applySnapshot(snapshot)
+    } catch (err) {
+      reportError(setError, '更新连接分类', err)
+    } finally {
+      setIsBusy(false)
+    }
+  }
+
+  const deleteConnectionFolder = async (folderId: string) => {
+    if (!desktopApi) return
+    try {
+      setIsBusy(true)
+      const snapshot = await desktopApi.deleteFolder(folderId)
+      applySnapshot(snapshot)
+    } catch (err) {
+      reportError(setError, '删除连接分类', err)
+    } finally {
+      setIsBusy(false)
+    }
+  }
+
+  const updateConnectionOrder = async (id: string, newParentId: string | undefined, newOrder: number) => {
+    if (!desktopApi) return
+    try {
+      setIsBusy(true)
+      const snapshot = await desktopApi.updateEntityOrder(id, newParentId, newOrder)
+      applySnapshot(snapshot)
+    } catch (err) {
+      reportError(setError, '调整连接顺序', err)
     } finally {
       setIsBusy(false)
     }
@@ -3040,6 +3093,30 @@ export function App() {
               remoteFileAccessMode={activeSession?.fileAccessMode ?? 'user'}
               onRefresh={handleRefreshWorkspace}
               onUploadFiles={handleUploadFiles}
+              theme={themeMode}
+              locale={locale}
+              onCreateConnection={() => {
+                if (desktopApi) void desktopApi.openConnectionFormWindow('create')
+              }}
+              onEditConnection={openEditConnection}
+              onDeleteConnection={handleDeleteProfile}
+              onCreateConnectionFolder={createConnectionFolder}
+              onDeleteConnectionFolder={deleteConnectionFolder}
+              onUpdateConnectionFolder={updateConnectionFolder}
+              onUpdateConnectionOrder={updateConnectionOrder}
+              onCreateCommand={(input) => { void saveCommandTemplate(null, input) }}
+              onUpdateCommand={saveCommandTemplate}
+              onDeleteCommand={deleteCommandTemplate}
+              onCreateCommandFolder={createCommandFolder}
+              onDeleteCommandFolder={deleteCommandFolder}
+              onUpdateCommandFolder={updateCommandFolder}
+              onUpdateCommandOrder={updateCommandOrder}
+              onSetTheme={setThemeMode}
+              onSetLocale={(nextLocale) => {
+                setLocale(nextLocale)
+                setLocaleState(nextLocale)
+              }}
+              onOpenLogsDirectory={openLogsDirectory}
               tabBarProps={tabBarProps}
             />
           </div>

@@ -38,6 +38,45 @@
   --success: #39d98a;
   --warning: #ffcc00;
 
+  /* 状态语义色:面/边/文本,统一替代散落的红蓝硬编码 */
+  --danger-text: #ff8f88;
+  --danger-surface: rgba(255, 95, 87, 0.12);
+  --danger-border: rgba(255, 95, 87, 0.3);
+  --info: var(--accent-primary);
+  --info-text: var(--accent-primary);
+  --info-surface: rgba(139, 191, 255, 0.12);
+  --info-border: rgba(139, 191, 255, 0.32);
+  --input-focus-ring: rgba(255, 255, 255, 0.08);
+
+  /* accent 色阶(交互高亮)与 success 面/边/文本 */
+  --accent-tint-weak: rgba(64, 150, 255, 0.08);
+  --accent-tint: rgba(64, 150, 255, 0.15);
+  --accent-focus-ring: rgba(64, 150, 255, 0.25);
+  --success-text: #34c759;
+  --success-surface: rgba(52, 199, 89, 0.15);
+  --success-border: rgba(52, 199, 89, 0.32);
+
+  /* 中性叠层(暗色用白色微透,亮色用深色微透) */
+  --surface-hover: rgba(255, 255, 255, 0.04);
+  --surface-chip: rgba(255, 255, 255, 0.1);
+  --surface-inset: rgba(255, 255, 255, 0.03);
+  --surface-inset-border: rgba(255, 255, 255, 0.04);
+  --button-primary-text: #ffffff;
+  --terminal-selection-bg: rgba(148, 163, 184, 0.24);
+
+  /* 连接类型语义色:文本/面/光晕 */
+  --type-total: #60a5fa;
+  --type-total-surface: rgba(96, 165, 250, 0.15);
+  --type-ssh: #34d399;
+  --type-ssh-surface: rgba(52, 211, 153, 0.15);
+  --type-sftp: #38bdf8;
+  --type-sftp-surface: rgba(56, 189, 248, 0.15);
+  --type-ftp: #c084fc;
+  --type-ftp-surface: rgba(192, 132, 252, 0.15);
+  --type-folder: #fb923c;
+  --type-folder-surface: rgba(251, 146, 60, 0.15);
+  --type-muted: #4b5563;
+
   --meter-track: rgba(148, 163, 184, 0.16);
   --muted-foreground: var(--text-muted);
 
