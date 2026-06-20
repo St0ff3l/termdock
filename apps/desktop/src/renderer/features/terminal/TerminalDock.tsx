@@ -1,22 +1,22 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import type { WorkspaceTab } from '@termdock/core'
+import type { TerminalCommandHistoryEntry, WorkspaceTab } from '@termdock/core'
 import { t } from '../../i18n'
 import { AppIcon } from '../common/AppIcon'
+import { SessionSendTargetPicker } from '../common/SessionSendTargetPicker'
+import type { SendScope, SessionSendTarget } from '../common/session-send-targets'
+import { summarizeSendTarget } from '../common/session-send-targets'
 
 type DockPanel = 'history' | 'options' | null
 
-type HistoryEntry = {
-  command: string
-  createdAt: number
-}
-
 type DockPreferences = {
   clearAfterSend: boolean
+  rememberSendTarget: boolean
 }
 
 const HISTORY_LIMIT = 40
 const DEFAULT_PREFERENCES: DockPreferences = {
-  clearAfterSend: true
+  clearAfterSend: true,
+  rememberSendTarget: false
 }
 
 function historyStorageKey(profileId: string) {
@@ -41,7 +41,8 @@ function readStoredJson<T>(key: string, fallback: T) {
 
 function normalizePreferences(value: Partial<DockPreferences> | null | undefined): DockPreferences {
   return {
-    clearAfterSend: value?.clearAfterSend ?? DEFAULT_PREFERENCES.clearAfterSend
+    clearAfterSend: value?.clearAfterSend ?? DEFAULT_PREFERENCES.clearAfterSend,
+    rememberSendTarget: value?.rememberSendTarget ?? DEFAULT_PREFERENCES.rememberSendTarget
   }
 }
 
@@ -57,21 +58,29 @@ function formatHistoryTime(timestamp: number) {
 export function TerminalDock({
   activeTab,
   connected,
-  remotePath,
+  sendScope,
+  selectedTabIds,
+  sendTargets,
   filePanelHeight,
-  setFilePanelHeight
+  setFilePanelHeight,
+  onSendCommand,
+  onSendScopeChange,
+  onSelectedTabIdsChange
 }: {
   activeTab: WorkspaceTab
   connected: boolean
-  remotePath: string
+  sendScope: SendScope
+  selectedTabIds: string[]
+  sendTargets: SessionSendTarget[]
   filePanelHeight?: number
   setFilePanelHeight?: (height: number | ((prev: number) => number)) => void
+  onSendCommand(command: string): Promise<void>
+  onSendScopeChange(scope: SendScope, rememberSelection: boolean): void
+  onSelectedTabIdsChange(tabIds: string[], rememberSelection: boolean): void
 }) {
   const [command, setCommand] = useState('')
   const [panel, setPanel] = useState<DockPanel>(null)
-  const [history, setHistory] = useState<HistoryEntry[]>(() =>
-    readStoredJson<HistoryEntry[]>(historyStorageKey(activeTab.profileId), [])
-  )
+  const [history, setHistory] = useState<TerminalCommandHistoryEntry[]>([])
   const [preferences, setPreferences] = useState<DockPreferences>(() =>
     normalizePreferences(
       readStoredJson<Partial<DockPreferences> | null>(preferencesStorageKey(activeTab.profileId), DEFAULT_PREFERENCES)
@@ -79,8 +88,70 @@ export function TerminalDock({
   )
   const inputRef = useRef<HTMLInputElement | null>(null)
   const rootRef = useRef<HTMLElement | null>(null)
-
   const [lastFilePanelHeight, setLastFilePanelHeight] = useState(218)
+
+  const persistHistory = async (entries: TerminalCommandHistoryEntry[]) => {
+    if (window.termdock?.setTerminalCommandHistory) {
+      await window.termdock.setTerminalCommandHistory(activeTab.profileId, entries)
+      return
+    }
+    window.localStorage.setItem(historyStorageKey(activeTab.profileId), JSON.stringify(entries))
+  }
+
+  useEffect(() => {
+    let canceled = false
+
+    async function loadHistory() {
+      const desktopApi = window.termdock
+      if (!desktopApi?.getTerminalCommandHistory) {
+        if (!canceled) {
+          setHistory(readStoredJson<TerminalCommandHistoryEntry[]>(historyStorageKey(activeTab.profileId), []))
+        }
+        return
+      }
+
+      const storedHistory = await desktopApi.getTerminalCommandHistory(activeTab.profileId)
+      const legacyProfileHistory = readStoredJson<TerminalCommandHistoryEntry[]>(historyStorageKey(activeTab.profileId), [])
+      const legacyGlobalHistory = readStoredJson<TerminalCommandHistoryEntry[]>('termdock:terminal-dock:history:global', [])
+      const legacyHistory = legacyProfileHistory.length ? legacyProfileHistory : legacyGlobalHistory
+      const nextHistory = storedHistory.length ? storedHistory : legacyHistory
+
+      if (legacyHistory.length && !storedHistory.length) {
+        await desktopApi.setTerminalCommandHistory(activeTab.profileId, legacyHistory)
+        window.localStorage.removeItem(historyStorageKey(activeTab.profileId))
+        window.localStorage.removeItem('termdock:terminal-dock:history:global')
+      }
+
+      if (!canceled) {
+        setHistory(nextHistory)
+      }
+    }
+
+    void loadHistory()
+
+    return () => {
+      canceled = true
+    }
+  }, [activeTab.profileId])
+
+  useEffect(() => {
+    if (!panel) return
+
+    function handleClickOutside(event: MouseEvent) {
+      const target = event.target as Node
+      const clickedInsideDock = rootRef.current && rootRef.current.contains(target)
+      const clickedInsideDropdown = (target as HTMLElement).closest && (target as HTMLElement).closest('.custom-select-dropdown')
+      
+      if (!clickedInsideDock && !clickedInsideDropdown) {
+        setPanel(null)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [panel])
 
   const handleToggleConnection = async () => {
     if (!window.termdock) return
@@ -274,20 +345,26 @@ export function TerminalDock({
   }
 
   const canSend = connected && activeTab.sessionType === 'ssh' && command.trim().length > 0
+  const activeTargetSummary = summarizeSendTarget(
+    sendScope,
+    selectedTabIds,
+    sendTargets,
+    t.commandSendCurrent
+  )
 
   const sendCommand = async (nextCommand: string) => {
     const trimmed = nextCommand.trim()
-    if (!trimmed || activeTab.sessionType !== 'ssh' || !connected || !window.termdock?.writeTerminal) {
+    if (!trimmed || activeTab.sessionType !== 'ssh' || !connected) {
       return
     }
 
-    await window.termdock.writeTerminal(activeTab.id, `${trimmed}\r`)
+    await onSendCommand(trimmed)
 
     const now = Date.now()
     setHistory((prev) => {
       const deduped = prev.filter((entry) => entry.command !== trimmed)
       const next = [{ command: trimmed, createdAt: now }, ...deduped].slice(0, HISTORY_LIMIT)
-      window.localStorage.setItem(historyStorageKey(activeTab.profileId), JSON.stringify(next))
+      void persistHistory(next)
       return next
     })
 
@@ -335,7 +412,7 @@ export function TerminalDock({
     } else if (actionIndex === 2) {
       setHistory((prev) => {
         const next = prev.filter((entry) => entry.command !== cmd)
-        window.localStorage.setItem(historyStorageKey(activeTab.profileId), JSON.stringify(next))
+        void persistHistory(next)
         return next
       })
     }
@@ -443,7 +520,7 @@ export function TerminalDock({
         <span className="terminal-dock-history-hint">{t.terminalDockHistoryInsertHint}</span>
         <button className="terminal-dock-clear-btn" type="button" onClick={() => {
           setHistory([])
-          window.localStorage.setItem(historyStorageKey(activeTab.profileId), JSON.stringify([]))
+          void persistHistory([])
         }}>
           {t.terminalDockClearList}
         </button>
@@ -471,6 +548,18 @@ export function TerminalDock({
         />
         <span>{t.terminalDockClearAfterSend}</span>
       </label>
+      <SessionSendTargetPicker
+        allLabel={t.commandSendAllWithCount.replace('{count}', String(sendTargets.length))}
+        currentLabel={t.commandSendCurrentWithIndex.replace('{index}', String(sendTargets.find((target) => target.tabId === activeTab.id)?.index ?? '-'))}
+        onRememberSelectionChange={(nextValue) => updatePreferences((prev) => ({ ...prev, rememberSendTarget: nextValue }))}
+        onScopeChange={(nextScope) => onSendScopeChange(nextScope, preferences.rememberSendTarget)}
+        onSelectedTabIdsChange={(tabIds) => onSelectedTabIdsChange(tabIds, preferences.rememberSendTarget)}
+        rememberSelection={preferences.rememberSendTarget}
+        scope={sendScope}
+        selectedTabIds={selectedTabIds}
+        showRememberSelection
+        targets={sendTargets}
+      />
     </div>
   )
 
@@ -509,7 +598,7 @@ export function TerminalDock({
             type="button"
             onClick={() => setPanel((prev) => prev === 'options' ? null : 'options')}
           >
-            {t.options}
+            {`${t.options} · ${activeTargetSummary}`}
           </button>
           <button
             className={`terminal-dock-icon-btn terminal-dock-connection ${connected ? 'is-connected' : 'is-disconnected'}`}

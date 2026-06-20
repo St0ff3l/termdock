@@ -10,6 +10,7 @@ import type {
   WorkspaceTab
 } from '@termdock/core'
 import type { DragEvent } from 'react'
+import type { SendScope, SessionSendTarget } from '../common/session-send-targets'
 import { SystemInfoWorkspace } from '../system/SystemInfoWorkspace'
 import { HomeWorkspace } from './HomeWorkspace'
 import { SessionWorkspace } from './SessionWorkspace'
@@ -24,7 +25,9 @@ export function WorkspaceStage({
   activeProfile,
   activeSession,
   activeTab,
-  tabs,
+  sendTargets,
+  terminalDockSendScope,
+  terminalDockSelectedTabIds,
   commandFolders,
   commandTemplates,
   folders,
@@ -40,6 +43,9 @@ export function WorkspaceStage({
   onCutItems,
   onClearCutState,
   onExecuteCommand,
+  onSendTerminalCommand,
+  onTerminalDockSendScopeChange,
+  onTerminalDockSelectedTabIdsChange,
   onOpenCommandManager,
   profiles,
   onChooseUploadFiles,
@@ -67,7 +73,9 @@ export function WorkspaceStage({
   activeProfile: ConnectionProfile | null
   activeSession: SessionSnapshot | null
   activeTab: WorkspaceTab | null
-  tabs: WorkspaceTab[]
+  sendTargets: SessionSendTarget[]
+  terminalDockSendScope: SendScope
+  terminalDockSelectedTabIds: string[]
   commandFolders: CommandFolder[]
   commandTemplates: CommandTemplate[]
   folders: ConnectionFolder[]
@@ -82,7 +90,10 @@ export function WorkspaceStage({
   onCopyItems(pane: 'local' | 'remote', items: Array<LocalFileItem | RemoteFileItem>): void
   onCutItems(pane: 'local' | 'remote', items: Array<LocalFileItem | RemoteFileItem>): void
   onClearCutState(): void
-  onExecuteCommand(commandId: string, args: string[], options: CommandExecutionOptions, scope: 'current' | 'all-ssh'): void
+  onExecuteCommand(commandId: string, args: string[], options: CommandExecutionOptions, scope: SendScope, selectedTabIds: string[]): void
+  onSendTerminalCommand(command: string): Promise<void>
+  onTerminalDockSendScopeChange(scope: SendScope, rememberSelection: boolean): void
+  onTerminalDockSelectedTabIdsChange(tabIds: string[], rememberSelection: boolean): void
   onOpenCommandManager(): void
   profiles: ConnectionProfile[]
   onChooseUploadFiles(): void
@@ -115,7 +126,9 @@ export function WorkspaceStage({
       <SessionWorkspace
         activeSession={activeSession}
         activeTab={activeTab}
-        tabs={tabs}
+        sendTargets={sendTargets}
+        terminalDockSendScope={terminalDockSendScope}
+        terminalDockSelectedTabIds={terminalDockSelectedTabIds}
         commandFolders={commandFolders}
         commandTemplates={commandTemplates}
         isBusy={isBusy}
@@ -130,6 +143,9 @@ export function WorkspaceStage({
         onCutItems={onCutItems}
         onClearCutState={onClearCutState}
         onExecuteCommand={onExecuteCommand}
+        onSendTerminalCommand={onSendTerminalCommand}
+        onTerminalDockSendScopeChange={onTerminalDockSendScopeChange}
+        onTerminalDockSelectedTabIdsChange={onTerminalDockSelectedTabIdsChange}
         onOpenCommandManager={onOpenCommandManager}
         onChooseUploadFiles={onChooseUploadFiles}
         onDownloadFiles={onDownloadFiles}

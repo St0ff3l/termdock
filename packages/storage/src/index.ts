@@ -1,10 +1,12 @@
 import type {
+  CommandSendPreferences,
   CommandFolder,
   CommandTemplate,
   CommandTemplateInput,
   ConnectionFolder,
   ConnectionProfile,
-  CreateProfileInput
+  CreateProfileInput,
+  TerminalCommandHistoryEntry
 } from '@termdock/core'
 
 export interface ProfileRepository {
@@ -33,6 +35,10 @@ export interface ProfileRepository {
   getCommandTemplateById(id: string): Promise<CommandTemplate | null>
   deleteCommandTemplate(id: string): Promise<void>
   updateCommandOrder(id: string, newParentId: string | undefined, newOrder: number): Promise<void>
+  getTerminalCommandHistory(profileId: string): Promise<TerminalCommandHistoryEntry[]>
+  setTerminalCommandHistory(profileId: string, entries: TerminalCommandHistoryEntry[]): Promise<void>
+  getCommandSendPreferences(): Promise<CommandSendPreferences>
+  setCommandSendPreferences(preferences: CommandSendPreferences): Promise<void>
 }
 
 export class MemoryProfileRepository implements ProfileRepository {
@@ -219,6 +225,26 @@ export class MemoryProfileRepository implements ProfileRepository {
       command.parentId = newParentId
       command.order = newOrder
     }
+  }
+
+  async getTerminalCommandHistory(_profileId: string): Promise<TerminalCommandHistoryEntry[]> {
+    return []
+  }
+
+  async setTerminalCommandHistory(_profileId: string, _entries: TerminalCommandHistoryEntry[]): Promise<void> {
+    return
+  }
+
+  async getCommandSendPreferences(): Promise<CommandSendPreferences> {
+    return {
+      rememberSelection: false,
+      sendScope: 'current',
+      selectedTabIds: []
+    }
+  }
+
+  async setCommandSendPreferences(_preferences: CommandSendPreferences): Promise<void> {
+    return
   }
 }
 

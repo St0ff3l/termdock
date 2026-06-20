@@ -32,6 +32,8 @@ import { FilePermissionModal } from './features/files/FilePermissionModal'
 import { RootAccessModal } from './features/files/RootAccessModal'
 import { AppIcon } from './features/common/AppIcon'
 import { ConfirmActionDialog } from './features/common/ConfirmActionDialog'
+import type { SendScope, SessionSendTarget } from './features/common/session-send-targets'
+import { resolveSelectedTabIds } from './features/common/session-send-targets'
 import { TabBar, type OrderedTabEntry, type TabContextTarget } from './features/layout/TabBar'
 import { TabContextMenu } from './features/layout/TabContextMenu'
 import { SystemSidebar } from './features/system/SystemSidebar'
@@ -62,6 +64,12 @@ type StoredMainTabUiState = {
   nextHomeTabNumber: number
   tabOrder: string[]
   isSystemSidebarCollapsed: boolean
+}
+
+type TerminalDockSendState = {
+  scope: SendScope
+  selectedTabIds: string[]
+  rememberSelection: boolean
 }
 
 function formatSystemInfoTabTitle(sourceTabTitle: string) {
@@ -425,6 +433,7 @@ export function App() {
   const [activeLocalTabId, setActiveLocalTabId] = useState<string | null>(() => initialMainTabUiState.activeLocalTabId)
   const [nextHomeTabNumber, setNextHomeTabNumber] = useState(() => initialMainTabUiState.nextHomeTabNumber)
   const [tabOrder, setTabOrder] = useState<string[]>(() => initialMainTabUiState.tabOrder)
+  const [terminalDockSendStateByTabId, setTerminalDockSendStateByTabId] = useState<Record<string, TerminalDockSendState>>({})
   const [draggingTabKey, setDraggingTabKey] = useState<string | null>(null)
   const [tabContextMenu, setTabContextMenu] = useState<{
     x: number
@@ -1240,7 +1249,8 @@ export function App() {
     commandId: string,
     args: string[],
     options: CommandExecutionOptions,
-    scope: 'current' | 'all-ssh'
+    scope: SendScope,
+    selectedTabIds: string[]
   ) => {
     if (!desktopApi) {
       return
@@ -1248,11 +1258,8 @@ export function App() {
 
     try {
       setIsBusy(true)
-      const targetTabs = scope === 'all-ssh'
-        ? visibleWorkspaceTabs.filter((tab) => tab.sessionType === 'ssh' && tab.status !== 'closed')
-        : activeTab && activeTab.sessionType === 'ssh'
-          ? [activeTab]
-          : []
+      const targetIds = resolveSelectedTabIds(scope, activeTab, selectedTabIds, sessionSendTargets)
+      const targetTabs = visibleWorkspaceTabs.filter((tab) => targetIds.includes(tab.id))
 
       for (const tab of targetTabs) {
         await desktopApi.executeCommandTemplate(tab.id, commandId, args, options)
@@ -1262,6 +1269,69 @@ export function App() {
     } finally {
       setIsBusy(false)
     }
+  }
+
+  const sendTerminalCommand = async (command: string) => {
+    if (!desktopApi || !activeTab) {
+      return
+    }
+
+    const targetIds = resolveSelectedTabIds(
+      activeTerminalDockSendState.scope,
+      activeTab,
+      activeTerminalDockSendState.selectedTabIds,
+      sessionSendTargets
+    )
+
+    if (!targetIds.length) {
+      setError(t.commandNoAvailableTargets)
+      return
+    }
+
+    try {
+      for (const tabId of targetIds) {
+        await desktopApi.writeTerminal(tabId, `${command}\r`)
+      }
+    } catch (err) {
+      reportError(setError, '发送终端命令', err)
+      throw err
+    } finally {
+      if (!activeTerminalDockSendState.rememberSelection && activeTab) {
+        setTerminalDockSendStateByTabId((prev) => ({
+          ...prev,
+          [activeTab.id]: {
+            scope: 'current',
+            selectedTabIds: [],
+            rememberSelection: false
+          }
+        }))
+      }
+    }
+  }
+
+  const updateTerminalDockSendState = (
+    updater: (prev: TerminalDockSendState) => TerminalDockSendState
+  ) => {
+    if (!activeTab) {
+      return
+    }
+
+    setTerminalDockSendStateByTabId((prev) => {
+      const current = prev[activeTab.id] ?? {
+        scope: 'current' as SendScope,
+        selectedTabIds: [],
+        rememberSelection: false
+      }
+
+      const next = updater(current)
+      return {
+        ...prev,
+        [activeTab.id]: {
+          ...next,
+          selectedTabIds: next.selectedTabIds.filter((tabId) => sessionSendTargets.some((target) => target.tabId === tabId))
+        }
+      }
+    })
   }
 
   const handleOpenProfile = async (profileId: string) => {
@@ -2307,6 +2377,69 @@ export function App() {
     })
     .filter((item): item is OrderedTabEntry => item !== null)
 
+  const sessionSendTargets = useMemo<SessionSendTarget[]>(
+    () =>
+      orderedTabs.flatMap((entry, index) => {
+        if (entry.kind !== 'session' || entry.tab.sessionType !== 'ssh') {
+          return []
+        }
+
+        const session = workspace.sessions[entry.tab.id]
+        if (!session?.connected) {
+          return []
+        }
+
+        return [{
+          tabId: entry.tab.id,
+          index: index + 1,
+          title: entry.tab.title,
+          label: `${index + 1} ${entry.tab.title}`,
+          isCurrent: entry.tab.id === activeTab?.id
+        }]
+      }),
+    [activeTab?.id, orderedTabs, workspace.sessions]
+  )
+
+  const activeTerminalDockSendState = activeTab
+    ? terminalDockSendStateByTabId[activeTab.id] ?? {
+        scope: 'current' as SendScope,
+        selectedTabIds: [],
+        rememberSelection: false
+      }
+    : {
+        scope: 'current' as SendScope,
+        selectedTabIds: [],
+        rememberSelection: false
+      }
+
+  useEffect(() => {
+    const validTabIds = new Set(visibleWorkspaceTabs.map((tab) => tab.id))
+    setTerminalDockSendStateByTabId((prev) => {
+      const next = Object.fromEntries(
+        Object.entries(prev).filter(([tabId]) => validTabIds.has(tabId))
+      )
+      return Object.keys(next).length === Object.keys(prev).length ? prev : next
+    })
+  }, [visibleWorkspaceTabs])
+
+  useEffect(() => {
+    const availableTargetIds = new Set(sessionSendTargets.map((target) => target.tabId))
+    setTerminalDockSendStateByTabId((prev) => {
+      let changed = false
+      const next = Object.fromEntries(
+        Object.entries(prev).map(([tabId, state]) => {
+          const selectedTabIds = state.selectedTabIds.filter((targetTabId) => availableTargetIds.has(targetTabId))
+          if (selectedTabIds.length !== state.selectedTabIds.length) {
+            changed = true
+            return [tabId, { ...state, selectedTabIds }]
+          }
+          return [tabId, state]
+        })
+      )
+      return changed ? next : prev
+    })
+  }, [sessionSendTargets])
+
   const handleOpenRemoteItem = (item: RemoteFileItem) => {
     if (!desktopApi || !activeTab) {
       return
@@ -2847,7 +2980,9 @@ export function App() {
               activeProfile={activeProfile}
               activeSession={activeSession}
               activeTab={activeTab}
-              tabs={visibleWorkspaceTabs}
+              sendTargets={sessionSendTargets}
+              terminalDockSendScope={activeTerminalDockSendState.scope}
+              terminalDockSelectedTabIds={activeTerminalDockSendState.selectedTabIds}
               commandFolders={workspace.commandFolders || []}
               commandTemplates={workspace.commandTemplates || []}
               folders={workspace.folders || []}
@@ -2862,8 +2997,25 @@ export function App() {
               onCopyItems={setClipboardItems.bind(null, 'copy')}
               onCutItems={setClipboardItems.bind(null, 'cut')}
               onClearCutState={clearCutState}
-              onExecuteCommand={(commandId, args, options, scope) => {
-                void executeCommandTemplate(commandId, args, options, scope)
+              onExecuteCommand={(commandId, args, options, scope, selectedTabIds) => {
+                void executeCommandTemplate(commandId, args, options, scope, selectedTabIds)
+              }}
+              onSendTerminalCommand={sendTerminalCommand}
+              onTerminalDockSendScopeChange={(scope, rememberSelection) => {
+                updateTerminalDockSendState((prev) => ({
+                  ...prev,
+                  scope,
+                  rememberSelection,
+                  selectedTabIds: scope === 'selected-ssh' ? prev.selectedTabIds : []
+                }))
+              }}
+              onTerminalDockSelectedTabIdsChange={(selectedTabIds, rememberSelection) => {
+                updateTerminalDockSendState((prev) => ({
+                  ...prev,
+                  scope: 'selected-ssh',
+                  selectedTabIds,
+                  rememberSelection
+                }))
               }}
               onOpenCommandManager={openCommandManager}
               profiles={workspace.profiles}

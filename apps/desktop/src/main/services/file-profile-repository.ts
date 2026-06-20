@@ -3,7 +3,9 @@ import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { safeStorage } from 'electron'
 import type {
+  CommandSendPreferences,
   CommandFolder,
+  TerminalCommandHistoryEntry,
   CommandTemplate,
   CommandTemplateInput,
   ConnectionFolder,
@@ -47,6 +49,8 @@ export class FileProfileRepository implements ProfileRepository {
   private readonly foldersPath: string
   private readonly commandFoldersPath: string
   private readonly commandsPath: string
+  private readonly commandHistoryPath: string
+  private readonly commandSendPreferencesPath: string
   private readonly seedProfiles: ConnectionProfile[]
   private readonly seedCommandTemplates: CommandTemplate[]
   private readonly seedCommandFolders: CommandFolder[]
@@ -63,6 +67,8 @@ export class FileProfileRepository implements ProfileRepository {
     this.foldersPath = path.join(baseDir, 'folders.json')
     this.commandFoldersPath = path.join(baseDir, 'command-folders.json')
     this.commandsPath = path.join(baseDir, 'commands.json')
+    this.commandHistoryPath = path.join(baseDir, 'command-history.json')
+    this.commandSendPreferencesPath = path.join(baseDir, 'command-send-preferences.json')
     this.seedProfiles = seedProfiles
     this.seedCommandTemplates = seedCommandTemplates
     this.seedCommandFolders = seedCommandFolders
@@ -321,6 +327,38 @@ export class FileProfileRepository implements ProfileRepository {
     )))
   }
 
+  async getTerminalCommandHistory(profileId: string): Promise<TerminalCommandHistoryEntry[]> {
+    const historyMap = await this.readCommandHistoryMap()
+    return [...(historyMap[profileId] ?? [])]
+  }
+
+  async setTerminalCommandHistory(profileId: string, entries: TerminalCommandHistoryEntry[]): Promise<void> {
+    const historyMap = await this.readCommandHistoryMap()
+    const nextEntries = entries
+      .filter((entry) => entry.command.trim().length > 0 && Number.isFinite(entry.createdAt))
+      .map((entry) => ({
+        command: entry.command,
+        createdAt: entry.createdAt
+      }))
+
+    await this.writeCommandHistoryMap({
+      ...historyMap,
+      [profileId]: nextEntries
+    })
+  }
+
+  async getCommandSendPreferences(): Promise<CommandSendPreferences> {
+    return this.readCommandSendPreferences()
+  }
+
+  async setCommandSendPreferences(preferences: CommandSendPreferences): Promise<void> {
+    await this.writeCommandSendPreferences({
+      rememberSelection: preferences.rememberSelection,
+      sendScope: preferences.sendScope,
+      selectedTabIds: preferences.selectedTabIds
+    })
+  }
+
   private async ensureFile() {
     await mkdir(path.dirname(this.filePath), { recursive: true })
     try {
@@ -342,6 +380,20 @@ export class FileProfileRepository implements ProfileRepository {
       await readFile(this.commandsPath, 'utf8')
     } catch {
       await this.writeCommandTemplates(this.seedCommandTemplates)
+    }
+    try {
+      await readFile(this.commandHistoryPath, 'utf8')
+    } catch {
+      await this.writeCommandHistoryMap({})
+    }
+    try {
+      await readFile(this.commandSendPreferencesPath, 'utf8')
+    } catch {
+      await this.writeCommandSendPreferences({
+        rememberSelection: false,
+        sendScope: 'current',
+        selectedTabIds: []
+      })
     }
 
     await this.removeLegacyDemoData()
@@ -373,6 +425,30 @@ export class FileProfileRepository implements ProfileRepository {
         ? undefined
         : this.writeCommandTemplates(nextCommandTemplates)
     ])
+  }
+
+  private async readCommandHistoryMap(): Promise<Record<string, TerminalCommandHistoryEntry[]>> {
+    await this.ready
+    return readJsonFile<Record<string, TerminalCommandHistoryEntry[]>>(this.commandHistoryPath, {})
+  }
+
+  private async writeCommandHistoryMap(historyMap: Record<string, TerminalCommandHistoryEntry[]>) {
+    await mkdir(path.dirname(this.commandHistoryPath), { recursive: true })
+    await writeFile(this.commandHistoryPath, JSON.stringify(historyMap, null, 2), 'utf8')
+  }
+
+  private async readCommandSendPreferences(): Promise<CommandSendPreferences> {
+    await this.ready
+    return readJsonFile<CommandSendPreferences>(this.commandSendPreferencesPath, {
+      rememberSelection: false,
+      sendScope: 'current',
+      selectedTabIds: []
+    })
+  }
+
+  private async writeCommandSendPreferences(preferences: CommandSendPreferences) {
+    await mkdir(path.dirname(this.commandSendPreferencesPath), { recursive: true })
+    await writeFile(this.commandSendPreferencesPath, JSON.stringify(preferences, null, 2), 'utf8')
   }
 
   private async readProfiles(): Promise<ConnectionProfile[]> {

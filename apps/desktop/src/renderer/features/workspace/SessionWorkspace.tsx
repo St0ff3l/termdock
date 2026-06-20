@@ -9,13 +9,16 @@ import type {
   WorkspaceTab
 } from '@termdock/core'
 import { TerminalView } from '../../components/TerminalView'
+import type { SendScope, SessionSendTarget } from '../common/session-send-targets'
 import { FileManager } from '../files/FileManager'
 import { TerminalDock } from '../terminal/TerminalDock'
 
 export function SessionWorkspace({
   activeTab,
   activeSession,
-  tabs,
+  sendTargets,
+  terminalDockSendScope,
+  terminalDockSelectedTabIds,
   localItems,
   localPath,
   canPasteToLocal,
@@ -30,6 +33,9 @@ export function SessionWorkspace({
   onCutItems,
   onClearCutState,
   onExecuteCommand,
+  onSendTerminalCommand,
+  onTerminalDockSendScopeChange,
+  onTerminalDockSelectedTabIdsChange,
   onOpenCommandManager,
   onOpenLocalItem,
   onOpenLocalPath,
@@ -52,7 +58,9 @@ export function SessionWorkspace({
 }: {
   activeTab: WorkspaceTab
   activeSession: SessionSnapshot
-  tabs: WorkspaceTab[]
+  sendTargets: SessionSendTarget[]
+  terminalDockSendScope: SendScope
+  terminalDockSelectedTabIds: string[]
   localItems: LocalFileItem[]
   localPath: string
   canPasteToLocal: boolean
@@ -66,7 +74,10 @@ export function SessionWorkspace({
   onCopyItems(pane: 'local' | 'remote', items: Array<LocalFileItem | RemoteFileItem>): void
   onCutItems(pane: 'local' | 'remote', items: Array<LocalFileItem | RemoteFileItem>): void
   onClearCutState(): void
-  onExecuteCommand(commandId: string, args: string[], options: CommandExecutionOptions, scope: 'current' | 'all-ssh'): void
+  onExecuteCommand(commandId: string, args: string[], options: CommandExecutionOptions, scope: SendScope, selectedTabIds: string[]): void
+  onSendTerminalCommand(command: string): Promise<void>
+  onTerminalDockSendScopeChange(scope: SendScope, rememberSelection: boolean): void
+  onTerminalDockSelectedTabIdsChange(tabIds: string[], rememberSelection: boolean): void
   onOpenCommandManager(): void
   onOpenLocalItem(item: LocalFileItem): void
   onOpenLocalPath(path: string): void
@@ -260,9 +271,14 @@ export function SessionWorkspace({
             key={activeTab.id}
             activeTab={activeTab}
             connected={activeSession.connected === true}
-            remotePath={activeSession.remotePath}
+            selectedTabIds={terminalDockSelectedTabIds}
+            sendScope={terminalDockSendScope}
+            sendTargets={sendTargets}
             filePanelHeight={filePanelHeight}
             setFilePanelHeight={setFilePanelHeight}
+            onSelectedTabIdsChange={onTerminalDockSelectedTabIdsChange}
+            onSendCommand={onSendTerminalCommand}
+            onSendScopeChange={onTerminalDockSendScopeChange}
           />
         </div>
       ) : null}
@@ -292,7 +308,7 @@ export function SessionWorkspace({
       <FileManager
         activeSession={activeSession}
         activeTab={activeTab}
-        tabs={tabs}
+        sendTargets={sendTargets}
         commandFolders={commandFolders}
         commandTemplates={commandTemplates}
         isBusy={isBusy}

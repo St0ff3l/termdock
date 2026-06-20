@@ -186,6 +186,7 @@
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   pointer-events: auto;
+  z-index: 30;
 }
 
 .terminal-dock-panel-head {

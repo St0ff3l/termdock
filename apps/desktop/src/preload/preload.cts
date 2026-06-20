@@ -1,7 +1,9 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron') as typeof import('electron')
 
 import type {
+  CommandSendPreferences,
   CommandExecutionOptions,
+  TerminalCommandHistoryEntry,
   CommandTemplateInput,
   CommandFolder,
   ConnectionFormMode,
@@ -98,6 +100,14 @@ const api: TermdockDesktopApi = {
     ipcRenderer.invoke('workspace:deleteCommandTemplate', commandId),
   executeCommandTemplate: (tabId: string, commandId: string, args?: string[], options?: CommandExecutionOptions): Promise<CommandExecutionResult> =>
     ipcRenderer.invoke('workspace:executeCommandTemplate', tabId, commandId, args, options),
+  getTerminalCommandHistory: (profileId: string): Promise<TerminalCommandHistoryEntry[]> =>
+    ipcRenderer.invoke('workspace:getTerminalCommandHistory', profileId),
+  setTerminalCommandHistory: (profileId: string, entries: TerminalCommandHistoryEntry[]): Promise<void> =>
+    ipcRenderer.invoke('workspace:setTerminalCommandHistory', profileId, entries),
+  getCommandSendPreferences: (): Promise<CommandSendPreferences> =>
+    ipcRenderer.invoke('workspace:getCommandSendPreferences'),
+  setCommandSendPreferences: (preferences: CommandSendPreferences): Promise<void> =>
+    ipcRenderer.invoke('workspace:setCommandSendPreferences', preferences),
   openProfile: (profileId: string): Promise<WorkspaceSnapshot> =>
     ipcRenderer.invoke('workspace:openProfile', profileId),
   openProfileFromManager: (profileId: string): Promise<WorkspaceSnapshot> =>

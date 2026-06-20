@@ -3,6 +3,7 @@ import { mkdir, readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { WebContents } from 'electron'
 import {
+  type CommandSendPreferences,
   type CommandExecutionOptions,
   type CommandTemplateInput,
   type CommandFolder,
@@ -10,6 +11,7 @@ import {
   type ConnectionLibrarySnapshot,
   type ConnectionProfile,
   type CommandExecutionResult,
+  type TerminalCommandHistoryEntry,
   type CreateProfileInput,
   type RemoteFileAccessOptions,
   type RemoteFileItem,
@@ -184,6 +186,22 @@ export class WorkspaceService {
     await controller.write(appendCarriageReturn ? `${renderedCommand}\r` : renderedCommand)
 
     return { renderedCommand }
+  }
+
+  async getTerminalCommandHistory(profileId: string): Promise<TerminalCommandHistoryEntry[]> {
+    return this.profileRepository.getTerminalCommandHistory(profileId)
+  }
+
+  async setTerminalCommandHistory(profileId: string, entries: TerminalCommandHistoryEntry[]): Promise<void> {
+    await this.profileRepository.setTerminalCommandHistory(profileId, entries)
+  }
+
+  async getCommandSendPreferences(): Promise<CommandSendPreferences> {
+    return this.profileRepository.getCommandSendPreferences()
+  }
+
+  async setCommandSendPreferences(preferences: CommandSendPreferences): Promise<void> {
+    await this.profileRepository.setCommandSendPreferences(preferences)
   }
 
   async openProfile(profileId: string, sender: WebContents): Promise<WorkspaceSnapshot> {
