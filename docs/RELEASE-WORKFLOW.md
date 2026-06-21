@@ -22,14 +22,16 @@ gitGraph
    commit id: "chore: bump version"
    checkout release/0.1.0-beta.10
    merge chore/bump-v0.1.0-beta.10
+   checkout release/0.1.0-beta.10
+   commit id: "tag v0.1.0-beta.10"
    checkout main
-   merge release/0.1.0-beta.10 tag: "v0.1.0-beta.10"
+   merge release/0.1.0-beta.10
 ```
 
 - **每个版本一条 release 分支**，如 `release/0.1.0-beta.10`
 - **release 分支受保护**，禁止直接 push，所有改动（包括版本号 bump）必须通过分支 + PR 进入
 - **日常开发往 release 分支合**，main 只在发版时收一次最终 PR
-- **main 上的 tag 是唯一发版触发器**，不往 main 乱打 tag
+- **release 分支上的 tag 是唯一发版触发器**，不往 main 乱打 tag
 
 ---
 
@@ -121,16 +123,24 @@ git push -u origin chore/bump-v0.1.0-beta.10
 # Compare: release/0.1.0-beta.10
 ```
 
-合并后立刻：
+确认 release 分支测试通过后，先在对应 release 分支打 tag 触发打包：
 
 ```bash
-git checkout main
-git pull origin main
+git checkout release/0.1.0-beta.10
+git pull origin release/0.1.0-beta.10
 git tag v0.1.0-beta.10
 git push origin v0.1.0-beta.10
 ```
 
 **tag push 后 GitHub Actions 自动触发打包**（macOS arm64/x64 + Windows x64），完成后自动创建 Pre-release。
+
+打包确认没问题后，再把 release 分支合回 main：
+
+```bash
+# GitHub 上创建 PR：
+# Base:   main
+# Compare: release/0.1.0-beta.10
+```
 
 ---
 
@@ -149,7 +159,7 @@ git push origin release/0.1.0-beta.11
 
 ```
 feat/A-v0.1.0 ──┐
-                ├──> release/0.1.0 ──> (测试通过) ──> main ──> tag v0.1.0
+                ├──> release/0.1.0 ──> tag v0.1.0 ──> (打包确认) ──> main
 feat/B-v0.1.0 ──┘                                        │
                                                     release/0.2.0
                                                          │
@@ -177,7 +187,7 @@ on:
       - 'release/**'
 ```
 
-Release workflow（`release.yml`）只在 **main 上打 tag** 时触发打包：
+Release workflow（`release.yml`）只在 **release 分支对应提交上打 tag** 时触发打包：
 
 ```yaml
 on:
@@ -195,6 +205,6 @@ on:
 - [ ] PR 的 Base 选 release 分支（不是 main）
 - [ ] 代码 Review 通过后合并到 release 分支
 - [ ] 所有功能合完后，从 release 切 `chore/bump-v0.1.0` 分支改版本号，提 PR 合回 release
-- [ ] release → main 的发版 PR 由负责人合并
-- [ ] 合并后立即在 main 上打 tag
+- [ ] release 分支验证通过后，在 release 分支上打 tag
 - [ ] tag push 触发构建 Action
+- [ ] release → main 的发版 PR 由负责人合并
