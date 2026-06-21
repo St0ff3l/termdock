@@ -3218,6 +3218,8 @@ export function App() {
               }}
               onOpenLogsDirectory={openLogsDirectory}
               tabBarProps={tabBarProps}
+              isResizingSidebar={isResizingSidebar}
+              onResizeStart={() => setIsResizingSidebar(true)}
             />
           </div>
         </main>

@@ -87,7 +87,9 @@ export function WorkspaceStage({
   onSetTheme,
   onSetLocale,
   onOpenLogsDirectory,
-  tabBarProps
+  tabBarProps,
+  isResizingSidebar,
+  onResizeStart
 }: {
   activeLocalTab: ActiveLocalTab
   activeHomeTabId: string | null
@@ -156,6 +158,8 @@ export function WorkspaceStage({
   onSetLocale(value: 'zhCN' | 'enUS'): void
   onOpenLogsDirectory(): void
   tabBarProps: any
+  isResizingSidebar: boolean
+  onResizeStart(): void
 }) {
   if (activeLocalTab?.kind === 'system') {
     return <SystemInfoWorkspace activeProfile={activeProfile} activeSession={activeSession} />
@@ -237,6 +241,8 @@ export function WorkspaceStage({
       onOpenLogsDirectory={onOpenLogsDirectory}
       profiles={profiles}
       tabBarProps={tabBarProps}
+      isResizingSidebar={isResizingSidebar}
+      onResizeStart={onResizeStart}
     />
   )
 }
