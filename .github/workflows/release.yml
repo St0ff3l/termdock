@@ -133,14 +133,36 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v5
 
+      - name: Clean up stale draft releases
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release list --limit 100 --json tagName,isDraft \
+            | jq -r '.[] | select(.isDraft) | .tagName' \
+            | while read -r tag; do
+              echo "Deleting draft release: ${tag}"
+              gh release delete "${tag}" --yes --cleanup-tag 2>/dev/null || true
+            done
+
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
-          prerelease: true
-          generate_release_notes: true
-          files: |
-            **/*.dmg
-            **/*.zip
-            **/*.exe
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          TAG="${GITHUB_REF_NAME}"
+
+          # Delete any existing release for this tag (draft or otherwise)
+          if gh release view "${TAG}" &>/dev/null; then
+            echo "Removing existing release for tag ${TAG}..."
+            gh release delete "${TAG}" --yes --cleanup-tag 2>/dev/null || true
+            sleep 2  # Give GitHub API time to sync
+          fi
+
+          echo "Creating release for ${TAG}..."
+          gh release create "${TAG}" \
+            --prerelease \
+            --generate-notes \
+            **/*.dmg **/*.zip **/*.exe
