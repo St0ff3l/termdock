@@ -66,8 +66,10 @@ export function WorkspaceStage({
   onRequestNewFolder,
   onRequestQuickDelete,
   onRequestRename,
+  onToggleFollowShellCwd,
   onToggleRemoteFileAccessMode,
   remoteFileAccessMode,
+  isRemoteDirectoryLoading,
   onRefresh,
   onUploadFiles,
   onCreateConnection,
@@ -136,8 +138,10 @@ export function WorkspaceStage({
   onRequestNewFolder(pane: 'local' | 'remote', directoryPath: string): void
   onRequestQuickDelete(pane: 'local' | 'remote', items: Array<LocalFileItem | RemoteFileItem>): void
   onRequestRename(pane: 'local' | 'remote', item: LocalFileItem | RemoteFileItem): void
+  onToggleFollowShellCwd(): void
   onToggleRemoteFileAccessMode(): void
   remoteFileAccessMode: 'user' | 'root'
+  isRemoteDirectoryLoading: boolean
   onRefresh(): void
   onUploadFiles(items: LocalFileItem[]): void
   onCreateConnection(): void
@@ -205,8 +209,10 @@ export function WorkspaceStage({
         onRequestNewFolder={onRequestNewFolder}
         onRequestQuickDelete={onRequestQuickDelete}
         onRequestRename={onRequestRename}
+        onToggleFollowShellCwd={onToggleFollowShellCwd}
         onToggleRemoteFileAccessMode={onToggleRemoteFileAccessMode}
         remoteFileAccessMode={remoteFileAccessMode}
+        isRemoteDirectoryLoading={isRemoteDirectoryLoading}
         onRefresh={onRefresh}
         onUploadFiles={onUploadFiles}
       />

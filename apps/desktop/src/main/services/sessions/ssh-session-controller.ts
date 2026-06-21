@@ -20,6 +20,11 @@ import type {
 } from '@termdock/core'
 import { BaseFileSessionController } from './base-file-session-controller.js'
 import { buildMetricsCommand, parentRemotePath, parseSystemMetrics, toRemoteFileItem } from './session-file-utils.js'
+import {
+  buildShellCwdIntegrationCommand,
+  detectRemoteShellKind,
+  ShellCwdTracker
+} from './shell-cwd-integration.js'
 import { createSshDebugLogger, isSshDebugEnabled, singleLine } from './ssh-debug-logger.js'
 import { decodeBuffer, encodeText } from '../text-encoding.js'
 import { appLog, appWarn } from '../app-logger.js'
@@ -54,6 +59,8 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
   private pendingResize?: { cols: number; rows: number; width: number; height: number }
   private transcript = ''
   private currentRemotePath: string
+  private shellCwd?: string
+  private readonly shellCwdTracker = new ShellCwdTracker()
   private fileAccessMode: 'user' | 'root' = 'user'
   private sudoUser = 'root'
   private sudoPassword?: string
@@ -68,6 +75,7 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
     private readonly requestInteraction: (request: SshInteractionDraft) => Promise<SshInteractionResponse>,
     private readonly rememberTrustedHostFingerprint: (fingerprint: string) => Promise<void>,
     private readonly onData: (chunk: string) => void,
+    private readonly onShellCwdChange: (cwd: string) => void,
     private readonly onStateChange: (summary: string, transcript: string, connected: boolean) => void,
     initialTranscript?: string
   ) {
@@ -160,12 +168,20 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
                 const text = chunk.toString('utf8')
                 this.transcript = trimTranscript(`${this.transcript}${text}`, LiveSshSessionController.TRANSCRIPT_LIMIT)
                 this.trackSudoPromptFromTerminal(text)
+                for (const cwd of this.shellCwdTracker.feed(text)) {
+                  if (cwd !== this.shellCwd) {
+                    this.shellCwd = cwd
+                    this.onShellCwdChange(cwd)
+                  }
+                }
                 this.onData(text)
               })
               stream.on('close', () => {
                 this.handlePrimaryDisconnect()
                 this.onStateChange('Shell closed', this.transcript, false)
               })
+
+              void this.installShellCwdIntegration(stream)
 
               if (!settled) {
                 settled = true
@@ -313,6 +329,10 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
     return this.transcript
   }
 
+  getShellCwd(): string | undefined {
+    return this.shellCwd
+  }
+
   override getRemotePath(): string {
     return this.currentRemotePath
   }
@@ -402,16 +422,67 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
   }
 
   async openRemotePath(nextPath: string): Promise<RemoteFileItem[]> {
+    const previousPath = this.currentRemotePath
     this.currentRemotePath = nextPath
-    if (this.fileAccessMode === 'root') {
-      return this.readRemoteDirectoryViaShell(this.currentRemotePath, new Error('Root file access mode enabled'))
+    try {
+      if (this.fileAccessMode === 'root') {
+        return await this.readRemoteDirectoryViaShell(this.currentRemotePath, new Error('Root file access mode enabled'))
+      }
+
+      try {
+        return await this.readRemoteDirectory(this.currentRemotePath)
+      } catch (error) {
+        return await this.readRemoteDirectoryViaShell(this.currentRemotePath, error)
+      }
+    } catch (error) {
+      this.currentRemotePath = previousPath
+      throw error
+    }
+  }
+
+  private async installShellCwdIntegration(stream: ClientChannel): Promise<void> {
+    if ((this.profile as SshProfile).enableExecChannel === false) {
+      this.sshDebug.log('main', 'Shell cwd integration skipped because Exec Channel is disabled')
+      return
     }
 
     try {
-      return await this.readRemoteDirectory(this.currentRemotePath)
+      const shellPath = await this.detectRemoteLoginShell()
+      const command = buildShellCwdIntegrationCommand(detectRemoteShellKind(shellPath))
+      stream.write(` ${command}\r`)
     } catch (error) {
-      return this.readRemoteDirectoryViaShell(this.currentRemotePath, error)
+      this.sshDebug.log(
+        'main',
+        `Shell cwd integration unavailable: ${error instanceof Error ? error.message : String(error)}`
+      )
     }
+  }
+
+  private async detectRemoteLoginShell(): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+      this.ssh.exec('printf %s "$SHELL"', (error, channel) => {
+        if (error) {
+          reject(error)
+          return
+        }
+
+        let stdout = ''
+        let stderr = ''
+        channel.on('data', (chunk: Buffer) => {
+          stdout += chunk.toString('utf8')
+        })
+        channel.stderr.on('data', (chunk: Buffer) => {
+          stderr += chunk.toString('utf8')
+        })
+        channel.on('close', (code?: number) => {
+          if (code && code !== 0) {
+            reject(new Error(stderr.trim() || `Shell detection exited with code ${code}`))
+            return
+          }
+          resolve(stdout.trim())
+        })
+      })
+    })
   }
 
   async readRemoteFile(targetPath: string, encoding = 'utf-8'): Promise<string> {

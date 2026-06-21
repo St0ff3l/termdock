@@ -166,8 +166,10 @@ export function FileManager({
   onRequestNewFolder,
   onRequestQuickDelete,
   onRequestRename,
+  onToggleFollowShellCwd,
   onToggleRemoteFileAccessMode,
-  remoteFileAccessMode
+  remoteFileAccessMode,
+  isRemoteDirectoryLoading
 }: {
   activeSession: SessionSnapshot
   activeTab: WorkspaceTab | null
@@ -203,12 +205,15 @@ export function FileManager({
   onRequestNewFolder(pane: 'local' | 'remote', directoryPath: string): void
   onRequestQuickDelete(pane: 'local' | 'remote', items: Array<LocalFileItem | RemoteFileItem>): void
   onRequestRename(pane: 'local' | 'remote', item: LocalFileItem | RemoteFileItem): void
+  onToggleFollowShellCwd(): void
   onToggleRemoteFileAccessMode(): void
   remoteFileAccessMode: 'user' | 'root'
+  isRemoteDirectoryLoading: boolean
 }) {
   const defaultRemoteSort = { field: 'name', direction: 'asc' } satisfies RemoteFileSortState
   const isRemoteConnected = activeSession.connected === true
   const isSshSession = activeTab?.sessionType === 'ssh'
+  const showRemoteDirectoryLoading = isRemoteDirectoryLoading || activeSession.remoteFilesLoading === true
   const [activeView, setActiveView] = useState<'file' | 'command'>('file')
   const [localPaneWidth, setLocalPaneWidth] = useState(214)
   const [localPathInput, setLocalPathInput] = useState(localPath)
@@ -740,11 +745,26 @@ export function FileManager({
             hint={isRemoteConnected ? t.dragUpload : t.remoteDisconnectedDescription}
             label={t.remoteHost}
             value={remotePathInput}
+            action={isSshSession ? (
+              <button
+                aria-pressed={activeSession.followShellCwd !== false}
+                className={`follow-shell-cwd-toggle ${activeSession.followShellCwd !== false ? 'is-active' : ''}`}
+                disabled={!isRemoteConnected}
+                onClick={onToggleFollowShellCwd}
+                title={activeSession.shellCwd
+                  ? `${t.shellCwd}: ${activeSession.shellCwd}`
+                  : t.followShellCwdUnavailable}
+                type="button"
+              >
+                {t.followShellCwd}
+              </button>
+            ) : null}
             onChange={setRemotePathInput}
             onSubmit={submitRemotePath}
           />
           <div
-            className="file-table-shell"
+            aria-busy={showRemoteDirectoryLoading}
+            className={`file-table-shell remote-file-table-shell ${showRemoteDirectoryLoading ? 'is-loading' : ''}`}
             onContextMenu={(event) => {
               if (!isRemoteConnected) return
               if (event.target !== event.currentTarget) return
@@ -847,6 +867,16 @@ export function FileManager({
                 }
               }}
             />
+            {showRemoteDirectoryLoading ? (
+              <div
+                aria-label={t.loadingRemoteDirectory}
+                aria-live="polite"
+                className="remote-directory-loading"
+                role="status"
+              >
+                <span aria-hidden="true" className="remote-directory-loading-spinner" />
+              </div>
+            ) : null}
           </div>
         </div>
       </div>

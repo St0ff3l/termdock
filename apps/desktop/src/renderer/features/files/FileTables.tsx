@@ -1,4 +1,4 @@
-import type { DragEvent, FormEvent, MouseEvent } from 'react'
+import type { DragEvent, FormEvent, MouseEvent, ReactNode } from 'react'
 import type { LocalFileItem, RemoteFileItem } from '@termdock/core'
 import { t } from '../../i18n'
 import { AppIcon } from '../common/AppIcon'
@@ -16,6 +16,7 @@ export function PanePathBar({
   label,
   value,
   disabled = false,
+  action,
   onChange,
   onSubmit
 }: {
@@ -23,6 +24,7 @@ export function PanePathBar({
   label: string
   value: string
   disabled?: boolean
+  action?: ReactNode
   onChange(value: string): void
   onSubmit(event: FormEvent<HTMLFormElement>): void
 }) {
@@ -35,6 +37,7 @@ export function PanePathBar({
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
+      {action}
       {hint ? <span>{hint}</span> : null}
     </form>
   )

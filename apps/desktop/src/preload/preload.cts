@@ -174,6 +174,8 @@ const api: TermdockDesktopApi = {
     ipcRenderer.invoke('terminal:resize', tabId, cols, rows, width, height),
   openRemotePath: (tabId: string, targetPath: string): Promise<WorkspaceSnapshot> =>
     ipcRenderer.invoke('remoteFiles:openPath', tabId, targetPath),
+  setFollowShellCwd: (tabId: string, enabled: boolean): Promise<WorkspaceSnapshot> =>
+    ipcRenderer.invoke('remoteFiles:setFollowShellCwd', tabId, enabled),
   readRemoteFile: (tabId: string, targetPath: string, encoding?: string): Promise<string> =>
     ipcRenderer.invoke('remoteFiles:readFile', tabId, targetPath, encoding),
   writeRemoteFile: (tabId: string, targetPath: string, content: string, encoding?: string): Promise<WorkspaceSnapshot> =>

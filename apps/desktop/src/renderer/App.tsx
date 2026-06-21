@@ -473,6 +473,7 @@ export function App() {
   const [error, setError] = useState<string | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [isBusy, setIsBusy] = useState(false)
+  const [remoteDirectoryLoadingTabId, setRemoteDirectoryLoadingTabId] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [hasLoadedInitialSnapshot, setHasLoadedInitialSnapshot] = useState(false)
   const [showForm, setShowForm] = useState(false)
@@ -2603,12 +2604,12 @@ export function App() {
 
     void (async () => {
       try {
-        setIsBusy(true)
+        setRemoteDirectoryLoadingTabId(activeTab.id)
         await openRemoteDirectory(activeTab.id, item.path, item)
       } catch (err) {
         reportError(setError, '打开远程文件夹', err, { targetPath: item.path, item })
       } finally {
-        setIsBusy(false)
+        setRemoteDirectoryLoadingTabId((current) => current === activeTab.id ? null : current)
       }
     })()
   }
@@ -2624,12 +2625,12 @@ export function App() {
 
     void (async () => {
       try {
-        setIsBusy(true)
+        setRemoteDirectoryLoadingTabId(activeTab.id)
         await openRemoteDirectory(activeTab.id, targetPath)
       } catch (err) {
         reportError(setError, '打开远程路径', err, { targetPath })
       } finally {
-        setIsBusy(false)
+        setRemoteDirectoryLoadingTabId((current) => current === activeTab.id ? null : current)
       }
     })()
   }
@@ -2645,14 +2646,14 @@ export function App() {
 
     void (async () => {
       try {
-        setIsBusy(true)
+        setRemoteDirectoryLoadingTabId(activeTab.id)
         setFileClipboard(null)
         await openLocalDirectory(localPath)
         await openRemoteDirectory(activeTab.id, activeSession.remotePath)
       } catch (err) {
         reportError(setError, '刷新工作区', err, { targetPath: activeSession.remotePath })
       } finally {
-        setIsBusy(false)
+        setRemoteDirectoryLoadingTabId((current) => current === activeTab.id ? null : current)
       }
     })()
   }
@@ -2711,6 +2712,28 @@ export function App() {
         reportError(setError, '切换到普通视角', err)
       } finally {
         setIsBusy(false)
+      }
+    })()
+  }
+
+  const handleToggleFollowShellCwd = () => {
+    if (!desktopApi || !activeTab || activeTab.sessionType !== 'ssh' || !activeSession) {
+      return
+    }
+
+    if (!ensureActiveRemoteSessionConnected()) {
+      return
+    }
+
+    void (async () => {
+      try {
+        const snapshot = await desktopApi.setFollowShellCwd(
+          activeTab.id,
+          activeSession.followShellCwd === false
+        )
+        applySnapshot(snapshot)
+      } catch (err) {
+        reportError(setError, '切换终端目录跟随', err)
       }
     })()
   }
@@ -3189,8 +3212,10 @@ export function App() {
               onRequestNewFolder={requestNewFolder}
               onRequestQuickDelete={handleQuickDelete}
               onRequestRename={requestRename}
+              onToggleFollowShellCwd={handleToggleFollowShellCwd}
               onToggleRemoteFileAccessMode={handleToggleRemoteFileAccessMode}
               remoteFileAccessMode={activeSession?.fileAccessMode ?? 'user'}
+              isRemoteDirectoryLoading={remoteDirectoryLoadingTabId === activeTab?.id}
               onRefresh={handleRefreshWorkspace}
               onUploadFiles={handleUploadFiles}
               theme={themeMode}

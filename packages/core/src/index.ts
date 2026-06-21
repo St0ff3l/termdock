@@ -247,6 +247,9 @@ export interface SessionSnapshot {
   summary: string
   terminalTranscript?: string
   remotePath: string
+  shellCwd?: string
+  followShellCwd?: boolean
+  remoteFilesLoading?: boolean
   remoteFiles: RemoteFileItem[]
   fileAccessMode?: 'user' | 'root'
   sudoUser?: string
@@ -471,6 +474,7 @@ export interface TermdockDesktopApi {
   writeTerminal(tabId: string, data: string): Promise<void>
   resizeTerminal(tabId: string, cols: number, rows: number, width: number, height: number): Promise<void>
   openRemotePath(tabId: string, targetPath: string): Promise<WorkspaceSnapshot>
+  setFollowShellCwd(tabId: string, enabled: boolean): Promise<WorkspaceSnapshot>
   readRemoteFile(tabId: string, targetPath: string, encoding?: string): Promise<string>
   writeRemoteFile(tabId: string, targetPath: string, content: string, encoding?: string): Promise<WorkspaceSnapshot>
   createRemoteDirectory(tabId: string, parentPath: string, name: string): Promise<WorkspaceSnapshot>
@@ -502,6 +506,7 @@ export interface SessionController {
 export interface ShellSessionController extends SessionController {
   readonly type: 'ssh'
   getTerminalTranscript(): string
+  getShellCwd(): string | undefined
   write(data: string): Promise<void>
   resize(cols: number, rows: number, width: number, height: number): Promise<void>
 }

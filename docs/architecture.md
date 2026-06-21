@@ -304,7 +304,28 @@ interface FtpSession {
 }
 ```
 
-### 7.4 Workspace Tab
+### 7.4 SSH shell cwd 跟随
+
+SSH 终端与远程文件区通过真实 shell cwd 联动，不解析用户输入的 `cd` 文本：
+
+```txt
+shell integration
+  -> OSC 7 cwd
+    -> SSH controller cwd changed
+      -> workspace runtime follow policy
+        -> SessionSnapshot
+          -> renderer
+```
+
+`SessionSnapshot` 中三个字段语义保持独立：
+
+- `shellCwd`：远端交互式 shell 当前工作目录。
+- `remotePath`：远程文件面板当前展示目录。
+- `followShellCwd`：该 tab 是否允许 cwd 变化驱动文件面板。
+
+shell 注入按 bash、zsh、fish、POSIX 风格策略选择；探测或注入失败时只降级目录跟随，不影响 SSH、SFTP 和终端输入输出。
+
+### 7.5 Workspace Tab
 
 ```ts
 interface WorkspaceTab {

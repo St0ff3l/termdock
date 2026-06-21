@@ -48,8 +48,10 @@ export function SessionWorkspace({
   onRequestNewFolder,
   onRequestQuickDelete,
   onRequestRename,
+  onToggleFollowShellCwd,
   onToggleRemoteFileAccessMode,
   remoteFileAccessMode,
+  isRemoteDirectoryLoading,
   onRefresh,
   onUploadFiles,
   onChooseUploadFiles,
@@ -90,8 +92,10 @@ export function SessionWorkspace({
   onRequestNewFolder(pane: 'local' | 'remote', directoryPath: string): void
   onRequestQuickDelete(pane: 'local' | 'remote', items: Array<LocalFileItem | RemoteFileItem>): void
   onRequestRename(pane: 'local' | 'remote', item: LocalFileItem | RemoteFileItem): void
+  onToggleFollowShellCwd(): void
   onToggleRemoteFileAccessMode(): void
   remoteFileAccessMode: 'user' | 'root'
+  isRemoteDirectoryLoading: boolean
   onRefresh(): void
   onUploadFiles(items: LocalFileItem[]): void
   onChooseUploadFiles(): void
@@ -335,8 +339,10 @@ export function SessionWorkspace({
         onRequestNewFolder={onRequestNewFolder}
         onRequestQuickDelete={onRequestQuickDelete}
         onRequestRename={onRequestRename}
+        onToggleFollowShellCwd={onToggleFollowShellCwd}
         onToggleRemoteFileAccessMode={onToggleRemoteFileAccessMode}
         remoteFileAccessMode={remoteFileAccessMode}
+        isRemoteDirectoryLoading={isRemoteDirectoryLoading}
         onRefresh={onRefresh}
         onUploadFiles={onUploadFiles}
         onChooseUploadFiles={onChooseUploadFiles}

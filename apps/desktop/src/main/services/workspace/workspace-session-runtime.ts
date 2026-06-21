@@ -202,6 +202,9 @@ export class WorkspaceSessionRuntime {
             }
             this.sendToTab(tabId, 'terminal:data', { tabId, chunk })
           },
+          (cwd) => {
+            void this.handleShellCwdChanged(tabId, cwd).catch(() => undefined)
+          },
           (summary, transcript, connected) => {
             const current = this.sessions.get(tabId)
             if (!current) {
@@ -263,6 +266,8 @@ export class WorkspaceSessionRuntime {
         terminalTranscript:
           controller.type === 'ssh' ? controller.getTerminalTranscript() : undefined,
         remotePath: controller.getRemotePath(),
+        shellCwd: controller.type === 'ssh' ? controller.getShellCwd() : undefined,
+        followShellCwd: current.followShellCwd,
         fileAccessMode: controller.getFileAccessMode(),
         hasReusableSudoAuth: controller.type === 'ssh' ? controller.hasReusableSudoAuth() : false,
         connected: true,
@@ -310,6 +315,16 @@ export class WorkspaceSessionRuntime {
       }
 
       if (controller.type === 'ssh') {
+        const shellCwd = controller.getShellCwd()
+        const sessionBeforeMetrics = this.sessions.get(tabId)
+        if (
+          shellCwd
+          && sessionBeforeMetrics?.followShellCwd !== false
+          && sessionBeforeMetrics?.remotePath !== shellCwd
+        ) {
+          await this.followShellCwd(tabId, shellCwd)
+        }
+
         const systemMetrics = await controller.refreshSystemMetrics()
         const latest = this.sessions.get(tabId)
         if (latest && systemMetrics) {
@@ -418,17 +433,100 @@ export class WorkspaceSessionRuntime {
   }
 
   async openRemotePath(tabId: string, targetPath: string) {
-    await this.runRemoteFileOperation(tabId, async (controller, current) => {
-      const remoteFiles = await controller.openRemotePath(targetPath)
-      const latest = this.sessions.get(tabId) ?? current
-      this.sessions.set(tabId, {
-        ...latest,
-        remotePath: controller.getRemotePath(),
-        fileAccessMode: controller.getFileAccessMode(),
-        hasReusableSudoAuth: controller.type === 'ssh' ? controller.hasReusableSudoAuth() : false,
-        remoteFiles
-      })
-    }, { pauseMetrics: true })
+    await this.setRemoteFilesLoading(tabId, true)
+    try {
+      await this.runRemoteFileOperation(tabId, async (controller, current) => {
+        const remoteFiles = await controller.openRemotePath(targetPath)
+        const latest = this.sessions.get(tabId) ?? current
+        this.sessions.set(tabId, {
+          ...latest,
+          remotePath: controller.getRemotePath(),
+          fileAccessMode: controller.getFileAccessMode(),
+          hasReusableSudoAuth: controller.type === 'ssh' ? controller.hasReusableSudoAuth() : false,
+          remoteFiles
+        })
+      }, { pauseMetrics: true })
+    } finally {
+      await this.setRemoteFilesLoading(tabId, false)
+    }
+  }
+
+  async setFollowShellCwd(tabId: string, enabled: boolean) {
+    const current = this.sessions.get(tabId)
+    if (!current) {
+      throw new Error(`Session not found: ${tabId}`)
+    }
+
+    this.sessions.set(tabId, {
+      ...current,
+      followShellCwd: enabled
+    })
+
+    if (enabled && current.shellCwd && current.shellCwd !== current.remotePath) {
+      await this.followShellCwd(tabId, current.shellCwd)
+    }
+  }
+
+  private async handleShellCwdChanged(tabId: string, cwd: string) {
+    const current = this.sessions.get(tabId)
+    if (!current || current.shellCwd === cwd) {
+      return
+    }
+
+    this.sessions.set(tabId, {
+      ...current,
+      shellCwd: cwd
+    })
+
+    if (current.followShellCwd !== false && current.remotePath !== cwd) {
+      await this.followShellCwd(tabId, cwd)
+      return
+    }
+
+    await this.emitSnapshotForTab(tabId)
+  }
+
+  private async followShellCwd(tabId: string, cwd: string) {
+    await this.setRemoteFilesLoading(tabId, true)
+    try {
+      await this.runRemoteFileOperation(tabId, async (controller, current) => {
+        if (controller.type !== 'ssh') {
+          return
+        }
+        if (current.shellCwd !== cwd || current.followShellCwd === false) {
+          return
+        }
+        const remoteFiles = await controller.openRemotePath(cwd)
+        const latest = this.sessions.get(tabId) ?? current
+        if (latest.shellCwd !== cwd || latest.followShellCwd === false) {
+          if (controller.getRemotePath() !== latest.remotePath) {
+            await controller.openRemotePath(latest.remotePath)
+          }
+          return
+        }
+        this.sessions.set(tabId, {
+          ...latest,
+          remotePath: controller.getRemotePath(),
+          remoteFiles
+        })
+      }, { pauseMetrics: true })
+    } catch {
+      // Cwd reporting is best-effort. Keep the terminal usable when the file view cannot read this path.
+    } finally {
+      await this.setRemoteFilesLoading(tabId, false)
+    }
+  }
+
+  private async setRemoteFilesLoading(tabId: string, loading: boolean) {
+    const current = this.sessions.get(tabId)
+    if (!current || current.remoteFilesLoading === loading) {
+      return
+    }
+    this.sessions.set(tabId, {
+      ...current,
+      remoteFilesLoading: loading
+    })
+    await this.emitSnapshotForTab(tabId)
   }
 
   async emitSnapshot(sender: WebContents) {

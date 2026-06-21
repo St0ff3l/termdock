@@ -222,6 +222,8 @@ export class WorkspaceService {
       terminalTranscript:
         controller.type === 'ssh' ? controller.getTerminalTranscript() : undefined,
       remotePath: controller.getRemotePath(),
+      shellCwd: controller.type === 'ssh' ? controller.getShellCwd() : undefined,
+      followShellCwd: profile.type === 'ssh',
       remoteFiles: [],
       fileAccessMode: controller.getFileAccessMode(),
       sudoUser: profile.type === 'ssh' ? 'root' : undefined,
@@ -265,6 +267,8 @@ export class WorkspaceService {
       summary: current?.accessHost ? `Disconnected from ${current.accessHost}` : 'Disconnected',
       terminalTranscript: disconnectedTranscript,
       remotePath: current?.remotePath ?? profile.remotePath,
+      shellCwd: current?.shellCwd,
+      followShellCwd: current?.followShellCwd ?? (profile.type === 'ssh'),
       remoteFiles: [],
       fileAccessMode: current?.fileAccessMode ?? 'user',
       sudoUser: current?.sudoUser ?? (profile.type === 'ssh' ? 'root' : undefined),
@@ -281,6 +285,8 @@ export class WorkspaceService {
       terminalTranscript:
         controller.type === 'ssh' ? controller.getTerminalTranscript() : undefined,
       remotePath: current?.remotePath ?? profile.remotePath,
+      shellCwd: current?.shellCwd,
+      followShellCwd: current?.followShellCwd ?? (profile.type === 'ssh'),
       remoteFiles: [],
       fileAccessMode: current?.fileAccessMode ?? controller.getFileAccessMode(),
       sudoUser: current?.sudoUser ?? (profile.type === 'ssh' ? 'root' : undefined),
@@ -715,6 +721,11 @@ export class WorkspaceService {
 
   async openRemotePath(tabId: string, targetPath: string): Promise<WorkspaceSnapshot> {
     await this.sessionRuntime.openRemotePath(tabId, targetPath)
+    return this.getSnapshot()
+  }
+
+  async setFollowShellCwd(tabId: string, enabled: boolean): Promise<WorkspaceSnapshot> {
+    await this.sessionRuntime.setFollowShellCwd(tabId, enabled)
     return this.getSnapshot()
   }
 
