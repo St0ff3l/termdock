@@ -17,6 +17,7 @@
 
 /* Sidebar Styling */
 .home-sidebar {
+  position: relative;
   width: var(--sidebar-width, 214px);
   height: 100%;
   background-color: var(--bg-sidebar);
@@ -728,5 +729,5 @@
 }
 
 .home-tabs-bar .fs-tabs {
-  padding-left: calc(var(--brand-width, 214px) - var(--sidebar-width, 214px)) !important;
+  padding-left: 0 !important;
 }
