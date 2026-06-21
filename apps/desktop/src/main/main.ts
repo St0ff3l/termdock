@@ -5,6 +5,10 @@ import { fileURLToPath } from 'node:url'
 import { registerIpcHandlers } from './ipc/index.js'
 import { appError, appLog, getAppLogDirectory, initAppLogger } from './services/app-logger.js'
 
+// 必须在所有 Electron API 调用之前设置，避免 package.json 的 @termdock/desktop
+// 被用作 macOS 钥匙串服务名（"@termdock/desktop Safe Storage"），导致每次启动弹出授权弹窗。
+app.setName('TermDock')
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 let mainWindow: BrowserWindow | null = null
