@@ -138,11 +138,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release list --limit 100 --json tagName,isDraft \
+          REPO="${{ github.repository }}"
+          gh release list -R "${REPO}" --limit 100 --json tagName,isDraft \
             | jq -r '.[] | select(.isDraft) | .tagName' \
             | while read -r tag; do
               echo "Deleting draft release: ${tag}"
-              gh release delete "${tag}" --yes --cleanup-tag 2>/dev/null || true
+              gh release delete "${tag}" -R "${REPO}" --yes --cleanup-tag 2>/dev/null || true
             done
 
       - name: Publish GitHub Release
@@ -152,17 +153,18 @@ jobs:
         run: |
           set -euo pipefail
 
+          REPO="${{ github.repository }}"
           TAG="${GITHUB_REF_NAME}"
 
           # Delete any existing release for this tag (draft or otherwise)
-          if gh release view "${TAG}" &>/dev/null; then
+          if gh release view "${TAG}" -R "${REPO}" &>/dev/null; then
             echo "Removing existing release for tag ${TAG}..."
-            gh release delete "${TAG}" --yes --cleanup-tag 2>/dev/null || true
+            gh release delete "${TAG}" -R "${REPO}" --yes --cleanup-tag 2>/dev/null || true
             sleep 2  # Give GitHub API time to sync
           fi
 
           echo "Creating release for ${TAG}..."
-          gh release create "${TAG}" \
+          gh release create "${TAG}" -R "${REPO}" \
             --prerelease \
             --generate-notes \
             **/*.dmg **/*.zip **/*.exe
