@@ -1,7 +1,9 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron') as typeof import('electron')
 
 import type {
+  CommandSendPreferences,
   CommandExecutionOptions,
+  TerminalCommandHistoryEntry,
   CommandTemplateInput,
   CommandFolder,
   ConnectionFormMode,
@@ -26,6 +28,8 @@ import type {
 
 const api: TermdockDesktopApi = {
   platform: typeof process !== 'undefined' ? process.platform : 'unknown',
+  arch: typeof process !== 'undefined' ? process.arch : 'unknown',
+  appVersion: process.env['TERMDOCK_APP_VERSION'] ?? '0.0.0',
   appName: 'TermDock',
   isDesktop: true,
   readClipboardText: (): Promise<string> => ipcRenderer.invoke('app:readClipboardText'),
@@ -48,10 +52,19 @@ const api: TermdockDesktopApi = {
     ipcRenderer.invoke('app:openLogsDirectory'),
   minimizeCurrentWindow: (): Promise<void> =>
     ipcRenderer.invoke('app:minimizeCurrentWindow'),
+  isCurrentWindowMaximized: (): Promise<boolean> =>
+    ipcRenderer.invoke('app:isCurrentWindowMaximized'),
   toggleMaximizeCurrentWindow: (): Promise<void> =>
     ipcRenderer.invoke('app:toggleMaximizeCurrentWindow'),
   closeCurrentWindow: (): Promise<void> =>
     ipcRenderer.invoke('app:closeCurrentWindow'),
+  showWindowMenu: (menuType: 'app' | 'file' | 'view' | 'window', x: number, y: number): Promise<void> =>
+    ipcRenderer.invoke('app:showWindowMenu', menuType, x, y),
+  onWindowMaximizedChange: (listener: (isMaximized: boolean) => void) => {
+    const wrapped = (_event: unknown, isMaximized: boolean) => listener(isMaximized)
+    ipcRenderer.on('app:window-maximized-change', wrapped)
+    return () => ipcRenderer.off('app:window-maximized-change', wrapped)
+  },
   requestQuitApp: (): Promise<void> =>
     ipcRenderer.invoke('app:requestQuitApp'),
   getSnapshot: (): Promise<WorkspaceSnapshot> => ipcRenderer.invoke('workspace:getSnapshot'),
@@ -87,6 +100,14 @@ const api: TermdockDesktopApi = {
     ipcRenderer.invoke('workspace:deleteCommandTemplate', commandId),
   executeCommandTemplate: (tabId: string, commandId: string, args?: string[], options?: CommandExecutionOptions): Promise<CommandExecutionResult> =>
     ipcRenderer.invoke('workspace:executeCommandTemplate', tabId, commandId, args, options),
+  getTerminalCommandHistory: (profileId: string): Promise<TerminalCommandHistoryEntry[]> =>
+    ipcRenderer.invoke('workspace:getTerminalCommandHistory', profileId),
+  setTerminalCommandHistory: (profileId: string, entries: TerminalCommandHistoryEntry[]): Promise<void> =>
+    ipcRenderer.invoke('workspace:setTerminalCommandHistory', profileId, entries),
+  getCommandSendPreferences: (): Promise<CommandSendPreferences> =>
+    ipcRenderer.invoke('workspace:getCommandSendPreferences'),
+  setCommandSendPreferences: (preferences: CommandSendPreferences): Promise<void> =>
+    ipcRenderer.invoke('workspace:setCommandSendPreferences', preferences),
   openProfile: (profileId: string): Promise<WorkspaceSnapshot> =>
     ipcRenderer.invoke('workspace:openProfile', profileId),
   openProfileFromManager: (profileId: string): Promise<WorkspaceSnapshot> =>

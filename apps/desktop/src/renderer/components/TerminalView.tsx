@@ -65,7 +65,7 @@ function encodeBase64Utf8(value: string) {
 
 const TERMINAL_TRANSCRIPT_LIMIT = 200_000
 const TERMINAL_REMOTE_GUARD_COLS = 2
-const TERMINAL_FIT_GUARD_ROWS = 1
+const TERMINAL_FIT_GUARD_ROWS = 0
 const TERMINAL_RESIZE_PIXEL_EPSILON = 2
 const TERMINAL_RESIZE_SETTLE_MS = 140
 const TERMINAL_RESIZE_OUTPUT_QUIET_MS = 260
@@ -145,6 +145,10 @@ export function TerminalView({
   const [hasSelection, setHasSelection] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [findOpen, setFindOpen] = useState(false)
+  const findOpenRef = useRef(findOpen)
+  useEffect(() => {
+    findOpenRef.current = findOpen
+  }, [findOpen])
   const [findQuery, setFindQuery] = useState('')
   const [findMiss, setFindMiss] = useState(false)
   const [findMatchCount, setFindMatchCount] = useState(0)
@@ -509,7 +513,7 @@ export function TerminalView({
 
     const terminal = new Terminal({
       fontFamily: '"SF Mono", Menlo, Consolas, monospace',
-      fontSize: 13,
+      fontSize: 12,
       lineHeight: 1.05,
       cursorBlink: true,
       allowProposedApi: true,
@@ -530,6 +534,48 @@ export function TerminalView({
     terminal.loadAddon(webLinksAddon)
     terminal.unicode.activeVersion = '11'
     terminal.open(hostRef.current)
+    terminal.attachCustomKeyEventHandler((event) => {
+      if (event.type !== 'keydown') {
+        return true
+      }
+
+      const isHistoryOpen = document.body.getAttribute('data-history-open') === 'true'
+      if (
+        isHistoryOpen &&
+        (event.key === 'ArrowUp' ||
+          event.key === 'ArrowDown' ||
+          event.key === 'ArrowLeft' ||
+          event.key === 'ArrowRight' ||
+          event.key === 'Enter' ||
+          event.key === 'Escape')
+      ) {
+        return false
+      }
+
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0
+      const matchesCopy = isMac
+        ? event.metaKey && !event.shiftKey && event.key.toLowerCase() === 'c'
+        : event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'c'
+      const matchesPaste = isMac
+        ? event.metaKey && !event.shiftKey && event.key.toLowerCase() === 'v'
+        : event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'v'
+      const matchesFind = isMac
+        ? event.metaKey && !event.shiftKey && event.key.toLowerCase() === 'f'
+        : event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === 'f'
+
+      if (
+        event.key === 'Control' ||
+        event.key === 'Meta' ||
+        event.key === 'Alt' ||
+        matchesCopy ||
+        matchesPaste ||
+        matchesFind
+      ) {
+        return false
+      }
+
+      return true
+    })
     terminalRef.current = terminal
     searchAddonRef.current = searchAddon
 
@@ -759,7 +805,11 @@ export function TerminalView({
 
       if (matchesFind) {
         event.preventDefault()
-        openFind()
+        if (findOpenRef.current) {
+          closeFind()
+        } else {
+          openFind()
+        }
         return
       }
 
@@ -769,10 +819,31 @@ export function TerminalView({
       }
     }
 
+    const handleFocusTerminal = () => {
+      terminal.focus()
+    }
+    const handleTerminalCopy = () => {
+      runCopy()
+    }
+    const handleTerminalPaste = () => {
+      void runPaste()
+    }
+    const handleTerminalFind = () => {
+      if (findOpenRef.current) {
+        closeFind()
+      } else {
+        openFind()
+      }
+    }
+
     hostRef.current.addEventListener('contextmenu', onContextMenu)
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('focus', onWindowFocus)
     document.addEventListener('visibilitychange', onVisibilityChange)
+    window.addEventListener('termdock:focus-terminal', handleFocusTerminal)
+    window.addEventListener('termdock:terminal-copy', handleTerminalCopy)
+    window.addEventListener('termdock:terminal-paste', handleTerminalPaste)
+    window.addEventListener('termdock:terminal-find', handleTerminalFind)
 
     // Ask the main process for the actual PTY size once the terminal is mounted.
     if (!bootedTabs.current.has(tabId)) {
@@ -781,6 +852,10 @@ export function TerminalView({
     }
 
     return () => {
+      window.removeEventListener('termdock:focus-terminal', handleFocusTerminal)
+      window.removeEventListener('termdock:terminal-copy', handleTerminalCopy)
+      window.removeEventListener('termdock:terminal-paste', handleTerminalPaste)
+      window.removeEventListener('termdock:terminal-find', handleTerminalFind)
       onDataDispose.dispose()
       onSelectionDispose.dispose()
       offData?.()
@@ -911,7 +986,7 @@ export function TerminalView({
   }, [findCaseSensitive, findOpen, findQuery, findRegex])
 
   return (
-    <>
+    <div className="terminal-view">
       <div className="terminal-host">
         <div className="terminal-inner" ref={hostRef} />
       </div>
@@ -980,6 +1055,6 @@ export function TerminalView({
           position={contextMenu}
         />
       ) : null}
-    </>
+    </div>
   )
 }

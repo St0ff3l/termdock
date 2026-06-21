@@ -32,6 +32,7 @@ export interface BaseProfile extends BaseEntity {
   host: string
   port: number
   group: string
+  lastUsedAt?: number
 }
 
 export interface SshProfile extends BaseProfile {
@@ -364,6 +365,17 @@ export interface CommandExecutionOptions {
   appendCarriageReturn?: boolean
 }
 
+export interface TerminalCommandHistoryEntry {
+  command: string
+  createdAt: number
+}
+
+export interface CommandSendPreferences {
+  rememberSelection: boolean
+  sendScope: 'current' | 'all-ssh' | 'selected-ssh'
+  selectedTabIds: string[]
+}
+
 export interface TerminalDataPayload {
   tabId: string
   chunk: string
@@ -383,6 +395,8 @@ export interface RemoteFileAccessOptions {
 
 export interface TermdockDesktopApi {
   platform: string
+  arch: string
+  appVersion: string
   appName: string
   isDesktop: boolean
   readClipboardText(): Promise<string>
@@ -397,8 +411,11 @@ export interface TermdockDesktopApi {
   openExternalUrl(url: string): Promise<void>
   openLogsDirectory(): Promise<void>
   minimizeCurrentWindow(): Promise<void>
+  isCurrentWindowMaximized(): Promise<boolean>
   toggleMaximizeCurrentWindow(): Promise<void>
   closeCurrentWindow(): Promise<void>
+  showWindowMenu(menuType: 'app' | 'file' | 'view' | 'window', x: number, y: number): Promise<void>
+  onWindowMaximizedChange(listener: (isMaximized: boolean) => void): () => void
   requestQuitApp(): Promise<void>
   getSnapshot(): Promise<WorkspaceSnapshot>
   getConnectionLibrary(): Promise<ConnectionLibrarySnapshot>
@@ -414,6 +431,10 @@ export interface TermdockDesktopApi {
   updateCommandTemplate(commandId: string, input: CommandTemplateInput): Promise<WorkspaceSnapshot>
   deleteCommandTemplate(commandId: string): Promise<WorkspaceSnapshot>
   executeCommandTemplate(tabId: string, commandId: string, args?: string[], options?: CommandExecutionOptions): Promise<CommandExecutionResult>
+  getTerminalCommandHistory(profileId: string): Promise<TerminalCommandHistoryEntry[]>
+  setTerminalCommandHistory(profileId: string, entries: TerminalCommandHistoryEntry[]): Promise<void>
+  getCommandSendPreferences(): Promise<CommandSendPreferences>
+  setCommandSendPreferences(preferences: CommandSendPreferences): Promise<void>
   createProfile(input: CreateProfileInput): Promise<WorkspaceSnapshot>
   updateProfile(profileId: string, input: CreateProfileInput): Promise<WorkspaceSnapshot>
   deleteProfile(profileId: string): Promise<WorkspaceSnapshot>

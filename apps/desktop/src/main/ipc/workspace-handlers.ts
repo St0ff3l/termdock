@@ -1,7 +1,9 @@
 import { BrowserWindow, ipcMain, type WebContents } from 'electron'
 import type {
+  CommandSendPreferences,
   CommandExecutionOptions,
   CommandFolder,
+  TerminalCommandHistoryEntry,
   CommandTemplateInput,
   ConnectionFolder,
   CreateProfileInput
@@ -108,6 +110,22 @@ export function registerWorkspaceHandlers(services: IpcServices, options: IpcWin
 
   ipcMain.handle('workspace:executeCommandTemplate', async (_, tabId: string, commandId: string, args?: string[], options?: CommandExecutionOptions) => {
     return workspaceService.executeCommandTemplate(tabId, commandId, args, options)
+  })
+
+  ipcMain.handle('workspace:getTerminalCommandHistory', async (_, profileId: string) => {
+    return workspaceService.getTerminalCommandHistory(profileId)
+  })
+
+  ipcMain.handle('workspace:setTerminalCommandHistory', async (_, profileId: string, entries: TerminalCommandHistoryEntry[]) => {
+    await workspaceService.setTerminalCommandHistory(profileId, entries)
+  })
+
+  ipcMain.handle('workspace:getCommandSendPreferences', async () => {
+    return workspaceService.getCommandSendPreferences()
+  })
+
+  ipcMain.handle('workspace:setCommandSendPreferences', async (_, preferences: CommandSendPreferences) => {
+    await workspaceService.setCommandSendPreferences(preferences)
   })
 
   ipcMain.handle('workspace:openProfile', async (event, profileId: string) => {

@@ -23,6 +23,13 @@ export type AppIconName =
   | 'upload'
   | 'download'
   | 'flash'
+  | 'copy'
+  | 'paste'
+  | 'chevron-up'
+  | 'chevron-down'
+  | 'play'
+  | 'close'
+
 
 export function AppIcon({
   name,
@@ -205,6 +212,30 @@ export function AppIcon({
       ) : null}
       {name === 'flash' ? (
         <path {...commonProps} d="M8.9 1.8 3.8 8h3l-.7 6.2L12.2 8h-3.1l-.2-6.2Z" />
+      ) : null}
+      {name === 'copy' ? (
+        <>
+          <rect {...commonProps} x="4.5" y="4.5" width="8" height="8" rx="1.5" />
+          <path {...commonProps} d="M11.5 2.5h-5a2 2 0 0 0-2 2v5" />
+        </>
+      ) : null}
+      {name === 'paste' ? (
+        <>
+          <path {...commonProps} d="M5.5 3h5A1.5 1.5 0 0 1 12 4.5v8a1.5 1.5 0 0 1-1.5 1.5h-5A1.5 1.5 0 0 1 4 12.5v-8A1.5 1.5 0 0 1 5.5 3Z" />
+          <path {...commonProps} d="M6.5 2h3v1.5h-3z" />
+        </>
+      ) : null}
+      {name === 'chevron-up' ? (
+        <path {...commonProps} d="m3.5 10 4.5-4.5 4.5 4.5" />
+      ) : null}
+      {name === 'chevron-down' ? (
+        <path {...commonProps} d="m3.5 6 4.5 4.5 4.5-4.5" />
+      ) : null}
+      {name === 'play' ? (
+        <path {...commonProps} d="M5.5 3.5v9l6.5-4.5z" />
+      ) : null}
+      {name === 'close' ? (
+        <path {...commonProps} d="M3.5 3.5l9 9M12.5 3.5l-9 9" />
       ) : null}
     </svg>
   )

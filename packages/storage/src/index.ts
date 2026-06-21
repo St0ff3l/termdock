@@ -1,10 +1,12 @@
 import type {
+  CommandSendPreferences,
   CommandFolder,
   CommandTemplate,
   CommandTemplateInput,
   ConnectionFolder,
   ConnectionProfile,
-  CreateProfileInput
+  CreateProfileInput,
+  TerminalCommandHistoryEntry
 } from '@termdock/core'
 
 export interface ProfileRepository {
@@ -15,6 +17,7 @@ export interface ProfileRepository {
   updateTrustedHostFingerprint?(id: string, fingerprint: string): Promise<ConnectionProfile | null>
   getById(id: string): Promise<ConnectionProfile | null>
   delete(id: string): Promise<void>
+  touchProfile(id: string): Promise<void>
   
   createFolder(name: string, parentId?: string): Promise<ConnectionFolder>
   updateFolder(id: string, updates: Partial<ConnectionFolder>): Promise<ConnectionFolder>
@@ -32,6 +35,10 @@ export interface ProfileRepository {
   getCommandTemplateById(id: string): Promise<CommandTemplate | null>
   deleteCommandTemplate(id: string): Promise<void>
   updateCommandOrder(id: string, newParentId: string | undefined, newOrder: number): Promise<void>
+  getTerminalCommandHistory(profileId: string): Promise<TerminalCommandHistoryEntry[]>
+  setTerminalCommandHistory(profileId: string, entries: TerminalCommandHistoryEntry[]): Promise<void>
+  getCommandSendPreferences(): Promise<CommandSendPreferences>
+  setCommandSendPreferences(preferences: CommandSendPreferences): Promise<void>
 }
 
 export class MemoryProfileRepository implements ProfileRepository {
@@ -89,6 +96,13 @@ export class MemoryProfileRepository implements ProfileRepository {
 
   async delete(id: string): Promise<void> {
     this.profiles = this.profiles.filter((profile) => profile.id !== id)
+  }
+
+  async touchProfile(id: string): Promise<void> {
+    const now = Date.now()
+    this.profiles = this.profiles.map((profile) =>
+      profile.id === id ? { ...profile, lastUsedAt: now } : profile
+    )
   }
 
   async listFolders(): Promise<ConnectionFolder[]> {
@@ -212,13 +226,34 @@ export class MemoryProfileRepository implements ProfileRepository {
       command.order = newOrder
     }
   }
+
+  async getTerminalCommandHistory(_profileId: string): Promise<TerminalCommandHistoryEntry[]> {
+    return []
+  }
+
+  async setTerminalCommandHistory(_profileId: string, _entries: TerminalCommandHistoryEntry[]): Promise<void> {
+    return
+  }
+
+  async getCommandSendPreferences(): Promise<CommandSendPreferences> {
+    return {
+      rememberSelection: false,
+      sendScope: 'current',
+      selectedTabIds: []
+    }
+  }
+
+  async setCommandSendPreferences(_preferences: CommandSendPreferences): Promise<void> {
+    return
+  }
 }
 
 function preserveProfileMetadata(profile: ConnectionProfile, previous: ConnectionProfile): ConnectionProfile {
   return {
     ...profile,
     parentId: previous.parentId,
-    order: previous.order
+    order: previous.order,
+    lastUsedAt: previous.lastUsedAt
   }
 }
 

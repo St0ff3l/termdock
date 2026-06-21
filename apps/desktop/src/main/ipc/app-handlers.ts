@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain, shell } from 'electron'
+import { BrowserWindow, ipcMain, shell, Menu } from 'electron'
 import type { ConnectionFormMode, FileEditorWindowInput } from '@termdock/core'
 import type { IpcWindowOptions } from './types.js'
 
@@ -54,6 +54,11 @@ export function registerAppHandlers(options: IpcWindowOptions) {
     BrowserWindow.fromWebContents(event.sender)?.minimize()
   })
 
+  ipcMain.handle('app:isCurrentWindowMaximized', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    return win ? win.isMaximized() : false
+  })
+
   ipcMain.handle('app:toggleMaximizeCurrentWindow', (event) => {
     const senderWindow = BrowserWindow.fromWebContents(event.sender)
     if (!senderWindow) {
@@ -70,6 +75,15 @@ export function registerAppHandlers(options: IpcWindowOptions) {
     BrowserWindow.fromWebContents(event.sender)?.close()
   })
 
+  ipcMain.handle('app:showWindowMenu', (event, menuType: 'app' | 'file' | 'view' | 'window', x: number, y: number) => {
+    const senderWindow = BrowserWindow.fromWebContents(event.sender)
+    if (!senderWindow) {
+      return
+    }
+    const menu = getWindowMenu(senderWindow, menuType, options)
+    menu.popup({ window: senderWindow, x, y })
+  })
+
   ipcMain.handle('app:requestQuitApp', () => {
     options.requestQuitApp()
   })
@@ -77,6 +91,132 @@ export function registerAppHandlers(options: IpcWindowOptions) {
   ipcMain.handle('app:confirmCloseWindow', (_event, action: 'quit' | 'hide' | 'cancel') => {
     options.confirmCloseWindow(action)
   })
+}
+
+function getWindowMenu(
+  senderWindow: BrowserWindow,
+  menuType: 'app' | 'file' | 'view' | 'window',
+  options: IpcWindowOptions
+): Menu {
+  const isEn = options.getUiPreferences().locale === 'enUS'
+
+  if (menuType === 'app') {
+    return Menu.buildFromTemplate([
+      {
+        label: 'Version 1.2.0-stable',
+        click: () => {}
+      }
+    ])
+  } else if (menuType === 'file') {
+    return Menu.buildFromTemplate([
+      {
+        label: isEn ? 'New Connection' : '新建连接',
+        accelerator: 'Ctrl+N',
+        click: () => {
+          options.openConnectionFormWindow(senderWindow, 'create')
+        }
+      },
+      {
+        label: isEn ? 'Connection Manager' : '连接管理',
+        accelerator: 'Ctrl+Shift+C',
+        click: () => {
+          options.openConnectionManagerWindow(senderWindow)
+        }
+      },
+      {
+        label: isEn ? 'Command Manager' : '命令管理',
+        accelerator: 'Ctrl+Shift+M',
+        click: () => {
+          options.openCommandManagerWindow(senderWindow)
+        }
+      },
+      { type: 'separator' },
+      {
+        label: isEn ? 'Open Logs Directory' : '打开日志目录',
+        click: () => {
+          void options.openLogsDirectory()
+        }
+      },
+      { type: 'separator' },
+      {
+        label: isEn ? 'Exit' : '退出',
+        accelerator: 'Alt+F4',
+        click: () => {
+          options.requestQuitApp()
+        }
+      }
+    ])
+  } else if (menuType === 'view') {
+    return Menu.buildFromTemplate([
+      {
+        label: isEn ? 'Reload' : '重新加载',
+        accelerator: 'F5',
+        click: () => {
+          senderWindow.webContents.reload()
+        }
+      },
+      {
+        label: isEn ? 'Toggle Developer Tools' : '开发者工具',
+        accelerator: 'F12',
+        click: () => {
+          senderWindow.webContents.toggleDevTools()
+        }
+      },
+      { type: 'separator' },
+      {
+        label: isEn ? 'Reset Zoom' : '实际大小',
+        accelerator: 'Ctrl+0',
+        click: () => {
+          senderWindow.webContents.setZoomLevel(0)
+        }
+      },
+      {
+        label: isEn ? 'Zoom In' : '放大',
+        accelerator: 'Ctrl+Plus',
+        click: () => {
+          const currentLevel = senderWindow.webContents.getZoomLevel()
+          senderWindow.webContents.setZoomLevel(currentLevel + 0.5)
+        }
+      },
+      {
+        label: isEn ? 'Zoom Out' : '缩小',
+        accelerator: 'Ctrl+-',
+        click: () => {
+          const currentLevel = senderWindow.webContents.getZoomLevel()
+          senderWindow.webContents.setZoomLevel(currentLevel - 0.5)
+        }
+      }
+    ])
+  } else {
+    return Menu.buildFromTemplate([
+      {
+        label: isEn ? 'Minimize' : '最小化',
+        click: () => {
+          senderWindow.minimize()
+        }
+      },
+      {
+        label: senderWindow.isMaximized()
+          ? (isEn ? 'Restore' : '还原')
+          : (isEn ? 'Maximize' : '最大化'),
+        click: () => {
+          if (senderWindow.isMaximized()) {
+            senderWindow.unmaximize()
+          } else {
+            senderWindow.maximize()
+          }
+        }
+      },
+      { type: 'separator' },
+      {
+        label: isEn ? 'Close Window' : '关闭窗口',
+        accelerator: 'Ctrl+W',
+        click: () => {
+          senderWindow.close()
+        }
+      }
+    ])
+  }
 }
 
 async function openExternalUrl(rawUrl: string) {

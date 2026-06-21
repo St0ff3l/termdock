@@ -2,6 +2,7 @@ import { startTransition, useEffect, useMemo, useRef, useState, type CSSProperti
 import type {
   CommandExecutionOptions,
   CommandTemplateInput,
+  ConnectionFolder,
   ConnectionFormMode,
   ConnectionProfile,
   CreateProfileInput,
@@ -23,6 +24,7 @@ import { homeTabKey, insertTabKeyAfter, isActiveTransfer, reorderTabKeys, sessio
 import { CommandEditorModal, emptyCommandForm, toCommandTemplateInput } from './features/commands/CommandEditorModal'
 import { CommandManagerModal } from './features/commands/CommandManagerModal'
 import { ConnectionManagerModal } from './features/connections/ConnectionManagerModal'
+import { SettingsModal } from './features/settings/SettingsModal'
 import { ConnectionModal } from './features/connections/ConnectionModal'
 import { SshCredentialsModal } from './features/connections/SshCredentialsModal'
 import { SshHostVerificationModal } from './features/connections/SshHostVerificationModal'
@@ -32,6 +34,8 @@ import { FilePermissionModal } from './features/files/FilePermissionModal'
 import { RootAccessModal } from './features/files/RootAccessModal'
 import { AppIcon } from './features/common/AppIcon'
 import { ConfirmActionDialog } from './features/common/ConfirmActionDialog'
+import type { SendScope, SessionSendTarget } from './features/common/session-send-targets'
+import { resolveSelectedTabIds } from './features/common/session-send-targets'
 import { TabBar, type OrderedTabEntry, type TabContextTarget } from './features/layout/TabBar'
 import { TabContextMenu } from './features/layout/TabContextMenu'
 import { SystemSidebar } from './features/system/SystemSidebar'
@@ -62,6 +66,12 @@ type StoredMainTabUiState = {
   nextHomeTabNumber: number
   tabOrder: string[]
   isSystemSidebarCollapsed: boolean
+}
+
+type TerminalDockSendState = {
+  scope: SendScope
+  selectedTabIds: string[]
+  rememberSelection: boolean
 }
 
 function formatSystemInfoTabTitle(sourceTabTitle: string) {
@@ -207,6 +217,105 @@ function joinLocalPath(directoryPath: string, name: string) {
     return `${separator}${name}`
   }
   return `${normalized}${separator}${name}`
+}
+
+const TEXT_EDITOR_MAX_BYTES = 4 * 1024 * 1024
+const LIKELY_BINARY_FILE_EXTENSIONS = new Set([
+  '.7z',
+  '.a',
+  '.apk',
+  '.bin',
+  '.bz2',
+  '.class',
+  '.db',
+  '.dll',
+  '.dmg',
+  '.exe',
+  '.gif',
+  '.gz',
+  '.ico',
+  '.img',
+  '.iso',
+  '.jar',
+  '.jpeg',
+  '.jpg',
+  '.mp3',
+  '.mp4',
+  '.o',
+  '.otf',
+  '.pdf',
+  '.png',
+  '.pyc',
+  '.rar',
+  '.so',
+  '.tar',
+  '.tgz',
+  '.ttf',
+  '.war',
+  '.webp',
+  '.xz',
+  '.zip'
+])
+
+function parseApproximateFileSize(size: string): number | null {
+  if (!size || size === '-') {
+    return null
+  }
+
+  const match = size.trim().match(/^([\d.]+)\s*([A-Za-z]+)$/)
+  if (!match) {
+    return null
+  }
+
+  const amount = Number.parseFloat(match[1])
+  if (!Number.isFinite(amount)) {
+    return null
+  }
+
+  const unit = match[2].toUpperCase()
+  const units: Record<string, number> = {
+    B: 1,
+    KB: 1024,
+    MB: 1024 ** 2,
+    GB: 1024 ** 3,
+    TB: 1024 ** 4
+  }
+
+  return Math.round(amount * (units[unit] ?? 1))
+}
+
+function isLikelyBinaryFile(name: string) {
+  const lowerName = name.toLowerCase()
+  if (lowerName.endsWith('.tar.gz')) {
+    return true
+  }
+  const dotIndex = lowerName.lastIndexOf('.')
+  if (dotIndex < 0) {
+    return false
+  }
+  return LIKELY_BINARY_FILE_EXTENSIONS.has(lowerName.slice(dotIndex))
+}
+
+function getRemoteFileEditorBlockReason(item: RemoteFileItem, locale: AppLocale): string | null {
+  if (item.type !== 'file') {
+    return null
+  }
+
+  if (isLikelyBinaryFile(item.name)) {
+    return locale === 'zhCN'
+      ? '这个文件看起来像二进制/镜像文件，不适合直接在文本编辑器里打开。建议先下载后用专用工具处理。'
+      : 'This file looks like a binary or disk image, so it is not suitable for the text editor. Download it and open it with a dedicated tool instead.'
+  }
+
+  const approxSize = parseApproximateFileSize(item.size)
+  if (approxSize !== null && approxSize > TEXT_EDITOR_MAX_BYTES) {
+    const maxSizeLabel = `${Math.round(TEXT_EDITOR_MAX_BYTES / (1024 * 1024))} MB`
+    return locale === 'zhCN'
+      ? `这个文件约为 ${item.size}，超过内置文本编辑器建议上限 ${maxSizeLabel}。为避免卡住文件面板，请先下载后再编辑。`
+      : `This file is about ${item.size}, which exceeds the built-in editor recommendation of ${maxSizeLabel}. Download it first to avoid freezing the file pane.`
+  }
+
+  return null
 }
 
 function readStoredLocale(): AppLocale {
@@ -405,12 +514,15 @@ export function App() {
   const [error, setError] = useState<string | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [isBusy, setIsBusy] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   const [hasLoadedInitialSnapshot, setHasLoadedInitialSnapshot] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [showConnectionManager, setShowConnectionManager] = useState(false)
   const [showCommandManager, setShowCommandManager] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const [form, setForm] = useState<CreateProfileInput>(defaultForm)
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null)
+  const [isMaximized, setIsMaximized] = useState(false)
   const [localPath, setLocalPath] = useState(previewLocalPath)
   const [localItems, setLocalItems] = useState<LocalFileItem[]>(localPreviewFiles)
   const storedMainTabUiStateRef = useRef<StoredMainTabUiState | null>(null)
@@ -423,6 +535,7 @@ export function App() {
   const [activeLocalTabId, setActiveLocalTabId] = useState<string | null>(() => initialMainTabUiState.activeLocalTabId)
   const [nextHomeTabNumber, setNextHomeTabNumber] = useState(() => initialMainTabUiState.nextHomeTabNumber)
   const [tabOrder, setTabOrder] = useState<string[]>(() => initialMainTabUiState.tabOrder)
+  const [terminalDockSendStateByTabId, setTerminalDockSendStateByTabId] = useState<Record<string, TerminalDockSendState>>({})
   const [draggingTabKey, setDraggingTabKey] = useState<string | null>(null)
   const [tabContextMenu, setTabContextMenu] = useState<{
     x: number
@@ -478,7 +591,7 @@ export function App() {
   const [shortcutCloseConfirm, setShortcutCloseConfirm] = useState<{
     tabId: string
     title: string
-    variant: 'connecting' | 'active-last-session'
+    variant: 'connecting' | 'active-session' | 'active-last-session'
   } | null>(null)
   const [closingSessionTabIds, setClosingSessionTabIds] = useState<string[]>([])
 
@@ -497,18 +610,27 @@ export function App() {
   const isWindowsDesktop = desktopApi?.platform === 'win32'
 
   useEffect(() => {
+    if (!desktopApi) {
+      return
+    }
+    desktopApi.isCurrentWindowMaximized().then(setIsMaximized).catch(console.error)
+    const unsubscribe = desktopApi.onWindowMaximizedChange(setIsMaximized)
+    return unsubscribe
+  }, [desktopApi])
+
+  useEffect(() => {
     if (!desktopApi || !isMainWorkspaceWindow) {
       return
     }
 
     const unsubscribe = desktopApi.onWindowCloseRequest((event) => {
-      const hasActive = workspaceRef.current.tabs.some(
-        (tab) => workspaceRef.current.sessions[tab.id]?.connected
-      )
+      const hasActive = workspaceRef.current.tabs.some((tab) => isTabActivelyConnected(tab))
 
       if (desktopApi.platform === 'darwin') {
         if (event.isQuit) {
           setCloseConfirmDialog({ isQuit: true, hasActiveConnections: hasActive })
+        } else if (hasActive) {
+          setCloseConfirmDialog({ isQuit: false, hasActiveConnections: true })
         } else {
           void desktopApi.confirmCloseWindow('hide')
         }
@@ -915,7 +1037,7 @@ export function App() {
   const isActiveRemoteSessionConnected = Boolean(activeTab && activeSession?.connected)
   const activeTransferCount = workspace.transfers.filter(isActiveTransfer).length
   const showSidebar = activeTab !== null && activeSession !== null && activeLocalTab?.kind !== 'home'
-  const resolvedSidebarWidth = showSidebar ? (isSystemSidebarCollapsed ? 44 : sidebarWidth) : 0
+  const resolvedSidebarWidth = isSystemSidebarCollapsed ? 44 : sidebarWidth
   const brandWidth = showSidebar && !isSystemSidebarCollapsed ? sidebarWidth : 214
 
   const normalizeErrorMessage = (err: unknown) => {
@@ -1018,6 +1140,9 @@ export function App() {
     setFormError(null)
   }
 
+  const isTabActivelyConnected = (tab: WorkspaceTab | null | undefined) =>
+    Boolean(tab && (tab.status === 'connecting' || tab.status === 'connected'))
+
   const closeCurrentWindow = () => {
     void desktopApi?.closeCurrentWindow()
   }
@@ -1108,6 +1233,24 @@ export function App() {
       return
     }
     setShowCommandManager(true)
+  }
+
+  const openConnectionManager = () => {
+    if (desktopApi) {
+      void desktopApi.openConnectionManagerWindow()
+      return
+    }
+    setShowConnectionManager(true)
+  }
+
+  const openLogsDirectory = () => {
+    if (!desktopApi) {
+      setError(t.desktopOnlyOpenLogs)
+      return
+    }
+    void desktopApi.openLogsDirectory().catch((err) => {
+      reportError(setError, t.openLogsDirectory, err)
+    })
   }
 
   const saveCommandTemplate = async (commandId: string | null, input: CommandTemplateInput) => {
@@ -1211,11 +1354,64 @@ export function App() {
     }
   }
 
+  const createConnectionFolder = async (name: string) => {
+    if (!desktopApi) return
+    try {
+      setIsBusy(true)
+      const snapshot = await desktopApi.createFolder(name)
+      applySnapshot(snapshot)
+    } catch (err) {
+      reportError(setError, '新建连接分类', err)
+    } finally {
+      setIsBusy(false)
+    }
+  }
+
+  const updateConnectionFolder = async (folderId: string, updates: Partial<ConnectionFolder>) => {
+    if (!desktopApi) return
+    try {
+      setIsBusy(true)
+      const snapshot = await desktopApi.updateFolder(folderId, updates)
+      applySnapshot(snapshot)
+    } catch (err) {
+      reportError(setError, '更新连接分类', err)
+    } finally {
+      setIsBusy(false)
+    }
+  }
+
+  const deleteConnectionFolder = async (folderId: string) => {
+    if (!desktopApi) return
+    try {
+      setIsBusy(true)
+      const snapshot = await desktopApi.deleteFolder(folderId)
+      applySnapshot(snapshot)
+    } catch (err) {
+      reportError(setError, '删除连接分类', err)
+    } finally {
+      setIsBusy(false)
+    }
+  }
+
+  const updateConnectionOrder = async (id: string, newParentId: string | undefined, newOrder: number) => {
+    if (!desktopApi) return
+    try {
+      setIsBusy(true)
+      const snapshot = await desktopApi.updateEntityOrder(id, newParentId, newOrder)
+      applySnapshot(snapshot)
+    } catch (err) {
+      reportError(setError, '调整连接顺序', err)
+    } finally {
+      setIsBusy(false)
+    }
+  }
+
   const executeCommandTemplate = async (
     commandId: string,
     args: string[],
     options: CommandExecutionOptions,
-    scope: 'current' | 'all-ssh'
+    scope: SendScope,
+    selectedTabIds: string[]
   ) => {
     if (!desktopApi) {
       return
@@ -1223,11 +1419,8 @@ export function App() {
 
     try {
       setIsBusy(true)
-      const targetTabs = scope === 'all-ssh'
-        ? visibleWorkspaceTabs.filter((tab) => tab.sessionType === 'ssh' && tab.status !== 'closed')
-        : activeTab && activeTab.sessionType === 'ssh'
-          ? [activeTab]
-          : []
+      const targetIds = resolveSelectedTabIds(scope, activeTab, selectedTabIds, sessionSendTargets)
+      const targetTabs = visibleWorkspaceTabs.filter((tab) => targetIds.includes(tab.id))
 
       for (const tab of targetTabs) {
         await desktopApi.executeCommandTemplate(tab.id, commandId, args, options)
@@ -1237,6 +1430,69 @@ export function App() {
     } finally {
       setIsBusy(false)
     }
+  }
+
+  const sendTerminalCommand = async (command: string) => {
+    if (!desktopApi || !activeTab) {
+      return
+    }
+
+    const targetIds = resolveSelectedTabIds(
+      activeTerminalDockSendState.scope,
+      activeTab,
+      activeTerminalDockSendState.selectedTabIds,
+      sessionSendTargets
+    )
+
+    if (!targetIds.length) {
+      setError(t.commandNoAvailableTargets)
+      return
+    }
+
+    try {
+      for (const tabId of targetIds) {
+        await desktopApi.writeTerminal(tabId, `${command}\r`)
+      }
+    } catch (err) {
+      reportError(setError, '发送终端命令', err)
+      throw err
+    } finally {
+      if (!activeTerminalDockSendState.rememberSelection && activeTab) {
+        setTerminalDockSendStateByTabId((prev) => ({
+          ...prev,
+          [activeTab.id]: {
+            scope: 'current',
+            selectedTabIds: [],
+            rememberSelection: false
+          }
+        }))
+      }
+    }
+  }
+
+  const updateTerminalDockSendState = (
+    updater: (prev: TerminalDockSendState) => TerminalDockSendState
+  ) => {
+    if (!activeTab) {
+      return
+    }
+
+    setTerminalDockSendStateByTabId((prev) => {
+      const current = prev[activeTab.id] ?? {
+        scope: 'current' as SendScope,
+        selectedTabIds: [],
+        rememberSelection: false
+      }
+
+      const next = updater(current)
+      return {
+        ...prev,
+        [activeTab.id]: {
+          ...next,
+          selectedTabIds: next.selectedTabIds.filter((tabId) => sessionSendTargets.some((target) => target.tabId === tabId))
+        }
+      }
+    })
   }
 
   const handleOpenProfile = async (profileId: string) => {
@@ -1420,6 +1676,16 @@ export function App() {
       return
     }
 
+    const targetTab = visibleWorkspaceTabs.find((tab) => tab.id === tabId) ?? null
+    if (isTabActivelyConnected(targetTab)) {
+      setShortcutCloseConfirm({
+        tabId,
+        title: targetTab?.title ?? '',
+        variant: targetTab?.status === 'connecting' ? 'connecting' : 'active-session'
+      })
+      return
+    }
+
     try {
       await closeSessionTabById(tabId)
     } catch (err) {
@@ -1545,14 +1811,17 @@ export function App() {
 
     if (activeSessionTab) {
       const isLastSessionTab = visibleWorkspaceTabs.length === 1
-      const needsDisconnectConfirm = isLastSessionTab
-        && (activeSessionTab.status === 'connecting' || activeSessionTab.status === 'connected')
+      const needsDisconnectConfirm = isTabActivelyConnected(activeSessionTab)
 
       if (needsDisconnectConfirm) {
         setShortcutCloseConfirm({
           tabId: activeSessionTab.id,
           title: activeSessionTab.title,
-          variant: activeSessionTab.status === 'connecting' ? 'connecting' : 'active-last-session'
+          variant: activeSessionTab.status === 'connecting'
+            ? 'connecting'
+            : isLastSessionTab
+              ? 'active-last-session'
+              : 'active-session'
         })
         return
       }
@@ -1812,6 +2081,7 @@ export function App() {
 
     try {
       setIsBusy(true)
+      setIsSaving(true)
       if (fileEditor.source === 'local') {
         await desktopApi.writeLocalFile(fileEditor.path, content, encoding)
         if (!isFileEditorWindow) {
@@ -1827,6 +2097,7 @@ export function App() {
       reportError(setFileEditorError, '保存文件', err, { targetPath: fileEditor.path })
     } finally {
       setIsBusy(false)
+      setIsSaving(false)
     }
   }
 
@@ -2269,6 +2540,69 @@ export function App() {
     })
     .filter((item): item is OrderedTabEntry => item !== null)
 
+  const sessionSendTargets = useMemo<SessionSendTarget[]>(
+    () =>
+      orderedTabs.flatMap((entry, index) => {
+        if (entry.kind !== 'session' || entry.tab.sessionType !== 'ssh') {
+          return []
+        }
+
+        const session = workspace.sessions[entry.tab.id]
+        if (!session?.connected) {
+          return []
+        }
+
+        return [{
+          tabId: entry.tab.id,
+          index: index + 1,
+          title: entry.tab.title,
+          label: `${index + 1} ${entry.tab.title}`,
+          isCurrent: entry.tab.id === activeTab?.id
+        }]
+      }),
+    [activeTab?.id, orderedTabs, workspace.sessions]
+  )
+
+  const activeTerminalDockSendState = activeTab
+    ? terminalDockSendStateByTabId[activeTab.id] ?? {
+        scope: 'current' as SendScope,
+        selectedTabIds: [],
+        rememberSelection: false
+      }
+    : {
+        scope: 'current' as SendScope,
+        selectedTabIds: [],
+        rememberSelection: false
+      }
+
+  useEffect(() => {
+    const validTabIds = new Set(visibleWorkspaceTabs.map((tab) => tab.id))
+    setTerminalDockSendStateByTabId((prev) => {
+      const next = Object.fromEntries(
+        Object.entries(prev).filter(([tabId]) => validTabIds.has(tabId))
+      )
+      return Object.keys(next).length === Object.keys(prev).length ? prev : next
+    })
+  }, [visibleWorkspaceTabs])
+
+  useEffect(() => {
+    const availableTargetIds = new Set(sessionSendTargets.map((target) => target.tabId))
+    setTerminalDockSendStateByTabId((prev) => {
+      let changed = false
+      const next = Object.fromEntries(
+        Object.entries(prev).map(([tabId, state]) => {
+          const selectedTabIds = state.selectedTabIds.filter((targetTabId) => availableTargetIds.has(targetTabId))
+          if (selectedTabIds.length !== state.selectedTabIds.length) {
+            changed = true
+            return [tabId, { ...state, selectedTabIds }]
+          }
+          return [tabId, state]
+        })
+      )
+      return changed ? next : prev
+    })
+  }, [sessionSendTargets])
+
   const handleOpenRemoteItem = (item: RemoteFileItem) => {
     if (!desktopApi || !activeTab) {
       return
@@ -2278,16 +2612,25 @@ export function App() {
       return
     }
 
+    if (item.type === 'file') {
+      const blockReason = getRemoteFileEditorBlockReason(item, locale)
+      if (blockReason) {
+        setError(blockReason)
+        return
+      }
+
+      void openRemoteFileForEdit(activeTab.id, item).catch((err) => {
+        reportError(setError, '打开远程文件', err, { targetPath: item.path, item })
+      })
+      return
+    }
+
     void (async () => {
       try {
         setIsBusy(true)
-        if (item.type === 'folder') {
-          await openRemoteDirectory(activeTab.id, item.path, item)
-        } else {
-          await openRemoteFileForEdit(activeTab.id, item)
-        }
+        await openRemoteDirectory(activeTab.id, item.path, item)
       } catch (err) {
-        reportError(setError, item.type === 'folder' ? '打开远程文件夹' : '打开远程文件', err, { targetPath: item.path, item })
+        reportError(setError, '打开远程文件夹', err, { targetPath: item.path, item })
       } finally {
         setIsBusy(false)
       }
@@ -2556,7 +2899,7 @@ export function App() {
 
   if (isCommandManagerWindow) {
     return (
-      <StandaloneWindowFrame isWindows={isWindowsDesktop} title={t.commandManager}>
+      <StandaloneWindowFrame isWindows={isWindowsDesktop} showPlatformTitlebar={false} title={t.commandManager}>
         <CommandManagerModal
           commandFolders={workspace.commandFolders || []}
           commandTemplates={workspace.commandTemplates || []}
@@ -2594,7 +2937,7 @@ export function App() {
       : null
 
     return (
-      <StandaloneWindowFrame isWindows={isWindowsDesktop} title={editingCommand ? t.commandEdit : t.commandCreate}>
+      <StandaloneWindowFrame isWindows={isWindowsDesktop} showPlatformTitlebar={false} title={editingCommand ? t.commandEdit : t.commandCreate}>
         <CommandEditorModal
           folders={workspace.commandFolders || []}
           initialValue={editingCommand
@@ -2616,7 +2959,7 @@ export function App() {
 
   if (isConnectionFormWindow) {
     return (
-      <StandaloneWindowFrame isWindows={isWindowsDesktop} title={editingProfileId ? t.editConnection : t.newConnection}>
+      <StandaloneWindowFrame isWindows={isWindowsDesktop} showPlatformTitlebar={false} title={editingProfileId ? t.editConnection : t.newConnection}>
         <ConnectionModal
           errorMessage={formError}
           groupOptions={connectionGroupOptions}
@@ -2642,11 +2985,12 @@ export function App() {
 
   if (isFileEditorWindow && fileEditor) {
     return (
-      <StandaloneWindowFrame isWindows={isWindowsDesktop} title={fileEditor.name}>
+      <StandaloneWindowFrame isWindows={isWindowsDesktop} showPlatformTitlebar={false} title={fileEditor.name}>
         <FileEditorModal
           errorMessage={fileEditorError}
           file={fileEditor}
           isBusy={isBusy}
+          isSaving={isSaving}
           onClose={closeCurrentWindow}
           onReloadWithEncoding={(encoding) => {
             void handleReloadFileEditorWithEncoding(encoding)
@@ -2661,7 +3005,7 @@ export function App() {
 
   if (isFileEditorWindow) {
     return (
-      <StandaloneWindowFrame isWindows={isWindowsDesktop} title={fileEditorWindowName ?? t.appTitle}>
+      <StandaloneWindowFrame isWindows={isWindowsDesktop} showPlatformTitlebar={false} title={fileEditorWindowName ?? t.appTitle}>
         <div className="standalone-shell file-editor-window">
           <div className={`modal-card file-editor-modal ${themeMode === 'default-dark' ? 'file-editor-modal--dark' : ''} standalone`}>
             <div className="modal-header">
@@ -2669,12 +3013,49 @@ export function App() {
                 <span>{fileEditorWindowSource === 'remote' ? t.editRemoteFile : t.editLocalFile}</span>
                 <strong>{fileEditorWindowName ?? ''}</strong>
               </div>
+              <div className="file-editor-header-actions">
+                <button aria-label={t.closeTab} className="icon-button file-editor-close-button" onClick={closeCurrentWindow} type="button">×</button>
+              </div>
             </div>
             {fileEditorError ? <div className="modal-error">{fileEditorError}</div> : <div className="file-editor-path">{t.updating}</div>}
           </div>
         </div>
       </StandaloneWindowFrame>
     )
+  }
+
+  const tabBarProps = {
+    activeHomeTabId: activeLocalTabId,
+    activeSessionTabId: visibleActiveSessionTabId,
+    locale,
+    onAddHomeTab: handleAddHomeTab,
+    onActivateHome: handleActivateHome,
+    onActivateSession: (tabId: string) => {
+      void handleActivateTab(tabId)
+    },
+    onCloseHomeTab: handleCloseHomeTab,
+    onCloseSessionTab: (event: React.MouseEvent<HTMLButtonElement>, tabId: string) => {
+      void handleCloseTab(event, tabId)
+    },
+    onDragEnd: () => setDraggingTabKey(null),
+    onDragEnter: (targetKey: string) => {
+      setTabOrder((prev) => reorderTabKeys(prev, draggingTabKey, targetKey))
+    },
+    onDragStart: setDraggingTabKey,
+    onOpenCommandManager: openCommandManager,
+    onOpenConnectionManager: openConnectionManager,
+    onOpenLogsDirectory: openLogsDirectory,
+    onOpenSettings: () => setShowSettings(true),
+    onOpenTabContext: (event: React.MouseEvent<HTMLDivElement>, target: TabContextTarget) => {
+      setTabContextMenu({ x: event.clientX, y: event.clientY, target })
+    },
+    onSetLocale: (nextLocale: AppLocale) => {
+      setLocale(nextLocale)
+      setLocaleState(nextLocale)
+    },
+    onSetTheme: setThemeMode,
+    orderedTabs,
+    theme: themeMode
   }
 
   return (
@@ -2688,64 +3069,43 @@ export function App() {
       >
         {isWindowsDesktop ? (
           <div className="window-menubar">
-            <div className="window-brandmark" aria-label={t.appTitle}>
-              <AppIcon name="brand" size={18} />
-              <strong>{t.appTitle}</strong>
+            <div className="window-menu-items">
+              <button type="button" onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect()
+                void desktopApi?.showWindowMenu('app', Math.round(rect.left), Math.round(rect.bottom))
+              }} style={{ fontWeight: 600, color: 'var(--text-main, #ffffff)' }}>TermDock</button>
+              <button type="button" onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect()
+                void desktopApi?.showWindowMenu('file', Math.round(rect.left), Math.round(rect.bottom))
+              }}>File</button>
+              <button type="button" onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect()
+                void desktopApi?.showWindowMenu('view', Math.round(rect.left), Math.round(rect.bottom))
+              }}>View</button>
+              <button type="button" onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect()
+                void desktopApi?.showWindowMenu('window', Math.round(rect.left), Math.round(rect.bottom))
+              }}>Window</button>
             </div>
             <div className="window-control-buttons">
-              <button aria-label="Minimize" type="button" onClick={() => { void desktopApi?.minimizeCurrentWindow() }}>−</button>
-              <button aria-label="Maximize" type="button" onClick={() => { void desktopApi?.toggleMaximizeCurrentWindow() }}>□</button>
-              <button aria-label="Close" className="window-close-button" type="button" onClick={() => { void desktopApi?.closeCurrentWindow() }}>×</button>
+              <button aria-label="Minimize" type="button" onClick={() => { void desktopApi?.minimizeCurrentWindow() }}>
+                <svg width="10" height="10" viewBox="0 0 10 10"><line x1="1" y1="5" x2="9" y2="5" stroke="currentColor" strokeWidth="1" /></svg>
+              </button>
+              <button aria-label="Maximize" type="button" onClick={() => { void desktopApi?.toggleMaximizeCurrentWindow() }}>
+                {isMaximized ? (
+                  <svg width="10" height="10" viewBox="0 0 10 10"><path d="M1.5,3.5 L6.5,3.5 L6.5,8.5 L1.5,8.5 Z M3.5,3.5 L3.5,1.5 L8.5,1.5 L8.5,6.5 L6.5,6.5" fill="none" stroke="currentColor" strokeWidth="1" /></svg>
+                ) : (
+                  <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1.5" y="1.5" width="7" height="7" fill="none" stroke="currentColor" strokeWidth="1" /></svg>
+                )}
+              </button>
+              <button aria-label="Close" className="window-close-button" type="button" onClick={() => { void desktopApi?.closeCurrentWindow() }}>
+                <svg width="10" height="10" viewBox="0 0 10 10"><path d="M1.5,1.5 L8.5,8.5 M8.5,1.5 L1.5,8.5" stroke="currentColor" strokeWidth="1" /></svg>
+              </button>
             </div>
           </div>
         ) : null}
         {activeLocalTab?.kind !== 'home' && (
-          <TabBar
-            activeHomeTabId={activeLocalTabId}
-            activeSessionTabId={visibleActiveSessionTabId}
-            locale={locale}
-            onAddHomeTab={handleAddHomeTab}
-            onActivateHome={handleActivateHome}
-            onActivateSession={(tabId) => {
-              void handleActivateTab(tabId)
-            }}
-            onCloseHomeTab={handleCloseHomeTab}
-            onCloseSessionTab={(event, tabId) => {
-              void handleCloseTab(event, tabId)
-            }}
-            onDragEnd={() => setDraggingTabKey(null)}
-            onDragEnter={(targetKey) => {
-              setTabOrder((prev) => reorderTabKeys(prev, draggingTabKey, targetKey))
-            }}
-            onDragStart={setDraggingTabKey}
-            onOpenCommandManager={openCommandManager}
-            onOpenConnectionManager={() => {
-              if (desktopApi) {
-                void desktopApi.openConnectionManagerWindow()
-                return
-              }
-              setShowConnectionManager(true)
-            }}
-            onOpenLogsDirectory={() => {
-              if (!desktopApi) {
-                setError(t.desktopOnlyOpenLogs)
-                return
-              }
-              void desktopApi.openLogsDirectory().catch((err) => {
-                reportError(setError, t.openLogsDirectory, err)
-              })
-            }}
-            onOpenTabContext={(event, target) => {
-              setTabContextMenu({ x: event.clientX, y: event.clientY, target })
-            }}
-            onSetLocale={(nextLocale) => {
-              setLocale(nextLocale)
-              setLocaleState(nextLocale)
-            }}
-            onSetTheme={setThemeMode}
-            orderedTabs={orderedTabs}
-            theme={themeMode}
-          />
+          <TabBar {...tabBarProps} />
         )}
 
         {showSidebar ? (
@@ -2793,10 +3153,13 @@ export function App() {
           <div className="workspace-stage">
             <WorkspaceStage
               activeLocalTab={activeLocalTab}
+              activeHomeTabId={activeLocalTabId}
               activeProfile={activeProfile}
               activeSession={activeSession}
               activeTab={activeTab}
-              tabs={visibleWorkspaceTabs}
+              sendTargets={sessionSendTargets}
+              terminalDockSendScope={activeTerminalDockSendState.scope}
+              terminalDockSelectedTabIds={activeTerminalDockSendState.selectedTabIds}
               commandFolders={workspace.commandFolders || []}
               commandTemplates={workspace.commandTemplates || []}
               folders={workspace.folders || []}
@@ -2811,8 +3174,25 @@ export function App() {
               onCopyItems={setClipboardItems.bind(null, 'copy')}
               onCutItems={setClipboardItems.bind(null, 'cut')}
               onClearCutState={clearCutState}
-              onExecuteCommand={(commandId, args, options, scope) => {
-                void executeCommandTemplate(commandId, args, options, scope)
+              onExecuteCommand={(commandId, args, options, scope, selectedTabIds) => {
+                void executeCommandTemplate(commandId, args, options, scope, selectedTabIds)
+              }}
+              onSendTerminalCommand={sendTerminalCommand}
+              onTerminalDockSendScopeChange={(scope, rememberSelection) => {
+                updateTerminalDockSendState((prev) => ({
+                  ...prev,
+                  scope,
+                  rememberSelection,
+                  selectedTabIds: scope === 'selected-ssh' ? prev.selectedTabIds : []
+                }))
+              }}
+              onTerminalDockSelectedTabIdsChange={(selectedTabIds, rememberSelection) => {
+                updateTerminalDockSendState((prev) => ({
+                  ...prev,
+                  scope: 'selected-ssh',
+                  selectedTabIds,
+                  rememberSelection
+                }))
               }}
               onOpenCommandManager={openCommandManager}
               profiles={workspace.profiles}
@@ -2837,6 +3217,31 @@ export function App() {
               remoteFileAccessMode={activeSession?.fileAccessMode ?? 'user'}
               onRefresh={handleRefreshWorkspace}
               onUploadFiles={handleUploadFiles}
+              theme={themeMode}
+              locale={locale}
+              onCreateConnection={() => {
+                if (desktopApi) void desktopApi.openConnectionFormWindow('create')
+              }}
+              onEditConnection={openEditConnection}
+              onDeleteConnection={handleDeleteProfile}
+              onCreateConnectionFolder={createConnectionFolder}
+              onDeleteConnectionFolder={deleteConnectionFolder}
+              onUpdateConnectionFolder={updateConnectionFolder}
+              onUpdateConnectionOrder={updateConnectionOrder}
+              onCreateCommand={(input) => { void saveCommandTemplate(null, input) }}
+              onUpdateCommand={saveCommandTemplate}
+              onDeleteCommand={deleteCommandTemplate}
+              onCreateCommandFolder={createCommandFolder}
+              onDeleteCommandFolder={deleteCommandFolder}
+              onUpdateCommandFolder={updateCommandFolder}
+              onUpdateCommandOrder={updateCommandOrder}
+              onSetTheme={setThemeMode}
+              onSetLocale={(nextLocale) => {
+                setLocale(nextLocale)
+                setLocaleState(nextLocale)
+              }}
+              onOpenLogsDirectory={openLogsDirectory}
+              tabBarProps={tabBarProps}
             />
           </div>
         </main>
@@ -2998,6 +3403,30 @@ export function App() {
         />
       ) : null}
 
+      {showSettings ? (
+        <SettingsModal
+          theme={themeMode}
+          onSetTheme={setThemeMode}
+          locale={locale}
+          onSetLocale={(nextLocale: AppLocale) => {
+            setLocale(nextLocale)
+            setLocaleState(nextLocale)
+          }}
+          onOpenCommandManager={() => {
+            setShowSettings(false)
+            openCommandManager()
+          }}
+          onOpenConnectionManager={() => {
+            setShowSettings(false)
+            openConnectionManager()
+          }}
+          onOpenLogsDirectory={() => {
+            openLogsDirectory()
+          }}
+          onClose={() => setShowSettings(false)}
+        />
+      ) : null}
+
       {showForm ? (
         <ConnectionModal
           errorMessage={formError}
@@ -3088,6 +3517,8 @@ export function App() {
           description={
             (shortcutCloseConfirm.variant === 'connecting'
               ? t.closeShortcutConnectingDescription
+              : shortcutCloseConfirm.variant === 'active-session'
+                ? t.closeShortcutActiveDescription
               : t.closeShortcutLastActiveDescription)
               .replace('{name}', shortcutCloseConfirm.title)
           }
@@ -3096,29 +3527,24 @@ export function App() {
           onConfirm={() => {
             void confirmShortcutCloseConnectingTab()
           }}
-          title={shortcutCloseConfirm.variant === 'connecting' ? t.closeShortcutConnectingTitle : t.closeShortcutLastActiveTitle}
+          title={
+            shortcutCloseConfirm.variant === 'connecting'
+              ? t.closeShortcutConnectingTitle
+              : shortcutCloseConfirm.variant === 'active-session'
+                ? t.closeShortcutActiveTitle
+                : t.closeShortcutLastActiveTitle
+          }
         />
       ) : null}
 
       {closeConfirmDialog ? (
-        <div className="modal-backdrop">
-          <div className="modal-card confirm-action-dialog">
-            <div className="modal-header">
-              <span>{t.closeConfirmTitle}</span>
-              <button
-                className="icon-button"
-                onClick={() => {
-                  setCloseConfirmDialog(null)
-                  void desktopApi?.confirmCloseWindow('cancel')
-                }}
-                type="button"
-              >
-                ×
-              </button>
-            </div>
-            <div className="confirm-action-dialog__description">
+        <ConfirmActionDialog
+          confirmLabel={t.closeConfirmQuit}
+          confirmVariant="danger"
+          description={
+            <>
               {closeConfirmDialog.hasActiveConnections ? (
-                <div style={{ color: 'var(--danger, #ef4444)', marginBottom: '12px', fontWeight: 'bold' }}>
+                <div className="confirm-action-dialog__warning">
                   {t.closeConfirmActiveWarn}
                 </div>
               ) : closeConfirmDialog.isQuit ? (
@@ -3127,43 +3553,30 @@ export function App() {
               {!closeConfirmDialog.isQuit ? (
                 <div>{t.closeConfirmWindowsMsg}</div>
               ) : null}
-            </div>
-            <div className="form-actions confirm-action-dialog__actions" style={{ justifyContent: 'flex-end', gap: '8px' }}>
-              <button
-                className="flat-button"
-                onClick={() => {
-                  setCloseConfirmDialog(null)
-                  void desktopApi?.confirmCloseWindow('cancel')
-                }}
-                type="button"
-              >
-                {t.cancel}
-              </button>
-              {!closeConfirmDialog.isQuit ? (
-                <button
-                  className="primary-button"
-                  onClick={() => {
-                    setCloseConfirmDialog(null)
-                    void desktopApi?.confirmCloseWindow('hide')
-                  }}
-                  type="button"
-                >
-                  {t.closeConfirmHide}
-                </button>
-              ) : null}
-              <button
-                className="flat-button danger"
-                onClick={() => {
-                  setCloseConfirmDialog(null)
-                  void desktopApi?.confirmCloseWindow('quit')
-                }}
-                type="button"
-              >
-                {t.closeConfirmQuit}
-              </button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+          extraActions={!closeConfirmDialog.isQuit ? (
+            <button
+              className="confirm-action-dialog__button confirm-action-dialog__button--primary"
+              onClick={() => {
+                setCloseConfirmDialog(null)
+                void desktopApi?.confirmCloseWindow('hide')
+              }}
+              type="button"
+            >
+              {t.closeConfirmHide}
+            </button>
+          ) : null}
+          onClose={() => {
+            setCloseConfirmDialog(null)
+            void desktopApi?.confirmCloseWindow('cancel')
+          }}
+          onConfirm={() => {
+            setCloseConfirmDialog(null)
+            void desktopApi?.confirmCloseWindow('quit')
+          }}
+          title={t.closeConfirmTitle}
+        />
       ) : null}
     </>
   )
@@ -3191,6 +3604,17 @@ function StandaloneWindowFrame({
 
 function StandaloneWindowTitlebar({ isWindows, title }: { isWindows: boolean; title: string }) {
   const desktopApi = window.termdock
+  const [isMaximized, setIsMaximized] = useState(false)
+
+  useEffect(() => {
+    if (!isWindows || !desktopApi) {
+      return
+    }
+    desktopApi.isCurrentWindowMaximized().then(setIsMaximized).catch(console.error)
+    const unsubscribe = desktopApi.onWindowMaximizedChange(setIsMaximized)
+    return unsubscribe
+  }, [isWindows, desktopApi])
+
   if (!isWindows) {
     return null
   }
@@ -3203,9 +3627,19 @@ function StandaloneWindowTitlebar({ isWindows, title }: { isWindows: boolean; ti
         <span>{title}</span>
       </div>
       <div className="window-control-buttons">
-        <button aria-label="Minimize" type="button" onClick={() => { void desktopApi?.minimizeCurrentWindow() }}>−</button>
-        <button aria-label="Maximize" type="button" onClick={() => { void desktopApi?.toggleMaximizeCurrentWindow() }}>□</button>
-        <button aria-label="Close" className="window-close-button" type="button" onClick={() => { void desktopApi?.closeCurrentWindow() }}>×</button>
+        <button aria-label="Minimize" type="button" onClick={() => { void desktopApi?.minimizeCurrentWindow() }}>
+          <svg width="10" height="10" viewBox="0 0 10 10"><line x1="1" y1="5" x2="9" y2="5" stroke="currentColor" strokeWidth="1" /></svg>
+        </button>
+        <button aria-label="Maximize" type="button" onClick={() => { void desktopApi?.toggleMaximizeCurrentWindow() }}>
+          {isMaximized ? (
+            <svg width="10" height="10" viewBox="0 0 10 10"><path d="M1.5,3.5 L6.5,3.5 L6.5,8.5 L1.5,8.5 Z M3.5,3.5 L3.5,1.5 L8.5,1.5 L8.5,6.5 L6.5,6.5" fill="none" stroke="currentColor" strokeWidth="1" /></svg>
+          ) : (
+            <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1.5" y="1.5" width="7" height="7" fill="none" stroke="currentColor" strokeWidth="1" /></svg>
+          )}
+        </button>
+        <button aria-label="Close" className="window-close-button" type="button" onClick={() => { void desktopApi?.closeCurrentWindow() }}>
+          <svg width="10" height="10" viewBox="0 0 10 10"><path d="M1.5,1.5 L8.5,8.5 M8.5,1.5 L1.5,8.5" stroke="currentColor" strokeWidth="1" /></svg>
+        </button>
       </div>
     </div>
   )

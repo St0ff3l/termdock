@@ -43,4 +43,3 @@ export function sortEditorLanguages(
     })
     .sort((a, b) => a.label.localeCompare(b.label))
 }
-

@@ -21,7 +21,7 @@
 
 /* Sidebar Styling */
 .home-sidebar {
-  width: 260px;
+  width: var(--sidebar-width, 214px);
   height: 100%;
   background-color: var(--bg-sidebar);
   border-right: 1px solid var(--border-light);
@@ -103,6 +103,7 @@
   align-items: center;
   gap: 12px;
   width: 100%;
+  min-height: 40px;
   padding: 10px 14px;
   background: transparent;
   border: none;
@@ -112,7 +113,7 @@
   font-weight: 500;
   text-align: left;
   cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 0.2s ease, color 0.2s ease, padding-left 0.2s ease;
   font-family: 'Inter', sans-serif;
   box-sizing: border-box;
 }
@@ -127,9 +128,14 @@
   padding-left: 18px; /* 平滑向右微滑动 */
 }
 
+.sidebar-nav-link:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-focus-ring);
+}
+
 .sidebar-nav-link.active {
   background: var(--bg-hover, rgba(255, 255, 255, 0.05));
-  border-left: 2px solid var(--text-main, #ffffff);
+  border-left: 2px solid var(--accent-primary);
   border-radius: 0 8px 8px 0;
   color: var(--text-main, #ffffff);
   font-weight: 500;
@@ -137,7 +143,7 @@
 }
 
 .sidebar-nav-link.active span.material-symbols-outlined {
-  color: var(--text-main, #ffffff);
+  color: var(--accent-primary);
 }
 
 /* Sidebar Footer Links */
@@ -153,83 +159,29 @@
 /* Right Main Content Panel */
 .home-main-content {
   flex: 1;
+  min-width: 0;
   height: 100%;
   background-color: var(--bg-main);
-  padding: 32px 32px 6px 32px;
+  padding: 0;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
-/* Header Area */
+/* Remove the separate header - now part of pages */
 .home-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 28px;
-  flex-shrink: 0;
-}
-
-.header-meta {
-  display: flex;
-  flex-direction: column;
-}
-
-.header-title {
-  font-size: 26px;
-  font-weight: 400;
-  color: var(--text-main, #ffffff);
-  margin: 0;
-  letter-spacing: -0.015em;
-}
-
-.header-subtitle {
-  font-size: 13.5px;
-  color: var(--text-muted, #a4a4a4);
-  margin: 6px 0 0 0;
-  font-family: 'Inter', sans-serif;
-}
-
-/* New Connection Button - Refined with Glassmorphism and glow */
-.btn-new-connection {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  background: var(--bg-card);
-  color: var(--text-main);
-  border: 1px solid var(--border-light);
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 400;
-  cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: var(--shadow-sm);
-}
-
-.btn-new-connection span.material-symbols-outlined {
-  font-size: 18px;
-}
-
-.btn-new-connection:hover {
-  background: var(--text-main);
-  color: var(--bg-main);
-  border-color: var(--text-main);
-  box-shadow: 0 4px 20px rgba(255, 255, 255, 0.2);
-  transform: translateY(-1.5px);
-}
-
-.btn-new-connection:active {
-  transform: translateY(0);
+  display: none;
 }
 
 /* Scrollable Container Body */
 .home-content-body {
   flex: 1;
+  min-width: 0;
   overflow-y: auto;
   margin-bottom: 12px;
-  padding-right: 4px;
+  padding: 18px 24px 20px;
+  box-sizing: border-box;
 }
 
 /* Custom Scrollbar */
@@ -242,12 +194,161 @@
 }
 
 .home-content-body::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--surface-chip);
   border-radius: 3px;
 }
 
 .home-content-body::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--surface-hover);
+}
+
+/* Page switch fly-in: direction follows sidebar nav (down/up) */
+.page-transition {
+  height: 100%;
+  min-width: 0;
+}
+
+/* ============================================================
+   内嵌管理器(inline):页面原生形态,去掉弹窗外壳
+   ============================================================ */
+.home-content-body .manager-inline {
+  display: flex !important;
+  flex-direction: column !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+}
+
+/* 内嵌版必须完全跟随标签页容器，不能继续使用弹窗的 viewport 宽度 */
+.home-content-body .manager-inline.connection-manager-modal,
+.home-content-body .manager-inline.command-manager-modal,
+.home-content-body .manager-inline.settings-modal {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-height: 0 !important;
+  height: 100% !important;
+}
+
+/* 命令管理器内嵌时,撤掉它自带的固定宽高 */
+.home-content-body .manager-inline.command-manager-modal {
+  width: 100% !important;
+  min-height: 0 !important;
+  height: 100% !important;
+}
+
+/* 头部:从「模拟窗口标题栏」变成页面级标题栏 */
+.home-content-body .manager-inline .connection-manager-header {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  flex: 0 0 auto !important;
+  min-height: 48px !important;
+  padding: 0 0 16px !important;
+  border-bottom: 0 !important;
+  background: transparent !important;
+  -webkit-app-region: no-drag !important;
+}
+
+.home-content-body .manager-inline .connection-manager-title {
+  display: flex !important;
+  align-items: center !important;
+  font-size: 24px !important;
+  font-weight: 400 !important;
+  letter-spacing: -0.015em !important;
+  gap: 12px !important;
+  color: var(--text-main) !important;
+}
+
+.home-content-body .manager-inline .connection-manager-title .material-symbols-outlined {
+  font-size: 26px !important;
+  color: var(--accent-primary) !important;
+}
+
+.home-content-body .manager-inline .connection-manager-search {
+  height: 36px !important;
+  border-radius: var(--radius-md) !important;
+  border: 1px solid var(--border-light) !important;
+  background: var(--bg-card) !important;
+  margin-left: 24px !important;
+  margin-right: 0 !important;
+  padding: 0 12px !important;
+  width: 280px !important;
+}
+
+/* 布局:填充剩余高度,内部各自滚动，包装为带圆角的卡片 */
+.home-content-body .manager-inline .connection-manager-layout {
+  display: grid !important;
+  grid-template-columns: 224px minmax(0, 1fr) !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  min-width: 0 !important;
+  margin-top: 0 !important;
+  border: 1px solid var(--border-light) !important;
+  border-radius: var(--radius-lg, 10px) !important;
+  overflow: hidden !important;
+  background: var(--bg-card) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+.home-content-body .manager-inline .connection-manager-main {
+  padding-right: 0 !important;
+  box-sizing: border-box !important;
+}
+
+.home-content-body .manager-inline .connection-manager-footer {
+  flex: 0 0 auto !important;
+  padding: 10px 0 0 !important;
+  background: transparent !important;
+  border-top: 0 !important;
+  height: auto !important;
+}
+
+/* fly-in 动画:内嵌管理器整体作为一个卡片飞入 */
+.page-transition > .overview-page > *,
+.page-transition > .quick-links-page > *,
+.page-transition > .manager-inline > * {
+  animation: page-card-in-up 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.page-transition[data-nav-direction='up'] > .overview-page > *,
+.page-transition[data-nav-direction='up'] > .quick-links-page > *,
+.page-transition[data-nav-direction='up'] > .manager-inline > * {
+  animation-name: page-card-in-down;
+}
+
+/* stagger direct child sections so cards cascade in */
+.page-transition > div > *:nth-child(1) { animation-delay: 0.02s; }
+.page-transition > div > *:nth-child(2) { animation-delay: 0.08s; }
+.page-transition > div > *:nth-child(3) { animation-delay: 0.14s; }
+.page-transition > div > *:nth-child(4) { animation-delay: 0.2s; }
+.page-transition > div > *:nth-child(n+5) { animation-delay: 0.26s; }
+
+/* navigate down -> cards fly in from below */
+@keyframes page-card-in-up {
+  from { opacity: 0; transform: translate3d(0, 26px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+/* navigate up -> cards fly in from above */
+@keyframes page-card-in-down {
+  from { opacity: 0; transform: translate3d(0, -26px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-transition > .overview-page > *,
+  .page-transition > .quick-links-page > * {
+    animation: none;
+  }
 }
 
 /* Flat Grid Table Styling - Refined to use var(--bg-card) */
@@ -330,11 +431,11 @@
 }
 
 .col-icon.profile {
-  color: #60a5fa; /* Soft premium blue */
+  color: var(--type-total); /* Soft premium blue */
 }
 
 .col-icon.folder {
-  color: #fbbf24; /* Soft premium gold */
+  color: var(--type-folder); /* Soft premium gold */
 }
 
 .col-icon span.material-symbols-outlined {
@@ -353,7 +454,7 @@
 
 .folder-chevron {
   font-size: 18px;
-  color: #4b5563;
+  color: var(--type-muted);
   margin-right: 8px;
   cursor: pointer;
   transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), color 0.2s ease;
@@ -398,28 +499,28 @@
 }
 
 .type-dot.dot-ssh {
-  background-color: #34d399;
-  box-shadow: 0 0 8px rgba(52, 211, 153, 0.6);
+  background-color: var(--type-ssh);
+  box-shadow: 0 0 8px var(--type-ssh-surface);
   animation: dot-glow 2.5s infinite ease-in-out;
 }
 
 .type-dot.dot-sftp {
-  background-color: #38bdf8;
-  box-shadow: 0 0 8px rgba(56, 189, 248, 0.6);
+  background-color: var(--type-sftp);
+  box-shadow: 0 0 8px var(--type-sftp-surface);
 }
 
 .type-dot.dot-ftp {
-  background-color: #c084fc;
-  box-shadow: 0 0 8px rgba(192, 132, 252, 0.6);
+  background-color: var(--type-ftp);
+  box-shadow: 0 0 8px var(--type-ftp-surface);
 }
 
 .type-dot.dot-database {
-  background-color: #fb923c;
-  box-shadow: 0 0 8px rgba(251, 146, 60, 0.6);
+  background-color: var(--type-folder);
+  box-shadow: 0 0 8px var(--type-folder-surface);
 }
 
 .type-dot.dot-folder {
-  background-color: #4b5563;
+  background-color: var(--type-muted);
 }
 
 /* Actions Column with refined buttons */
@@ -439,20 +540,29 @@
   border: 1px solid var(--border-light);
   color: var(--text-muted);
   cursor: pointer;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .col-action button:hover {
-  color: var(--text-main);
-  background-color: var(--bg-hover);
-  border-color: var(--text-main);
-  box-shadow: 0 0 8px rgba(255, 255, 255, 0.1);
+  color: var(--accent-primary);
+  background-color: var(--accent-tint-weak);
+  border-color: var(--accent-primary);
+}
+
+.col-action button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-focus-ring);
+}
+
+.col-action button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .col-action button span.material-symbols-outlined {
@@ -486,7 +596,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 4px;
+  padding: 0 32px;
   margin-top: auto;
   flex-shrink: 0;
   box-sizing: border-box;
@@ -496,6 +606,16 @@
   font-family: 'Geist Mono', 'JetBrains Mono', Monaco, monospace;
   font-size: 11.5px;
   color: var(--text-muted);
+  display: flex;
+  align-items: center;
+}
+
+.footer-meta-separator {
+  margin: 0 12px;
+  color: var(--border-light);
+  font-family: sans-serif;
+  font-weight: 300;
+  opacity: 0.6;
 }
 
 .footer-nav {
@@ -511,12 +631,18 @@
   font-family: 'Geist Mono', 'JetBrains Mono', Monaco, monospace;
   font-size: 11.5px;
   cursor: pointer;
-  padding: 4px 0;
-  transition: color 0.15s ease;
+  padding: 4px 6px;
+  border-radius: 4px;
+  transition: color 0.15s ease, background-color 0.15s ease;
 }
 
 .footer-nav button:hover {
   color: var(--text-main);
+}
+
+.footer-nav button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-focus-ring);
 }
 
 .footer-status-link {
@@ -525,8 +651,15 @@
   gap: 6px;
   background: transparent;
   border: none;
-  padding: 0;
+  padding: 4px 6px;
+  border-radius: 4px;
   cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.footer-status-link:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-focus-ring);
 }
 
 @keyframes status-pulse {
@@ -538,7 +671,7 @@
 .footer-status-dot {
   width: 6px;
   height: 6px;
-  background-color: #47e266;
+  background-color: var(--success);
   border-radius: 50%;
   animation: status-pulse 2.5s infinite ease-in-out;
 }
@@ -552,7 +685,52 @@
   grid-template-rows: 32px 0px minmax(0, 1fr) 0px !important;
 }
 
+.fs-shell.has-window-menubar.is-home-active .home-sidebar {
+  padding-top: 8px !important;
+}
+
 /* Adjust macOS sidebar top padding to leave space for native traffic lights when titlebar is hidden */
 :root[data-platform='darwin'] .is-home-active .home-sidebar {
   padding-top: 48px;
+  position: relative;
+}
+
+:root[data-platform='darwin'] .is-home-active .sidebar-drag-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 48px;
+  -webkit-app-region: drag !important;
+  z-index: 5;
+}
+
+/* Inline TabBar in Home main content top */
+.home-tabs-bar {
+  margin: 0;
+  margin-bottom: 24px;
+  padding: 0;
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.home-tabs-bar .titlebar-brand {
+  display: none !important;
+}
+
+.home-tabs-bar .fs-tabbar {
+  background: var(--bg-sidebar) !important;
+  border-bottom: 1px solid var(--border-light);
+  height: 48px;
+  grid-template-columns: 1fr !important;
+  -webkit-app-region: drag !important;
+  width: 100%;
+}
+
+.home-tabs-bar .titlebar-tabarea {
+  grid-template-columns: minmax(0, 1fr) auto !important;
+}
+
+.home-tabs-bar .fs-tabs {
+  padding-left: calc(var(--brand-width, 214px) - var(--sidebar-width, 214px)) !important;
 }

@@ -18,6 +18,8 @@ let tray: Tray | null = null
 
 const isMac = process.platform === 'darwin'
 const isWindows = process.platform === 'win32'
+// Expose version to preload via process.env (shared between main and preload contexts)
+process.env['TERMDOCK_APP_VERSION'] = app.getVersion()
 const ALLOWED_EXTERNAL_PROTOCOLS = new Set(['http:', 'https:'])
 const DEFAULT_WINDOW_BOUNDS = {
   main: {
@@ -446,6 +448,7 @@ function createMainWindow() {
 
   mainWindow = win
   attachWindowDiagnostics(win, 'main')
+  registerWindowStateListeners(win)
   if (isWindows) {
     win.setMenuBarVisibility(false)
   }
@@ -506,6 +509,15 @@ function createMainWindow() {
   return win
 }
 
+function registerWindowStateListeners(win: BrowserWindow) {
+  win.on('maximize', () => {
+    win.webContents.send('app:window-maximized-change', true)
+  })
+  win.on('unmaximize', () => {
+    win.webContents.send('app:window-maximized-change', false)
+  })
+}
+
 function createNativeChildWindow(parent: BrowserWindow, options: {
   title: string
   width: number
@@ -546,6 +558,7 @@ function createNativeChildWindow(parent: BrowserWindow, options: {
       sandbox: true
     }
   })
+  registerWindowStateListeners(win)
   return win
 }
 
@@ -615,9 +628,7 @@ function openCommandManagerWindow(parent: BrowserWindow) {
     height: DEFAULT_WINDOW_BOUNDS.commandManager.height,
     minWidth: DEFAULT_WINDOW_BOUNDS.commandManager.minWidth,
     minHeight: DEFAULT_WINDOW_BOUNDS.commandManager.minHeight,
-    useVibrancy: false,
-    visualEffectState: undefined,
-    titleBarStyle: 'hiddenInset'
+    frame: false
   })
 
   commandManagerWindow = win
@@ -645,7 +656,8 @@ function openConnectionFormWindow(parent: BrowserWindow, mode: 'create' | 'edit'
     width: DEFAULT_WINDOW_BOUNDS.connectionForm.width,
     height: DEFAULT_WINDOW_BOUNDS.connectionForm.height,
     minWidth: DEFAULT_WINDOW_BOUNDS.connectionForm.minWidth,
-    minHeight: DEFAULT_WINDOW_BOUNDS.connectionForm.minHeight
+    minHeight: DEFAULT_WINDOW_BOUNDS.connectionForm.minHeight,
+    frame: false
   })
 
   connectionFormWindow = win
@@ -678,9 +690,7 @@ function openCommandFormWindow(parent: BrowserWindow, mode: 'create' | 'edit', c
     height: DEFAULT_WINDOW_BOUNDS.commandForm.height,
     minWidth: DEFAULT_WINDOW_BOUNDS.commandForm.minWidth,
     minHeight: DEFAULT_WINDOW_BOUNDS.commandForm.minHeight,
-    useVibrancy: false,
-    visualEffectState: undefined,
-    titleBarStyle: 'hiddenInset'
+    frame: false
   })
 
   commandFormWindow = win
@@ -720,7 +730,8 @@ function openFileEditorWindow(parent: BrowserWindow, input: {
     height: DEFAULT_WINDOW_BOUNDS.fileEditor.height,
     minWidth: DEFAULT_WINDOW_BOUNDS.fileEditor.minWidth,
     minHeight: DEFAULT_WINDOW_BOUNDS.fileEditor.minHeight,
-    backgroundColor: uiPreferences.theme === 'default-light' ? '#f8fafc' : '#171b20'
+    backgroundColor: uiPreferences.theme === 'default-light' ? '#f8fafc' : '#171b20',
+    frame: false
   })
 
   fileEditorWindow = win

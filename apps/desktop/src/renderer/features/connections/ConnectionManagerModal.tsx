@@ -1,5 +1,5 @@
 import type { ConnectionProfile, ConnectionFolder } from '@termdock/core'
-import { useState, useMemo, useRef, type DragEvent } from 'react'
+import { useState, useMemo, useRef, useEffect, type DragEvent } from 'react'
 import { ConfirmActionDialog } from '../common/ConfirmActionDialog'
 import { t } from '../../i18n'
 import { AppIcon } from '../common/AppIcon'
@@ -20,7 +20,9 @@ export function ConnectionManagerModal({
   onDeleteFolder,
   onUpdateFolder,
   onUpdateOrder,
-  standalone = false
+  standalone = false,
+  inline = false,
+  onActiveFolderChange
 }: {
   profiles: ConnectionProfile[]
   folders: ConnectionFolder[]
@@ -34,6 +36,8 @@ export function ConnectionManagerModal({
   onUpdateFolder(folderId: string, updates: Partial<ConnectionFolder>): void
   onUpdateOrder(id: string, newParentId: string | undefined, newOrder: number): void
   standalone?: boolean
+  inline?: boolean
+  onActiveFolderChange?(name: string): void
 }) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
   const [activeFolderId, setActiveFolderId] = useState<'all' | string>('all')
@@ -140,6 +144,11 @@ export function ConnectionManagerModal({
   const activeFolderNode = activeFolderId === 'all' ? null : tree.map.get(activeFolderId)
   const resolvedActiveFolderId = activeFolderNode?.type === 'folder' ? activeFolderId : 'all'
   const activeBaseNodes = activeFolderNode?.type === 'folder' ? activeFolderNode.children : tree.roots
+
+  useEffect(() => {
+    const name = resolvedActiveFolderId === 'all' ? t.allConnections : activeFolderNode?.name || ''
+    onActiveFolderChange?.(name)
+  }, [resolvedActiveFolderId, activeFolderNode, onActiveFolderChange, t.allConnections])
 
   const visibleNodes = useMemo(() => {
     const query = searchQuery.trim().toLocaleLowerCase()
@@ -407,10 +416,10 @@ export function ConnectionManagerModal({
   const emptyMessage = isSearching ? t.noMatchingConnections : t.noConnections
 
   const content = (
-    <div className={`modal-card manager-modal connection-manager-modal ${standalone ? 'standalone' : ''}`}>
+    <div className={`modal-card manager-modal connection-manager-modal ${standalone ? 'standalone' : ''} ${inline ? 'manager-inline' : ''}`}>
       <div className="connection-manager-header">
         <span className="connection-manager-title">
-          <AppIcon name="connections" size={16} />
+          <span className="material-symbols-outlined">settings_ethernet</span>
           <span>{t.connectionManager}</span>
         </span>
         <label className="connection-manager-search">
@@ -423,9 +432,11 @@ export function ConnectionManagerModal({
             onChange={(event) => setSearchQuery(event.target.value)}
           />
         </label>
-        <div className="connection-manager-header-actions">
-          <button aria-label={t.closeTab} className="icon-button manager-close-button" onClick={onClose} title={t.closeTab} type="button">×</button>
-        </div>
+        {!inline && (
+          <div className="connection-manager-header-actions">
+            <button aria-label={t.closeTab} className="manager-close-button" onClick={onClose} title={t.closeTab} type="button">×</button>
+          </div>
+        )}
       </div>
       <div className="connection-manager-layout">
         <aside className="connection-manager-sidebar" aria-label={t.folder}>
@@ -535,19 +546,23 @@ export function ConnectionManagerModal({
           </div>
         </section>
       </div>
-      <div className="connection-manager-footer">
-        <span>{profiles.length} {t.connectionCountLabel}</span>
-        <span className="connection-manager-footer-separator"></span>
-        <span>{folders.length} {t.folderCountLabel}</span>
-        <span className="connection-manager-footer-spacer"></span>
-        <span>{resolvedActiveFolderId === 'all' ? t.allConnections : activeFolderNode?.name}</span>
-      </div>
+      {!inline && (
+        <div className="connection-manager-footer">
+          <span>{profiles.length} {t.connectionCountLabel}</span>
+          <span className="connection-manager-footer-separator"></span>
+          <span>{folders.length} {t.folderCountLabel}</span>
+          <span className="connection-manager-footer-spacer"></span>
+          <span>{resolvedActiveFolderId === 'all' ? t.allConnections : activeFolderNode?.name}</span>
+        </div>
+      )}
     </div>
   )
 
   return (
     <>
-      {standalone ? (
+      {inline ? (
+        content
+      ) : standalone ? (
         <div className="manager-window">{content}</div>
       ) : (
         <div className="modal-backdrop">{content}</div>

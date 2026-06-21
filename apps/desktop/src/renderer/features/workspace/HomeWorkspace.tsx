@@ -1,44 +1,91 @@
-import type { ConnectionProfile, ConnectionFolder } from '@termdock/core'
-import { useState, useMemo } from 'react'
+import type { ConnectionProfile, ConnectionFolder, CommandFolder, CommandTemplate } from '@termdock/core'
+import { useState } from 'react'
 import { t } from '../../i18n'
-
-type ConnectionTreeNode =
-  | (ConnectionFolder & { children: ConnectionTreeNode[] })
-  | (ConnectionProfile & { children?: never })
+import { OverviewPage } from './OverviewPage'
+import { QuickLinksPage } from './QuickLinksPage'
+import { ConnectionManagerModal } from '../connections/ConnectionManagerModal'
+import { CommandManagerModal } from '../commands/CommandManagerModal'
+import { SettingsModal } from '../settings/SettingsModal'
+import { TabBar } from '../layout/TabBar'
 
 export function HomeWorkspace({
   profiles,
   folders = [],
-  onOpen
+  commandFolders = [],
+  commandTemplates = [],
+  theme,
+  locale,
+  onOpen,
+  onCreateConnection,
+  onEditConnection,
+  onDeleteConnection,
+  onCreateConnectionFolder,
+  onDeleteConnectionFolder,
+  onUpdateConnectionFolder,
+  onUpdateConnectionOrder,
+  onCreateCommand,
+  onUpdateCommand,
+  onDeleteCommand,
+  onCreateCommandFolder,
+  onDeleteCommandFolder,
+  onUpdateCommandFolder,
+  onUpdateCommandOrder,
+  onSetTheme,
+  onSetLocale,
+  onOpenLogsDirectory,
+  tabBarProps
 }: {
   profiles: ConnectionProfile[]
   folders?: ConnectionFolder[]
+  commandFolders?: CommandFolder[]
+  commandTemplates?: CommandTemplate[]
+  theme: 'default-dark' | 'default-light'
+  locale: 'zhCN' | 'enUS'
   onOpen(profileId: string): void
+  onCreateConnection(): void
+  onEditConnection(profile: ConnectionProfile): void
+  onDeleteConnection(profileId: string): void
+  onCreateConnectionFolder(name: string): void
+  onDeleteConnectionFolder(folderId: string): void
+  onUpdateConnectionFolder(folderId: string, updates: Partial<ConnectionFolder>): void
+  onUpdateConnectionOrder(id: string, newParentId: string | undefined, newOrder: number): void
+  onCreateCommand(input: any): void
+  onUpdateCommand(commandId: string, input: any): void
+  onDeleteCommand(commandId: string): void
+  onCreateCommandFolder(name: string): void
+  onDeleteCommandFolder(folderId: string): void
+  onUpdateCommandFolder(folderId: string, updates: Partial<CommandFolder>): void
+  onUpdateCommandOrder(id: string, newParentId: string | undefined, newOrder: number): void
+  onSetTheme(value: 'default-dark' | 'default-light'): void
+  onSetLocale(value: 'zhCN' | 'enUS'): void
+  onOpenLogsDirectory(): void
+  tabBarProps: any
 }) {
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'terminal' | 'ssh-manager' | 'settings'>('dashboard')
+  const [activeTab, setActiveTab] = useState<'overview' | 'quick-links' | 'command-manager' | 'connection-manager' | 'settings'>('overview')
+  const [navDirection, setNavDirection] = useState<'down' | 'up'>('down')
+  const [activeConnectionFolderName, setActiveConnectionFolderName] = useState('')
+  const [activeCommandFolderName, setActiveCommandFolderName] = useState('')
+
+  // 侧栏页签的纵向顺序,用于判断切换方向(目标更靠下=向下飞入,更靠上=向上飞入)
+  const tabOrder: Record<string, number> = {
+    overview: 0,
+    'quick-links': 1,
+    'command-manager': 2,
+    'connection-manager': 3,
+    settings: 4
+  }
+  const selectTab = (tab: typeof activeTab) => {
+    if (tab === activeTab) return
+    setNavDirection((tabOrder[tab] ?? 0) >= (tabOrder[activeTab] ?? 0) ? 'down' : 'up')
+    setActiveTab(tab)
+  }
 
   const desktopApi = window.termdock
-
-  const toggleFolder = (folderId: string, event?: React.MouseEvent) => {
-    event?.stopPropagation()
-    setExpandedFolders(prev => {
-      const next = new Set(prev)
-      if (next.has(folderId)) next.delete(folderId)
-      else next.add(folderId)
-      return next
-    })
-  }
+  const isWindows = desktopApi?.platform === 'win32'
 
   const handleOpenNewConnection = () => {
     if (desktopApi) {
       void desktopApi.openConnectionFormWindow('create')
-    }
-  }
-
-  const handleOpenConnectionManager = () => {
-    if (desktopApi) {
-      void desktopApi.openConnectionManagerWindow()
     }
   }
 
@@ -48,147 +95,11 @@ export function HomeWorkspace({
     }
   }
 
-  const handleQuitApp = () => {
-    if (desktopApi) {
-      void desktopApi.requestQuitApp()
-    }
-  }
-
-  const tree = useMemo(() => {
-    const items: ConnectionTreeNode[] = [
-      ...profiles.map((profile, index) => ({
-        ...profile,
-        order: typeof profile.order === 'number' ? profile.order : index * 1000
-      })),
-      ...folders.map((folder, index) => ({
-        ...folder,
-        order: typeof folder.order === 'number' ? folder.order : (profiles.length + index) * 1000,
-        children: []
-      }))
-    ]
-
-    const roots: ConnectionTreeNode[] = []
-    const map = new Map<string, ConnectionTreeNode>()
-
-    items.forEach(item => {
-      map.set(item.id, item)
-    })
-
-    items.forEach(item => {
-      const parent = item.parentId ? map.get(item.parentId) : undefined
-      if (parent?.type === 'folder') {
-        parent.children.push(item)
-      } else {
-        roots.push(item)
-      }
-    })
-
-    const sortNodes = (nodes: ConnectionTreeNode[]) => {
-      nodes.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-      nodes.forEach(n => {
-        if (n.type === 'folder') sortNodes(n.children)
-      })
-    }
-    sortNodes(roots)
-    return roots
-  }, [profiles, folders])
-
-  const renderNode = (node: ConnectionTreeNode, depth: number) => {
-    const isFolder = node.type === 'folder'
-    const isExpanded = expandedFolders.has(node.id)
-
-    const handleRowClick = (e: React.MouseEvent) => {
-      if (isFolder) {
-        toggleFolder(node.id, e)
-      } else {
-        onOpen(node.id)
-      }
-    }
-
-    return (
-      <div key={node.id}>
-        <div
-          className={`flat-grid-row ${isFolder ? 'folder-row' : ''}`}
-          onClick={handleRowClick}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              if (isFolder) {
-                toggleFolder(node.id)
-              } else {
-                onOpen(node.id)
-              }
-            }
-          }}
-          role="button"
-          tabIndex={0}
-        >
-          <div className={`col-icon ${isFolder ? 'folder' : 'profile'}`}>
-            <span className="material-symbols-outlined">
-              {isFolder ? 'folder' : 'dns'}
-            </span>
-          </div>
-          <div className="col-name" style={{ paddingLeft: `${depth * 20}px` }}>
-            {isFolder && (
-              <span className={`folder-chevron material-symbols-outlined ${isExpanded ? 'expanded' : ''}`}>
-                chevron_right
-              </span>
-            )}
-            <strong>{node.name}</strong>
-          </div>
-          <div className="col-path">{isFolder ? '--' : (node.note || '/')}</div>
-          <div className="col-user">{isFolder ? '--' : node.username}</div>
-          <div className="col-type">
-            <div className={`type-dot ${isFolder ? 'dot-folder' : `dot-${node.type.toLowerCase()}`}`}></div>
-            <span>{isFolder ? t.homeFolderType : node.type.toUpperCase()}</span>
-          </div>
-          <div className="col-action">
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                if (isFolder) {
-                  toggleFolder(node.id, e)
-                } else {
-                  onOpen(node.id)
-                }
-              }}
-              type="button"
-            >
-              <span className="material-symbols-outlined">
-                {isFolder ? 'arrow_forward' : 'terminal'}
-              </span>
-            </button>
-          </div>
-        </div>
-        {isFolder && isExpanded && node.children && (
-          <div className="folder-children">
-            {node.children.map((child) => renderNode(child, depth + 1))}
-            {node.children.length === 0 && (
-              <div className="flat-grid-row empty-folder-row">
-                <div className="col-icon folder">
-                  <span className="material-symbols-outlined">folder</span>
-                </div>
-                <div className="col-name" style={{ paddingLeft: `${(depth + 1) * 20}px` }}>
-                  <span>{t.emptyFolder}</span>
-                </div>
-                <div className="col-path">--</div>
-                <div className="col-user">--</div>
-                <div className="col-type">
-                  <div className="type-dot dot-folder"></div>
-                  <span>FOLDER</span>
-                </div>
-                <div className="col-action"></div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    )
-  }
-
   return (
     <section className="home-workspace">
       {/* SideNavBar Component */}
       <aside className="home-sidebar">
+        <div className="sidebar-drag-handle" />
         {/* macOS style Window Controls */}
         <div className="window-controls-decorator">
           <div className="dot dot-close"></div>
@@ -197,32 +108,42 @@ export function HomeWorkspace({
         </div>
 
         {/* Brand Header */}
-        <div className="sidebar-brand">
-          <h2 className="brand-title">TermDock</h2>
-          <span className="brand-version">v1.2.0-stable</span>
-        </div>
+        {!isWindows && (
+          <div className="sidebar-brand">
+            <h2 className="brand-title">TermDock</h2>
+            <span className="brand-version">v{desktopApi?.appVersion ?? '—'}</span>
+          </div>
+        )}
 
         {/* Navigation Section */}
         <nav className="sidebar-nav">
           <button
-            className={`sidebar-nav-link ${activeTab === 'dashboard' ? 'active' : ''}`}
-            onClick={() => setActiveTab('dashboard')}
+            className={`sidebar-nav-link ${activeTab === 'overview' ? 'active' : ''}`}
+            onClick={() => selectTab('overview')}
             type="button"
           >
             <span className="material-symbols-outlined">dashboard</span>
+            <span>概览</span>
+          </button>
+          <button
+            className={`sidebar-nav-link ${activeTab === 'quick-links' ? 'active' : ''}`}
+            onClick={() => selectTab('quick-links')}
+            type="button"
+          >
+            <span className="material-symbols-outlined">link</span>
             <span>{t.quickConnect}</span>
           </button>
           <button
-            className={`sidebar-nav-link ${activeTab === 'terminal' ? 'active' : ''}`}
-            onClick={handleOpenNewConnection}
+            className={`sidebar-nav-link ${activeTab === 'command-manager' ? 'active' : ''}`}
+            onClick={() => selectTab('command-manager')}
             type="button"
           >
             <span className="material-symbols-outlined">terminal</span>
-            <span>{t.newConnection}</span>
+            <span>{t.commandManager}</span>
           </button>
           <button
-            className={`sidebar-nav-link ${activeTab === 'ssh-manager' ? 'active' : ''}`}
-            onClick={handleOpenConnectionManager}
+            className={`sidebar-nav-link ${activeTab === 'connection-manager' ? 'active' : ''}`}
+            onClick={() => selectTab('connection-manager')}
             type="button"
           >
             <span className="material-symbols-outlined">settings_ethernet</span>
@@ -230,7 +151,7 @@ export function HomeWorkspace({
           </button>
           <button
             className={`sidebar-nav-link ${activeTab === 'settings' ? 'active' : ''}`}
-            onClick={handleOpenConnectionManager}
+            onClick={() => selectTab('settings')}
             type="button"
           >
             <span className="material-symbols-outlined">settings</span>
@@ -253,45 +174,120 @@ export function HomeWorkspace({
 
       {/* Main Content Area */}
       <main className="home-main-content">
-        <header className="home-header">
-          <div className="header-meta">
-            <h1 className="header-title">{t.quickConnect}</h1>
-            <p className="header-subtitle">Manage and connect to your configured environments.</p>
-          </div>
-          <button className="btn-new-connection" onClick={handleOpenNewConnection} type="button">
-            <span className="material-symbols-outlined">add</span>
-            <span>{t.newConnection}</span>
-          </button>
-        </header>
-
-        {/* Flat Grid Architecture Content */}
+        <div className="home-tabs-bar">
+          <TabBar {...tabBarProps} />
+        </div>
         <div className="home-content-body scrollbar-scroll">
-          <div className="flat-grid">
-            {/* Grid Header */}
-            <div className="grid-header">
-              <div></div>
-              <div>名称</div>
-              <div>路径</div>
-              <div>用户</div>
-              <div>类型</div>
-              <div className="text-right">操作</div>
+          {activeTab === 'overview' && (
+            <div key="overview" className="page-transition" data-nav-direction={navDirection}>
+              <OverviewPage
+                profiles={profiles}
+                folders={folders}
+                onOpenProfile={onOpen}
+                onOpenNewConnection={handleOpenNewConnection}
+                onOpenConnectionManager={() => selectTab('connection-manager')}
+                onOpenCommandManager={() => selectTab('command-manager')}
+                onOpenDocs={handleOpenDocs}
+              />
             </div>
-
-            {/* Grid Rows */}
-            <div className="grid-rows">
-              {tree.map(node => renderNode(node, 0))}
-              {tree.length === 0 && (
-                <div className="flat-grid-empty">
-                  {t.noConnections}
-                </div>
-              )}
+          )}
+          {activeTab === 'quick-links' && (
+            <div key="quick-links" className="page-transition" data-nav-direction={navDirection}>
+              <QuickLinksPage
+                profiles={profiles}
+                folders={folders}
+                onOpen={onOpen}
+                onOpenNewConnection={handleOpenNewConnection}
+              />
             </div>
-          </div>
+          )}
+          {activeTab === 'connection-manager' && (
+            <div key="connection-manager" className="page-transition" data-nav-direction={navDirection}>
+              <ConnectionManagerModal
+                profiles={profiles}
+                folders={folders}
+                onClose={() => selectTab('overview')}
+                onCreate={onCreateConnection}
+                onDeleteProfile={onDeleteConnection}
+                onEditProfile={onEditConnection}
+                onOpenProfile={onOpen}
+                onCreateFolder={onCreateConnectionFolder}
+                onDeleteFolder={onDeleteConnectionFolder}
+                onUpdateFolder={onUpdateConnectionFolder}
+                onUpdateOrder={onUpdateConnectionOrder}
+                inline={true}
+                onActiveFolderChange={setActiveConnectionFolderName}
+              />
+            </div>
+          )}
+          {activeTab === 'command-manager' && (
+            <div key="command-manager" className="page-transition" data-nav-direction={navDirection}>
+              <CommandManagerModal
+                commandFolders={commandFolders}
+                commandTemplates={commandTemplates}
+                onClose={() => selectTab('overview')}
+                onCreateCommand={onCreateCommand}
+                onUpdateCommand={onUpdateCommand}
+                onDeleteCommand={onDeleteCommand}
+                onCreateFolder={onCreateCommandFolder}
+                onDeleteFolder={onDeleteCommandFolder}
+                onUpdateFolder={onUpdateCommandFolder}
+                onUpdateOrder={onUpdateCommandOrder}
+                inline={true}
+                onActiveFolderChange={setActiveCommandFolderName}
+              />
+            </div>
+          )}
+          {activeTab === 'settings' && (
+            <div key="settings" className="page-transition" data-nav-direction={navDirection}>
+              <SettingsModal
+                theme={theme}
+                onSetTheme={onSetTheme}
+                locale={locale}
+                onSetLocale={onSetLocale}
+                onOpenCommandManager={() => selectTab('command-manager')}
+                onOpenConnectionManager={() => selectTab('connection-manager')}
+                onOpenLogsDirectory={onOpenLogsDirectory}
+                onClose={() => selectTab('overview')}
+                inline={true}
+              />
+            </div>
+          )}
         </div>
 
         {/* Custom Footer */}
         <footer className="home-footer">
-          <div className="footer-copyright">© 2026 TermDock Team. MIT Licensed. System: 0.1ms latency</div>
+          <div className="footer-copyright">
+            <span>© 2026 TermDock Team. MIT Licensed. System: 0.1ms latency</span>
+            {activeTab === 'connection-manager' && (
+              <>
+                <span className="footer-meta-separator">|</span>
+                <span>{profiles.length} {t.connectionCountLabel}</span>
+                <span className="footer-meta-separator">|</span>
+                <span>{folders.length} {t.folderCountLabel}</span>
+                {activeConnectionFolderName && (
+                  <>
+                    <span className="footer-meta-separator">|</span>
+                    <span>{activeConnectionFolderName}</span>
+                  </>
+                )}
+              </>
+            )}
+            {activeTab === 'command-manager' && (
+              <>
+                <span className="footer-meta-separator">|</span>
+                <span>{commandTemplates.length} {t.commandCountLabel}</span>
+                <span className="footer-meta-separator">|</span>
+                <span>{commandFolders.length} {t.folderCountLabel}</span>
+                {activeCommandFolderName && (
+                  <>
+                    <span className="footer-meta-separator">|</span>
+                    <span>{activeCommandFolderName}</span>
+                  </>
+                )}
+              </>
+            )}
+          </div>
           <nav className="footer-nav">
             <button onClick={handleOpenDocs} type="button">Changelog</button>
             <button onClick={handleOpenDocs} type="button">API Reference</button>

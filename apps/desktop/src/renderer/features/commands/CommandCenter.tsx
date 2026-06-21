@@ -2,15 +2,16 @@ import { useEffect, useMemo, useState, useRef } from 'react'
 import type {
   CommandExecutionOptions,
   CommandFolder,
+  CommandSendPreferences,
   CommandTemplate,
   WorkspaceTab
 } from '@termdock/core'
 import { t } from '../../i18n'
 import { AppIcon } from '../common/AppIcon'
 import { handleHorizontalWheelScroll } from '../common/horizontal-scroll'
+import { SessionSendTargetPicker } from '../common/SessionSendTargetPicker'
+import type { SendScope, SessionSendTarget } from '../common/session-send-targets'
 import { extractCommandParams, groupCommands, sortByOrder } from './command-utils'
-
-type SendScope = 'current' | 'all-ssh'
 
 function getCommandSnippet(command: string) {
   return command
@@ -29,7 +30,7 @@ export function CommandCenter({
   commandFolders,
   commandTemplates,
   isBusy,
-  tabs,
+  sendTargets,
   onExecute,
   paneWidth,
   onPaneWidthChange,
@@ -38,8 +39,8 @@ export function CommandCenter({
   commandFolders: CommandFolder[]
   commandTemplates: CommandTemplate[]
   isBusy: boolean
-  tabs: WorkspaceTab[]
-  onExecute(commandId: string, args: string[], options: CommandExecutionOptions, scope: SendScope): void
+  sendTargets: SessionSendTarget[]
+  onExecute(commandId: string, args: string[], options: CommandExecutionOptions, scope: SendScope, selectedTabIds: string[]): void
   paneWidth: number
   onPaneWidthChange(width: number): void
 }) {
@@ -48,16 +49,15 @@ export function CommandCenter({
     () => sortByOrder(commandTemplates.filter((template) => !template.parentId)),
     [commandTemplates]
   )
-  const sshTabs = useMemo(
-    () => tabs.filter((tab) => tab.sessionType === 'ssh' && tab.status !== 'closed'),
-    [tabs]
-  )
   const [activeFolderId, setActiveFolderId] = useState<string>('all')
   const [selectedCommandId, setSelectedCommandId] = useState<string | null>(commandTemplates[0]?.id ?? null)
   const [paramValues, setParamValues] = useState<Record<number, string>>({})
   const [lastRenderedCommand, setLastRenderedCommand] = useState('')
   const [appendCarriageReturn, setAppendCarriageReturn] = useState(true)
+  const [preferencesLoaded, setPreferencesLoaded] = useState(false)
+  const [rememberSelection, setRememberSelection] = useState(false)
   const [sendScope, setSendScope] = useState<SendScope>('current')
+  const [selectedTabIds, setSelectedTabIds] = useState<string[]>([])
   
   const splitRef = useRef<HTMLDivElement | null>(null)
   const isResizingCommandSplit = useRef(false)
@@ -80,8 +80,11 @@ export function CommandCenter({
     [commandTemplates, selectedCommandId, visibleTemplates]
   )
   const paramIndexes = selectedTemplate ? extractCommandParams(selectedTemplate.command) : []
-  const canRunCurrent = Boolean(activeTab && activeTab.sessionType === 'ssh' && selectedTemplate)
-  const canRunAny = Boolean(sshTabs.length && selectedTemplate)
+  const canRunCurrent = Boolean(activeTab && selectedTemplate && sendTargets.some((target) => target.tabId === activeTab.id))
+  const canRunAny = Boolean(sendTargets.length && selectedTemplate)
+  const canRunSelected = Boolean(
+    selectedTemplate && selectedTabIds.some((tabId) => sendTargets.some((target) => target.tabId === tabId))
+  )
 
   useEffect(() => {
     if (!selectedTemplate && commandTemplates[0]) {
@@ -95,6 +98,83 @@ export function CommandCenter({
     setLastRenderedCommand('')
   }, [selectedTemplate?.id])
 
+  useEffect(() => {
+    setSelectedTabIds((prev) => prev.filter((tabId) => sendTargets.some((target) => target.tabId === tabId)))
+  }, [sendTargets])
+
+  useEffect(() => {
+    let canceled = false
+
+    async function loadPreferences() {
+      const desktopApi = window.termdock
+      const legacyRemember = localStorage.getItem('termdock:commands:rememberSelection') === 'true'
+      const legacyScope = (localStorage.getItem('termdock:commands:sendScope') as SendScope | null) ?? 'current'
+      const legacySelectedTabIds = (() => {
+        const saved = localStorage.getItem('termdock:commands:selectedTabIds')
+        if (!saved) return []
+        try {
+          return JSON.parse(saved) as string[]
+        } catch {
+          return []
+        }
+      })()
+
+      if (!desktopApi?.getCommandSendPreferences) {
+        if (!canceled) {
+          setRememberSelection(legacyRemember)
+          setSendScope(legacyRemember ? legacyScope : 'current')
+          setSelectedTabIds(legacyRemember ? legacySelectedTabIds : [])
+          setPreferencesLoaded(true)
+        }
+        return
+      }
+
+      const storedPreferences = await desktopApi.getCommandSendPreferences()
+      const hasStoredPreferences = storedPreferences.rememberSelection
+        || storedPreferences.sendScope !== 'current'
+        || storedPreferences.selectedTabIds.length > 0
+      const nextPreferences: CommandSendPreferences = hasStoredPreferences
+        ? storedPreferences
+        : {
+            rememberSelection: legacyRemember,
+            sendScope: legacyRemember ? legacyScope : 'current',
+            selectedTabIds: legacyRemember ? legacySelectedTabIds : []
+          }
+
+      if (!hasStoredPreferences && (legacyRemember || legacySelectedTabIds.length > 0 || legacyScope !== 'current')) {
+        await desktopApi.setCommandSendPreferences(nextPreferences)
+        localStorage.removeItem('termdock:commands:rememberSelection')
+        localStorage.removeItem('termdock:commands:sendScope')
+        localStorage.removeItem('termdock:commands:selectedTabIds')
+      }
+
+      if (!canceled) {
+        setRememberSelection(nextPreferences.rememberSelection)
+        setSendScope(nextPreferences.rememberSelection ? nextPreferences.sendScope : 'current')
+        setSelectedTabIds(nextPreferences.rememberSelection ? nextPreferences.selectedTabIds : [])
+        setPreferencesLoaded(true)
+      }
+    }
+
+    void loadPreferences()
+
+    return () => {
+      canceled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!preferencesLoaded || !window.termdock?.setCommandSendPreferences) {
+      return
+    }
+
+    void window.termdock.setCommandSendPreferences({
+      rememberSelection,
+      sendScope: rememberSelection ? sendScope : 'current',
+      selectedTabIds: rememberSelection ? selectedTabIds : []
+    })
+  }, [preferencesLoaded, rememberSelection, sendScope, selectedTabIds])
+
   const handleRun = () => {
     if (!selectedTemplate) {
       return
@@ -102,7 +182,7 @@ export function CommandCenter({
     const args = paramIndexes.map((index) => paramValues[index] ?? '')
     const rendered = selectedTemplate.command.replace(/\[p#(\d+)\]/g, (_, rawIndex: string) => args[Number(rawIndex) - 1] ?? '')
     setLastRenderedCommand(rendered)
-    onExecute(selectedTemplate.id, args, { appendCarriageReturn }, sendScope)
+    onExecute(selectedTemplate.id, args, { appendCarriageReturn }, sendScope, selectedTabIds)
   }
 
   useEffect(() => {
@@ -198,7 +278,7 @@ export function CommandCenter({
               </colgroup>
               <thead>
                 <tr>
-                  <th className="col-name">{t.name}</th>
+                  <th>{t.name}</th>
                 </tr>
               </thead>
               <tbody>
@@ -208,11 +288,10 @@ export function CommandCenter({
                     className={selectedTemplate?.id === template.id ? 'is-selected' : ''}
                     onClick={() => setSelectedCommandId(template.id)}
                   >
-                    <td className="col-name">
-                      <span className="command-icon">
-                        <AppIcon name="flash" size={14} />
-                      </span>
-                      <strong>{template.name}</strong>
+                    <td>
+                      <div className="col-name-wrapper">
+                        <strong>{template.name}</strong>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -244,17 +323,37 @@ export function CommandCenter({
             {selectedTemplate ? (
               <>
                 <div className="command-runner-head">
-                  <strong>{selectedTemplate.name}</strong>
+                  <div className="command-runner-title-line">
+                    <strong>{selectedTemplate.name}</strong>
+                    <SessionSendTargetPicker
+                      allLabel={t.commandSendAllWithCount.replace('{count}', String(sendTargets.length))}
+                      currentLabel={activeTab ? t.commandSendCurrentWithIndex.replace('{index}', String(sendTargets.find((target) => target.tabId === activeTab.id)?.index ?? '-')) : t.commandSendCurrent}
+                      onScopeChange={setSendScope}
+                      onSelectedTabIdsChange={setSelectedTabIds}
+                      scope={sendScope}
+                      selectedTabIds={selectedTabIds}
+                      targets={sendTargets}
+                      showRememberSelection={true}
+                      rememberSelection={rememberSelection}
+                      onRememberSelectionChange={setRememberSelection}
+                      popover={true}
+                    />
+                  </div>
                   <div className="command-runner-actions">
-                    <label className="command-target-select command-target-select-inline">
-                      <span>{t.commandSendScope}</span>
-                      <select value={sendScope} onChange={(event) => setSendScope(event.currentTarget.value as SendScope)}>
-                        <option value="current">{t.commandSendCurrent}</option>
-                        <option value="all-ssh">{t.commandSendAll}</option>
-                      </select>
+                    <label className="command-toggle">
+                      <input
+                        checked={appendCarriageReturn}
+                        type="checkbox"
+                        onChange={(event) => setAppendCarriageReturn(event.currentTarget.checked)}
+                      />
+                      <span>{t.commandAppendCr}</span>
                     </label>
-                    <button type="button" className="primary-button" onClick={handleRun} disabled={isBusy || (sendScope === 'current' ? !canRunCurrent : !canRunAny)}>
-                      <AppIcon name="flash" />
+                    <button
+                      type="button"
+                      className="primary-button"
+                      onClick={handleRun}
+                      disabled={isBusy || (sendScope === 'current' ? !canRunCurrent : sendScope === 'all-ssh' ? !canRunAny : !canRunSelected)}
+                    >
                       {t.send}
                     </button>
                   </div>
@@ -292,16 +391,7 @@ export function CommandCenter({
                   <span>{t.commandRendered}</span>
                   <code>{lastRenderedCommand || selectedTemplate.command}</code>
                 </div>
-                <div className="command-runner-controls">
-                  <label className="command-toggle">
-                    <input
-                      checked={appendCarriageReturn}
-                      type="checkbox"
-                      onChange={(event) => setAppendCarriageReturn(event.currentTarget.checked)}
-                    />
-                    <span>{t.commandAppendCr}</span>
-                  </label>
-                </div>
+
               </>
             ) : (
               <div className="command-empty-state">{t.commandEmpty}</div>

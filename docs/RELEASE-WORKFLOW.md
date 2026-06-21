@@ -85,11 +85,19 @@ git push -u origin feat/add-video-player-v0.1.0-beta.10
 # 1. 从 release 切出版本号 bump 分支
 git checkout -b chore/bump-v0.1.0-beta.10 release/0.1.0-beta.10
 
-# 2. 修改两个 package.json 的 version 字段
-#    - package.json:                  "version": "0.1.0-beta.10"
-#    - apps/desktop/package.json:     "version": "0.1.0-beta.10"
+# 2. 只修改根 package.json 的 version 字段
+#    - package.json: "version": "0.1.0-beta.10"
+#
+#    然后执行同步命令，或直接运行 build/typecheck/release，让 pre-script 自动同步：
+npm run sync:version
 
-git add package.json apps/desktop/package.json
+#    这会同步更新：
+#    - apps/desktop/package.json
+#    - packages/core/package.json
+#    - packages/storage/package.json
+#    - package-lock.json
+
+git add package.json apps/desktop/package.json packages/core/package.json packages/storage/package.json package-lock.json
 git commit -m "chore: bump version to 0.1.0-beta.10"
 git push -u origin chore/bump-v0.1.0-beta.10
 ```

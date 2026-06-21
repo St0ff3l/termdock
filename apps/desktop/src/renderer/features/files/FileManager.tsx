@@ -21,6 +21,7 @@ import {
 } from '../../app/app-utils'
 import { t } from '../../i18n'
 import { AppIcon } from '../common/AppIcon'
+import type { SendScope, SessionSendTarget } from '../common/session-send-targets'
 import { CommandCenter } from '../commands/CommandCenter'
 import { FileContextMenu } from './FileContextMenu'
 import { getDisplayFileTypeSortKey } from './file-kind'
@@ -133,7 +134,7 @@ function sortRemoteFiles(rows: RemoteFileItem[], sort: RemoteFileSortState) {
 export function FileManager({
   activeSession,
   activeTab,
-  tabs,
+  sendTargets,
   commandFolders,
   commandTemplates,
   isBusy,
@@ -170,7 +171,7 @@ export function FileManager({
 }: {
   activeSession: SessionSnapshot
   activeTab: WorkspaceTab | null
-  tabs: WorkspaceTab[]
+  sendTargets: SessionSendTarget[]
   commandFolders: CommandFolder[]
   commandTemplates: CommandTemplate[]
   isBusy: boolean
@@ -181,7 +182,7 @@ export function FileManager({
   clipboardStatusText: string | null
   localCutPaths: string[]
   remoteCutPaths: string[]
-  onExecuteCommand(commandId: string, args: string[], options: CommandExecutionOptions, scope: 'current' | 'all-ssh'): void
+  onExecuteCommand(commandId: string, args: string[], options: CommandExecutionOptions, scope: SendScope, selectedTabIds: string[]): void
   onOpenCommandManager(): void
   onCopyItems(pane: 'local' | 'remote', items: Array<LocalFileItem | RemoteFileItem>): void
   onCutItems(pane: 'local' | 'remote', items: Array<LocalFileItem | RemoteFileItem>): void
@@ -207,6 +208,7 @@ export function FileManager({
 }) {
   const defaultRemoteSort = { field: 'name', direction: 'asc' } satisfies RemoteFileSortState
   const isRemoteConnected = activeSession.connected === true
+  const isSshSession = activeTab?.sessionType === 'ssh'
   const [activeView, setActiveView] = useState<'file' | 'command'>('file')
   const [localPaneWidth, setLocalPaneWidth] = useState(214)
   const [localPathInput, setLocalPathInput] = useState(localPath)
@@ -555,12 +557,14 @@ export function FileManager({
       <div className="file-tabs">
         <div className="file-tabs-left">
           <button className={activeView === 'file' ? 'active' : ''} type="button" onClick={() => setActiveView('file')}>{t.file}</button>
-          <button className={activeView === 'command' ? 'active' : ''} type="button" onClick={() => setActiveView('command')}>{t.command}</button>
+          {isSshSession ? (
+            <button className={activeView === 'command' ? 'active' : ''} type="button" onClick={() => setActiveView('command')}>{t.command}</button>
+          ) : null}
         </div>
         <span className={`file-current-path ${clipboardStatusText ? 'is-status-hint' : ''}`}>
           {activeView === 'file'
             ? clipboardStatusText || activeSession.remotePath
-            : `${t.commandQuickLaunch} (${activeTab?.sessionType === 'ssh' ? t.send : t.commandSshOnly})`}
+            : `${t.commandQuickLaunch} (${isSshSession ? t.send : t.commandSshOnly})`}
         </span>
         {activeView === 'file' ? (
           <div className="file-tab-actions">
@@ -588,13 +592,13 @@ export function FileManager({
           </div>
         )}
       </div>
-      {activeView === 'command' ? (
+      {activeView === 'command' && isSshSession ? (
         <CommandCenter
           activeTab={activeTab}
           commandFolders={commandFolders}
           commandTemplates={commandTemplates}
           isBusy={isBusy}
-          tabs={tabs}
+          sendTargets={sendTargets}
           onExecute={onExecuteCommand}
           paneWidth={localPaneWidth}
           onPaneWidthChange={setLocalPaneWidth}
