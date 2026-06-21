@@ -19,16 +19,22 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Setup Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Build packages (core → shared → storage)
+        run: |
+          npm run build -w @termdock/core
+          npm run build -w @termdock/shared
+          npm run build -w @termdock/storage
 
       - name: Typecheck
         run: npm run typecheck
