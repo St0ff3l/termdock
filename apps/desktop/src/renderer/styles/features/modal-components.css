@@ -643,6 +643,14 @@
   gap: 16px;
 }
 
+.settings-tools-hint {
+  margin: -4px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.6;
+  max-width: 64ch;
+}
+
 .settings-section h3 {
   margin: 0;
   font-size: 13px;

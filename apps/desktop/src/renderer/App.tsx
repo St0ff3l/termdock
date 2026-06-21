@@ -3030,6 +3030,7 @@ export function App() {
           <div className="workspace-stage">
             <WorkspaceStage
               activeLocalTab={activeLocalTab}
+              activeHomeTabId={activeLocalTabId}
               activeProfile={activeProfile}
               activeSession={activeSession}
               activeTab={activeTab}

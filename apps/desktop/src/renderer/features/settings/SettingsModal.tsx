@@ -42,6 +42,13 @@ export function SettingsModal({
     return `${platform} / ${arch}`
   })()
 
+  const managerToolsHint = inline
+    ? t.settingsManagersInlineHint
+    : t.settingsManagersWindowHint
+  const managerToolsActionLabel = inline
+    ? t.switchToManagerPage
+    : t.openInSeparateWindow
+
   const content = (
     <div
       className={`modal-card manager-modal connection-manager-modal settings-modal ${standalone ? 'standalone' : ''} ${inline ? 'manager-inline' : ''}`}
@@ -155,6 +162,7 @@ export function SettingsModal({
             <div className="settings-panel">
               <section className="settings-section">
                 <h3>{t.managerToolsShortcut}</h3>
+                <p className="settings-tools-hint">{managerToolsHint}</p>
                 <div className="tools-shortcuts-grid">
                   <div className="tool-shortcut-card">
                     <span className="material-symbols-outlined tool-card-icon">settings_ethernet</span>
@@ -162,7 +170,7 @@ export function SettingsModal({
                       <strong>{t.connectionManager}</strong>
                       <p>{t.settingsConnectionManagerDescription}</p>
                       <button className="primary-button compact" onClick={onOpenConnectionManager} type="button">
-                        {t.openConnection}
+                        {managerToolsActionLabel}
                       </button>
                     </div>
                   </div>
@@ -172,7 +180,7 @@ export function SettingsModal({
                       <strong>{t.commandManager}</strong>
                       <p>{t.settingsCommandManagerDescription}</p>
                       <button className="primary-button compact" onClick={onOpenCommandManager} type="button">
-                        {t.commandManager}
+                        {managerToolsActionLabel}
                       </button>
                     </div>
                   </div>

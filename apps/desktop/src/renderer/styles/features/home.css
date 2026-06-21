@@ -159,6 +159,7 @@
 /* Right Main Content Panel */
 .home-main-content {
   flex: 1;
+  min-width: 0;
   height: 100%;
   background-color: var(--bg-main);
   padding: 0;
@@ -176,9 +177,10 @@
 /* Scrollable Container Body */
 .home-content-body {
   flex: 1;
+  min-width: 0;
   overflow-y: auto;
   margin-bottom: 12px;
-  padding: 0 32px;
+  padding: 18px 24px 20px;
   box-sizing: border-box;
 }
 
@@ -203,6 +205,7 @@
 /* Page switch fly-in: direction follows sidebar nav (down/up) */
 .page-transition {
   height: 100%;
+  min-width: 0;
 }
 
 /* ============================================================
@@ -212,15 +215,16 @@
   width: 100%;
   height: 100%;
   min-height: 0;
+  min-width: 0;
   max-width: none;
   padding: 0;
   display: flex;
   flex-direction: column;
-  /* 去掉弹窗卡片外壳 */
   background: transparent;
   border: 0;
   border-radius: 0;
   box-shadow: none;
+  overflow: visible;
 }
 
 /* 命令管理器内嵌时,撤掉它自带的固定宽高 */
@@ -232,8 +236,8 @@
 /* 头部:从「模拟窗口标题栏」变成页面级标题栏 */
 .home-content-body .manager-inline .connection-manager-header {
   flex: 0 0 auto;
-  min-height: 56px;
-  padding: 0 4px 16px;
+  min-height: 64px;
+  padding: 12px 0 16px;
   border-bottom: 1px solid var(--border-light);
   background: transparent;
   -webkit-app-region: no-drag;
@@ -254,15 +258,19 @@
 .home-content-body .manager-inline .connection-manager-layout {
   flex: 1 1 auto;
   min-height: 0;
-  margin-top: 16px;
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-lg);
+  min-width: 0;
+  margin-top: 12px;
+  border: 0;
+  border-radius: 0;
   overflow: hidden;
-  background: var(--bg-card);
+  background: transparent;
 }
 
 .home-content-body .manager-inline .connection-manager-footer {
   flex: 0 0 auto;
+  padding-left: 0;
+  padding-right: 0;
+  background: transparent;
 }
 
 /* fly-in 动画:内嵌管理器整体作为一个卡片飞入 */

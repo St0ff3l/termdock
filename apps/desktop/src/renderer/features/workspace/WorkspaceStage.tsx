@@ -22,6 +22,7 @@ type ActiveLocalTab = {
 
 export function WorkspaceStage({
   activeLocalTab,
+  activeHomeTabId,
   activeProfile,
   activeSession,
   activeTab,
@@ -89,6 +90,7 @@ export function WorkspaceStage({
   tabBarProps
 }: {
   activeLocalTab: ActiveLocalTab
+  activeHomeTabId: string | null
   activeProfile: ConnectionProfile | null
   activeSession: SessionSnapshot | null
   activeTab: WorkspaceTab | null
@@ -209,6 +211,7 @@ export function WorkspaceStage({
 
   return (
     <HomeWorkspace
+      key={activeHomeTabId ?? 'home-root'}
       folders={folders}
       commandFolders={commandFolders}
       commandTemplates={commandTemplates}
