@@ -563,13 +563,30 @@ export function TerminalView({
         ? event.metaKey && !event.shiftKey && event.key.toLowerCase() === 'f'
         : event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === 'f'
 
+      if (matchesCopy) {
+        runCopy()
+        return false
+      }
+
+      if (matchesPaste) {
+        void runPaste()
+        return false
+      }
+
+      if (matchesFind) {
+        if (findOpenRef.current) {
+          closeFind()
+        } else {
+          openFind()
+        }
+        return false
+      }
+
       if (
         event.key === 'Control' ||
         event.key === 'Meta' ||
         event.key === 'Alt' ||
-        matchesCopy ||
-        matchesPaste ||
-        matchesFind
+        (event.key === 'Dead' && (event.metaKey || event.ctrlKey || event.altKey))
       ) {
         return false
       }
