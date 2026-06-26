@@ -563,13 +563,30 @@ export function TerminalView({
         ? event.metaKey && !event.shiftKey && event.key.toLowerCase() === 'f'
         : event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === 'f'
 
+      if (matchesCopy) {
+        runCopy()
+        return false
+      }
+
+      if (matchesPaste) {
+        void runPaste()
+        return false
+      }
+
+      if (matchesFind) {
+        if (findOpenRef.current) {
+          closeFind()
+        } else {
+          openFind()
+        }
+        return false
+      }
+
       if (
         event.key === 'Control' ||
         event.key === 'Meta' ||
         event.key === 'Alt' ||
-        matchesCopy ||
-        matchesPaste ||
-        matchesFind
+        (event.key === 'Dead' && (event.metaKey || event.ctrlKey || event.altKey))
       ) {
         return false
       }
@@ -778,38 +795,6 @@ export function TerminalView({
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (document.activeElement !== terminal.textarea) {
-        return
-      }
-
-      const matchesCopy = isMac
-        ? event.metaKey && !event.shiftKey && event.key.toLowerCase() === 'c'
-        : event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'c'
-      const matchesPaste = isMac
-        ? event.metaKey && !event.shiftKey && event.key.toLowerCase() === 'v'
-        : event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'v'
-      const matchesFind = isMac
-        ? event.metaKey && !event.shiftKey && event.key.toLowerCase() === 'f'
-        : event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === 'f'
-
-      if (matchesCopy) {
-        event.preventDefault()
-        runCopy()
-        return
-      }
-
-      if (matchesPaste) {
-        event.preventDefault()
-        void runPaste()
-        return
-      }
-
-      if (matchesFind) {
-        event.preventDefault()
-        if (findOpenRef.current) {
-          closeFind()
-        } else {
-          openFind()
-        }
         return
       }
 
