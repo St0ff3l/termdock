@@ -1,4 +1,5 @@
 import { clipboard, ipcMain } from 'electron'
+import { appError } from '../services/app-logger.js'
 import type { IpcServices } from './types.js'
 
 export function registerTerminalHandlers(services: IpcServices) {
@@ -10,9 +11,11 @@ export function registerTerminalHandlers(services: IpcServices) {
     clipboard.writeText(text)
   })
 
-  ipcMain.handle('terminal:write', (_, tabId: string, data: string) =>
-    workspaceService.writeToTerminal(tabId, data)
-  )
+  ipcMain.on('terminal:write', (_, tabId: string, data: string) => {
+    void workspaceService.writeToTerminal(tabId, data).catch((error) => {
+      appError('[TermDock][Terminal] Failed to write input', error)
+    })
+  })
 
   ipcMain.handle('terminal:resize', (_, tabId: string, cols: number, rows: number, width: number, height: number) =>
     workspaceService.resizeTerminal(tabId, cols, rows, width, height)

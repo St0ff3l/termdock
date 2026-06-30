@@ -168,8 +168,9 @@ const api: TermdockDesktopApi = {
     ipcRenderer.invoke('transfer:downloadRemotePath', tabId, remotePath, targetType, localDirectory, options),
   setRemoteFileAccessMode: (tabId: string, mode: 'user' | 'root', options?: RemoteFileAccessOptions): Promise<WorkspaceSnapshot> =>
     ipcRenderer.invoke('remoteFiles:setFileAccessMode', tabId, mode, options),
-  writeTerminal: (tabId: string, data: string): Promise<void> =>
-    ipcRenderer.invoke('terminal:write', tabId, data),
+  writeTerminal: async (tabId: string, data: string): Promise<void> => {
+    ipcRenderer.send('terminal:write', tabId, data)
+  },
   resizeTerminal: (tabId: string, cols: number, rows: number, width: number, height: number): Promise<void> =>
     ipcRenderer.invoke('terminal:resize', tabId, cols, rows, width, height),
   openRemotePath: (tabId: string, targetPath: string): Promise<WorkspaceSnapshot> =>

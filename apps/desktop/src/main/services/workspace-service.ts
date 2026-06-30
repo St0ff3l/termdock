@@ -24,10 +24,13 @@ import {
   type WorkspaceSnapshot
 } from '@termdock/core'
 import type { ProfileRepository } from '@termdock/storage'
+import { appError } from './app-logger.js'
 import { seedCommandFolders, seedCommandTemplates, seedProfiles, seedTransfers } from './workspace/seed-data.js'
 import { WorkspaceSessionRuntime, type LiveSessionController } from './workspace/workspace-session-runtime.js'
 import { WorkspaceTabsState } from './workspace/workspace-tabs.js'
 import { WorkspaceTransfersState } from './workspace/workspace-transfers.js'
+
+const TRANSFER_SNAPSHOT_INTERVAL_MS = 200
 
 export class WorkspaceService {
   private static readonly DISCONNECTED_TRANSFER_MESSAGES = {
@@ -40,6 +43,8 @@ export class WorkspaceService {
   private readonly transferCancels = new Map<string, () => Promise<void> | void>()
   private readonly transferCanceling = new Set<string>()
   private readonly transferTabs = new Map<string, string>()
+  private readonly transferSnapshotTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  private readonly transferSnapshotChains = new Map<string, Promise<void>>()
   private readonly privilegedAccess = new Map<string, RemoteFileAccessOptions>()
   private readonly sessionRuntime = new WorkspaceSessionRuntime({
     getSnapshot: () => this.getSnapshot(),
@@ -61,6 +66,11 @@ export class WorkspaceService {
   }
 
   async shutdown() {
+    for (const timer of this.transferSnapshotTimers.values()) {
+      clearTimeout(timer)
+    }
+    this.transferSnapshotTimers.clear()
+    await Promise.allSettled(this.transferSnapshotChains.values())
     await this.sessionRuntime.shutdown()
   }
 
@@ -405,6 +415,7 @@ export class WorkspaceService {
 
     this.transfers.removeMany(removableIds)
     removableIds.forEach((transferId) => {
+      this.clearTransferSnapshotTimer(transferId)
       this.transferTabs.delete(transferId)
       this.transferCancels.delete(transferId)
       this.transferCanceling.delete(transferId)
@@ -442,7 +453,7 @@ export class WorkspaceService {
           message: progress.message ?? targetRemotePath,
           transferredBytes: progress.transferredBytes,
           totalBytes: progress.totalBytes
-        }, sender)
+        }, sender, 'throttled')
       }, options?.targetName)
       if (transferState.canceled) {
         return this.getSnapshot()
@@ -511,7 +522,7 @@ export class WorkspaceService {
           message: progress.message ?? localPath,
           transferredBytes: progress.transferredBytes,
           totalBytes: progress.totalBytes
-        }, sender)
+        }, sender, 'throttled')
       })
       if (transferState.canceled) {
         return this.getSnapshot()
@@ -606,7 +617,7 @@ export class WorkspaceService {
               message: localFilePath,
               transferredBytes: progress.transferredBytes,
               totalBytes: progress.totalBytes
-            }, sender)
+            }, sender, 'throttled')
           })
 
           completedFiles += 1
@@ -615,7 +626,7 @@ export class WorkspaceService {
             status: 'running',
             speed: undefined,
             message: localFilePath
-          }, sender)
+          }, sender, 'throttled')
         }
 
         if (transferState.canceled) {
@@ -974,6 +985,7 @@ export class WorkspaceService {
       this.transferTabs.delete(transferId)
       this.transferCancels.delete(transferId)
       this.transferCanceling.delete(transferId)
+      this.clearTransferSnapshotTimer(transferId)
       changed = this.transfers.update(transferId, {
         status: 'canceled',
         speed: undefined,
@@ -997,7 +1009,8 @@ export class WorkspaceService {
   private async updateTransfer(
     transferId: string,
     patch: Partial<Pick<TransferTask, 'progress' | 'status' | 'message' | 'speed' | 'transferredBytes' | 'totalBytes'>>,
-    sender: WebContents
+    sender: WebContents,
+    emitMode: 'immediate' | 'throttled' = 'immediate'
   ) {
     const changed = this.transfers.update(transferId, patch)
     if (!changed) {
@@ -1008,7 +1021,51 @@ export class WorkspaceService {
       this.transferTabs.delete(transferId)
     }
 
-    await this.emitTransferSnapshot(transferId, sender)
+    if (emitMode === 'throttled') {
+      this.scheduleTransferSnapshot(transferId, sender)
+      return
+    }
+
+    this.clearTransferSnapshotTimer(transferId)
+    await this.enqueueTransferSnapshot(transferId, sender)
+  }
+
+  private scheduleTransferSnapshot(transferId: string, sender: WebContents) {
+    if (this.transferSnapshotTimers.has(transferId)) {
+      return
+    }
+
+    const timer = setTimeout(() => {
+      this.transferSnapshotTimers.delete(transferId)
+      void this.enqueueTransferSnapshot(transferId, sender).catch((error) => {
+        appError(`[TermDock][Transfer] Failed to emit progress snapshot for ${transferId}`, error)
+      })
+    }, TRANSFER_SNAPSHOT_INTERVAL_MS)
+    this.transferSnapshotTimers.set(transferId, timer)
+  }
+
+  private clearTransferSnapshotTimer(transferId: string) {
+    const timer = this.transferSnapshotTimers.get(transferId)
+    if (timer) {
+      clearTimeout(timer)
+      this.transferSnapshotTimers.delete(transferId)
+    }
+  }
+
+  private enqueueTransferSnapshot(transferId: string, sender: WebContents) {
+    const previous = this.transferSnapshotChains.get(transferId) ?? Promise.resolve()
+    const next = previous
+      .catch(() => undefined)
+      .then(() => this.emitTransferSnapshot(transferId, sender))
+
+    this.transferSnapshotChains.set(transferId, next)
+    const cleanup = () => {
+      if (this.transferSnapshotChains.get(transferId) === next) {
+        this.transferSnapshotChains.delete(transferId)
+      }
+    }
+    void next.then(cleanup, cleanup)
+    return next
   }
 
   private async emitTransferSnapshot(transferId: string, sender: WebContents) {
