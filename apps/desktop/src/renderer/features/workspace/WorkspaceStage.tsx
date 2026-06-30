@@ -172,6 +172,7 @@ export function WorkspaceStage({
   if (activeTab && activeSession && !activeLocalTab) {
     return (
       <SessionWorkspace
+        key={activeTab.id}
         activeSession={activeSession}
         activeTab={activeTab}
         sendTargets={sendTargets}

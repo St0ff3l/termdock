@@ -266,13 +266,11 @@ export function SessionWorkspace({
       {!isFileOnly ? (
         <div className="terminal-area has-terminal-dock">
           <TerminalView
-            key={activeTab.id}
             tabId={activeTab.id}
             bootText={activeSession.terminalTranscript ?? ''}
             connected={activeSession.connected === true}
           />
           <TerminalDock
-            key={activeTab.id}
             activeTab={activeTab}
             connected={activeSession.connected === true}
             selectedTabIds={terminalDockSelectedTabIds}

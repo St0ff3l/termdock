@@ -178,7 +178,7 @@ function installContentSecurityPolicy() {
     : ["'self'", 'http://localhost:5188', 'ws://localhost:5188']
   const scriptSrc = app.isPackaged
     ? ["'self'"]
-    : ["'self'", "'unsafe-eval'", "'unsafe-inline'"]
+    : ["'self'", "'unsafe-inline'"]
   const directives = [
     "default-src 'self'",
     `script-src ${scriptSrc.join(' ')}`,
