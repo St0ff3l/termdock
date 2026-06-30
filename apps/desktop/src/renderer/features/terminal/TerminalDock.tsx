@@ -66,7 +66,7 @@ export function TerminalDock({
   const [panel, setPanel] = useState<DockPanel>(null)
   const [history, setHistory] = useState<TerminalCommandHistoryEntry[]>([])
   const [preferences, setPreferences] = useState<DockPreferences>(DEFAULT_PREFERENCES)
-  const inputRef = useRef<HTMLInputElement | null>(null)
+  const inputRef = useRef<HTMLTextAreaElement | null>(null)
   const rootRef = useRef<HTMLElement | null>(null)
   const [lastFilePanelHeight, setLastFilePanelHeight] = useState(218)
 
@@ -372,7 +372,7 @@ export function TerminalDock({
     window.requestAnimationFrame(() => inputRef.current?.focus())
   }
 
-  const handleInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+  const handleInputKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Escape') {
       if (panel) {
         event.preventDefault()
@@ -569,11 +569,11 @@ export function TerminalDock({
       {null}
       <div className="terminal-dock-bar">
         <label className="terminal-dock-input-shell">
-          <input
+          <textarea
             ref={inputRef}
             disabled={activeTab.sessionType !== 'ssh'}
             placeholder={placeholderText}
-            type="text"
+            rows={1}
             value={command}
             onChange={(event) => setCommand(event.currentTarget.value)}
             onKeyDown={handleInputKeyDown}

@@ -1427,8 +1427,9 @@ export function App() {
     }
 
     try {
+      const terminalCommand = command.replace(/\r\n|\r|\n/g, '\r')
       for (const tabId of targetIds) {
-        await desktopApi.writeTerminal(tabId, `${command}\r`)
+        await desktopApi.writeTerminal(tabId, `${terminalCommand}\r`)
       }
     } catch (err) {
       reportError(setError, '发送终端命令', err)

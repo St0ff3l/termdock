@@ -208,6 +208,12 @@ export function TerminalView({
     }
   }
 
+  const clearSearchDecorations = () => {
+    if (!findOpenRef.current) {
+      searchAddonRef.current?.clearDecorations()
+    }
+  }
+
   const closeFind = () => {
     setFindOpen(false)
     setFindQuery('')
@@ -552,7 +558,6 @@ export function TerminalView({
         return false
       }
 
-      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0
       const matchesCopy = isMac
         ? event.metaKey && !event.shiftKey && event.key.toLowerCase() === 'c'
         : event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'c'
@@ -714,7 +719,7 @@ export function TerminalView({
           return
         }
         appendRenderedTranscript(chunk)
-        clearEphemeralHighlight()
+        clearSearchDecorations()
         scheduleTerminalWrite(formatTerminalChunk(terminal, chunk))
         if (pendingPromptResizeRef.current) {
           scheduleSettledHorizontalResize()
@@ -799,12 +804,57 @@ export function TerminalView({
       setContextMenu({ x: event.clientX, y: event.clientY })
     }
 
+    const onDocumentSelectionChange = () => {
+      const selection = window.getSelection()
+      const anchorNode = selection?.anchorNode
+      const terminalHost = hostRef.current
+      if (
+        selection
+        && !selection.isCollapsed
+        && anchorNode
+        && terminalHost
+        && !terminalHost.contains(anchorNode)
+      ) {
+        terminal.clearSelection()
+      }
+    }
+
     const onKeyDown = (event: KeyboardEvent) => {
-      if (document.activeElement !== terminal.textarea) {
+      const key = event.key.toLowerCase()
+      const matchesCopy = isMac
+        ? event.metaKey && !event.shiftKey && key === 'c'
+        : event.ctrlKey && event.shiftKey && key === 'c'
+
+      if (matchesCopy && terminal.hasSelection()) {
+        const target = event.target
+        const editableTarget = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement
+          ? target
+          : null
+        const editableSelection = editableTarget
+          ? editableTarget.selectionStart !== editableTarget.selectionEnd
+          : false
+        const documentSelection = window.getSelection()
+        const hasDocumentSelection = Boolean(
+          documentSelection
+          && !documentSelection.isCollapsed
+          && documentSelection.toString()
+        )
+
+        if (!editableSelection && !hasDocumentSelection) {
+          event.preventDefault()
+          event.stopPropagation()
+          runCopy()
+        }
         return
       }
 
-      if (!isMac && event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === 'l') {
+      if (
+        document.activeElement === terminal.textarea
+        && !isMac
+        && event.ctrlKey
+        && !event.shiftKey
+        && key === 'l'
+      ) {
         event.preventDefault()
         runClear()
       }
@@ -828,8 +878,9 @@ export function TerminalView({
     }
 
     hostRef.current.addEventListener('contextmenu', onContextMenu)
-    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keydown', onKeyDown, true)
     window.addEventListener('focus', onWindowFocus)
+    document.addEventListener('selectionchange', onDocumentSelectionChange)
     document.addEventListener('visibilitychange', onVisibilityChange)
     window.addEventListener('termdock:focus-terminal', handleFocusTerminal)
     window.addEventListener('termdock:terminal-copy', handleTerminalCopy)
@@ -880,8 +931,9 @@ export function TerminalView({
       osc52Disposable.dispose()
       resizeObserver.disconnect()
       hostRef.current?.removeEventListener('contextmenu', onContextMenu)
-      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keydown', onKeyDown, true)
       window.removeEventListener('focus', onWindowFocus)
+      document.removeEventListener('selectionchange', onDocumentSelectionChange)
       document.removeEventListener('visibilitychange', onVisibilityChange)
       searchAddonRef.current = null
       terminalRef.current = null

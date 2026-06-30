@@ -519,20 +519,25 @@
   width: 100%;
 }
 
-.terminal-dock-input-shell input {
+.terminal-dock-input-shell textarea {
   width: 100%;
   min-width: 0;
-  height: 24px;
-  padding: 0 4px;
+  min-height: 24px;
+  max-height: 96px;
+  padding: 4px;
   border: none;
+  resize: none;
+  field-sizing: content;
+  overflow-y: auto;
   background: transparent;
   color: var(--text-main);
   font-family: "SF Mono", Menlo, Consolas, monospace;
   font-size: 12px;
+  line-height: 16px;
   transition: color 0.15s ease;
 }
 
-.terminal-dock-input-shell input:focus {
+.terminal-dock-input-shell textarea:focus {
   outline: none;
 }
 
