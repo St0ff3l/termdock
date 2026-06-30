@@ -574,6 +574,7 @@ export function TerminalDock({
             disabled={activeTab.sessionType !== 'ssh'}
             placeholder={placeholderText}
             rows={1}
+            wrap="off"
             value={command}
             onChange={(event) => setCommand(event.currentTarget.value)}
             onKeyDown={handleInputKeyDown}

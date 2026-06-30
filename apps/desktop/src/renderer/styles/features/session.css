@@ -522,18 +522,18 @@
 .terminal-dock-input-shell textarea {
   width: 100%;
   min-width: 0;
-  min-height: 24px;
-  max-height: 96px;
+  height: 24px;
   padding: 4px;
   border: none;
   resize: none;
-  field-sizing: content;
+  overflow-x: auto;
   overflow-y: auto;
   background: transparent;
   color: var(--text-main);
   font-family: "SF Mono", Menlo, Consolas, monospace;
-  font-size: 12px;
-  line-height: 16px;
+  font-size: 11px;
+  line-height: 14px;
+  white-space: pre;
   transition: color 0.15s ease;
 }
 
@@ -544,6 +544,7 @@
 .terminal-dock-actions {
   display: flex;
   align-items: center;
+  align-self: end;
   gap: 6px;
 }
 
