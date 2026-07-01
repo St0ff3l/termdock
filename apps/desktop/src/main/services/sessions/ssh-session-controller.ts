@@ -20,6 +20,12 @@ import type {
 } from '@termdock/core'
 import { BaseFileSessionController } from './base-file-session-controller.js'
 import { buildMetricsCommand, parentRemotePath, parseSystemMetrics, toRemoteFileItem } from './session-file-utils.js'
+import {
+  findSetupEchoEnd,
+  SETUP_NEEDLE,
+  SHELL_CWD_SETUP,
+  ShellCwdTracker
+} from './shell-cwd-integration.js'
 import { createSshDebugLogger, isSshDebugEnabled, singleLine } from './ssh-debug-logger.js'
 import { decodeBuffer, encodeText } from '../text-encoding.js'
 import { appLog, appWarn } from '../app-logger.js'
@@ -52,9 +58,16 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
     end(): void
   }
   private pendingResize?: { cols: number; rows: number; width: number; height: number }
-  private transcript = ''
+  private readonly transcript: BoundedTextBuffer
   private currentRemotePath: string
+  private shellCwd?: string
+  private readonly shellCwdTracker = new ShellCwdTracker()
+  private cwdSetupInjected = false
+  private suppressEcho = false
+  private echoBuf = ''
+  private shellSetupReleaseTimer?: ReturnType<typeof setTimeout>
   private fileAccessMode: 'user' | 'root' = 'user'
+  private shellUser?: string
   private sudoUser = 'root'
   private sudoPassword?: string
   private awaitingSudoPasswordInput = false
@@ -68,12 +81,14 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
     private readonly requestInteraction: (request: SshInteractionDraft) => Promise<SshInteractionResponse>,
     private readonly rememberTrustedHostFingerprint: (fingerprint: string) => Promise<void>,
     private readonly onData: (chunk: string) => void,
+    private readonly onShellCwdChange: (cwd: string) => void,
+    private readonly onShellUserChange: (user: string) => void,
     private readonly onStateChange: (summary: string, transcript: string, connected: boolean) => void,
     initialTranscript?: string
   ) {
     super(id, 'ssh', profile)
     this.currentRemotePath = profile.remotePath || '.'
-    this.transcript = initialTranscript ?? ''
+    this.transcript = new BoundedTextBuffer(LiveSshSessionController.TRANSCRIPT_LIMIT, initialTranscript)
     this.appendSystemMessage('连接主机...\r\n')
   }
 
@@ -130,7 +145,7 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
           this.connected = true
           this.appendSystemMessage('连接主机成功\r\n')
           this.sshDebug.log('main', '认证完成，准备打开终端')
-          this.onStateChange(this.getSummary(), this.transcript, true)
+          this.onStateChange(this.getSummary(), this.transcript.toString(), true)
           this.ssh.shell(
             {
               term: 'xterm-256color',
@@ -141,7 +156,7 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
               if (error) {
                 connectionFailed = true
                 this.appendSystemMessage(`终端启动失败: ${error.message}\r\n`)
-                this.onStateChange(`Connection error: ${error.message}`, this.transcript, false)
+                this.onStateChange(`Connection error: ${error.message}`, this.transcript.toString(), false)
                 if (!settled) {
                   settled = true
                   reject(error)
@@ -157,14 +172,74 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
               }
 
               stream.on('data', (chunk: Buffer) => {
-                const text = chunk.toString('utf8')
-                this.transcript = trimTranscript(`${this.transcript}${text}`, LiveSshSessionController.TRANSCRIPT_LIMIT)
+                let text = chunk.toString('utf8')
+
+                if (!this.cwdSetupInjected && text.trim().length > 0) {
+                  this.cwdSetupInjected = true
+                  this.injectShellSetup(stream)
+                }
+
+                if (this.suppressEcho) {
+                  this.echoBuf += text
+                  const echoEnd = findSetupEchoEnd(this.echoBuf)
+                  if (echoEnd) {
+                    if (echoEnd.cwd && echoEnd.cwd !== this.shellCwd) {
+                      this.sshDebug.log('main', `Initial shell cwd detected via injection: ${echoEnd.cwd}`)
+                      this.shellCwd = echoEnd.cwd
+                      this.onShellCwdChange(echoEnd.cwd)
+                    }
+                    if (echoEnd.user && echoEnd.user !== this.shellUser) {
+                      this.sshDebug.log('main', `Initial shell user detected via injection: ${echoEnd.user}`)
+                      this.handleShellUserChange(echoEnd.user)
+                    }
+                    
+                    const beforeCmd = this.echoBuf.slice(0, echoEnd.lineStart)
+                    const afterOsc7 = this.echoBuf.slice(echoEnd.payloadEnd)
+                    text = beforeCmd + afterOsc7
+                    this.clearShellSetupSuppression()
+                  } else if (this.echoBuf.length >= 16384) {
+                    text = this.echoBuf
+                    this.clearShellSetupSuppression()
+                  } else {
+                    return
+                  }
+                }
+
+                this.transcript.append(text)
+
+                // 1. Feed updates (CWD and User) first
+                for (const update of this.shellCwdTracker.feed(text)) {
+                  if (update.cwd && update.cwd !== this.shellCwd) {
+                    this.shellCwd = update.cwd
+                    this.onShellCwdChange(update.cwd)
+                  }
+                  if (update.user && update.user !== this.shellUser) {
+                    this.handleShellUserChange(update.user)
+                  }
+                }
+
+                // 2. Track sudo prompt
                 this.trackSudoPromptFromTerminal(text)
+                
+                // 3. Heuristic detection: if the prompt ends with '# ', it might be a root shell.
+                // We inject the setup script silently to query the actual user.
+                const strippedText = text.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, '').trimEnd()
+                const now = Date.now()
+                const lastInjectTime = (this as any)._lastInjectTime || 0
+                if (strippedText.endsWith('#') && !this.suppressEcho) {
+                  // Only inject if we think we aren't root AND it's been a while since the last injection 
+                  // to prevent infinite loops (because the injected script itself triggers a new prompt)
+                  if (this.shellUser !== 'root' && (now - lastInjectTime > 2000)) {
+                    ;(this as any)._lastInjectTime = now
+                    this.injectShellSetup(stream)
+                  }
+                }
+
                 this.onData(text)
               })
               stream.on('close', () => {
                 this.handlePrimaryDisconnect()
-                this.onStateChange('Shell closed', this.transcript, false)
+                this.onStateChange('Shell closed', this.transcript.toString(), false)
               })
 
               if (!settled) {
@@ -187,7 +262,7 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
             settled = true
             reject(error)
           }
-          this.onStateChange(`Connection error: ${error.message}`, this.transcript, false)
+          this.onStateChange(`Connection error: ${error.message}`, this.transcript.toString(), false)
         })
         .on('close', () => {
           this.handlePrimaryDisconnect()
@@ -197,7 +272,7 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
           }
           this.appendSystemMessage('连接已断开\r\n')
           this.sshDebug.log('main', '连接已关闭')
-          this.onStateChange('Disconnected', this.transcript, false)
+          this.onStateChange('Disconnected', this.transcript.toString(), false)
         })
         .connect(sshConfig)
     })
@@ -258,6 +333,51 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
     return profile
   }
 
+  private handleShellUserChange(user: string) {
+    if (this.shellUser === user) return
+    this.shellUser = user
+    this.onShellUserChange(user)
+  }
+
+  private injectShellSetup(stream: { write(data: string): void }) {
+    this.clearShellSetupSuppression()
+    this.suppressEcho = true
+    stream.write(` ${SHELL_CWD_SETUP}\r`)
+    this.shellSetupReleaseTimer = setTimeout(() => {
+      if (!this.suppressEcho) {
+        return
+      }
+
+      const bufferedText = this.echoBuf
+      this.clearShellSetupSuppression()
+      if (!bufferedText) {
+        return
+      }
+
+      this.transcript.append(bufferedText)
+      for (const update of this.shellCwdTracker.feed(bufferedText)) {
+        if (update.cwd && update.cwd !== this.shellCwd) {
+          this.shellCwd = update.cwd
+          this.onShellCwdChange(update.cwd)
+        }
+        if (update.user && update.user !== this.shellUser) {
+          this.handleShellUserChange(update.user)
+        }
+      }
+      this.trackSudoPromptFromTerminal(bufferedText)
+      this.onData(bufferedText)
+    }, 1500)
+  }
+
+  private clearShellSetupSuppression() {
+    if (this.shellSetupReleaseTimer) {
+      clearTimeout(this.shellSetupReleaseTimer)
+      this.shellSetupReleaseTimer = undefined
+    }
+    this.suppressEcho = false
+    this.echoBuf = ''
+  }
+
   private async verifyHostFingerprint(profile: SshProfile, key: Buffer | string): Promise<boolean> {
     const fingerprint = computeHostFingerprint(key)
     if (this.acceptedHostFingerprints.has(fingerprint)) {
@@ -298,6 +418,7 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
   }
 
   override async disconnect(): Promise<void> {
+    this.clearShellSetupSuppression()
     this.shellStream?.end()
     this.closeExecSession()
     this.closeSftpSession()
@@ -310,7 +431,11 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
   }
 
   getTerminalTranscript(): string {
-    return this.transcript
+    return this.transcript.toString()
+  }
+
+  getShellCwd(): string | undefined {
+    return this.shellCwd
   }
 
   override getRemotePath(): string {
@@ -348,9 +473,6 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
     this.fileAccessMode = mode
     if (this.sftp && mode === 'root') {
       this.closeSftpSession()
-    }
-    if (this.transferSftp && mode === 'root') {
-      this.closeTransferSftpSession()
     }
   }
 
@@ -402,17 +524,24 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
   }
 
   async openRemotePath(nextPath: string): Promise<RemoteFileItem[]> {
+    const previousPath = this.currentRemotePath
     this.currentRemotePath = nextPath
-    if (this.fileAccessMode === 'root') {
-      return this.readRemoteDirectoryViaShell(this.currentRemotePath, new Error('Root file access mode enabled'))
-    }
-
     try {
-      return await this.readRemoteDirectory(this.currentRemotePath)
+      if (this.fileAccessMode === 'root') {
+        return await this.readRemoteDirectoryViaShell(this.currentRemotePath, new Error('Root file access mode enabled'))
+      }
+
+      try {
+        return await this.readRemoteDirectory(this.currentRemotePath)
+      } catch (error) {
+        return await this.readRemoteDirectoryViaShell(this.currentRemotePath, error)
+      }
     } catch (error) {
-      return this.readRemoteDirectoryViaShell(this.currentRemotePath, error)
+      this.currentRemotePath = previousPath
+      throw error
     }
   }
+
 
   async readRemoteFile(targetPath: string, encoding = 'utf-8'): Promise<string> {
     if (this.fileAccessMode === 'root') {
@@ -747,7 +876,7 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
 
   pushClientNotice(message: string) {
     this.appendSystemMessage(`[TermDock] ${message}\r\n`)
-    this.onStateChange(this.getSummary(), this.transcript, this.connected)
+    this.onStateChange(this.getSummary(), this.transcript.toString(), this.connected)
   }
 
   private async ensureSftp(): Promise<SFTPWrapper> {
@@ -911,6 +1040,7 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
   }
 
   private handlePrimaryDisconnect() {
+    this.clearShellSetupSuppression()
     this.resetPrivilegedFileAccess()
     this.connected = false
     this.closeExecSession()
@@ -1213,6 +1343,7 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
     cause: unknown
   ): Promise<void> {
     this.ensureShellFileFallback(cause)
+    const total = Math.max((await stat(localPath)).size, 1)
     const tempRemotePath = await this.createTemporaryRemoteUploadPath(path.posix.basename(remotePath))
     appLog(`[TermDock][SFTP] Root upload staging ${localPath} -> ${tempRemotePath} -> ${remotePath}`)
 
@@ -1227,8 +1358,8 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
       })
       onProgress({
         percent: 99,
-        transferredBytes: undefined,
-        totalBytes: undefined,
+        transferredBytes: total,
+        totalBytes: total,
         message: '正在应用 root 写入...'
       })
       await this.ensureRemoteDirectory(path.posix.dirname(remotePath))
@@ -1237,13 +1368,12 @@ export class LiveSshSessionController extends BaseFileSessionController implemen
         { allowNonZeroWithStdout: true },
         true
       )
-      const fileInfo = await stat(localPath)
-      await this.verifyShellRemoteUploadSize(remotePath, Math.max(fileInfo.size, 1), true)
-      appLog(`[TermDock][SFTP] Root upload verified ${remotePath} (${formatShellBytes(Math.max(fileInfo.size, 1))})`)
+      await this.verifyShellRemoteUploadSize(remotePath, total, true)
+      appLog(`[TermDock][SFTP] Root upload verified ${remotePath} (${formatShellBytes(total)})`)
       onProgress({
         percent: 100,
-        transferredBytes: undefined,
-        totalBytes: undefined,
+        transferredBytes: total,
+        totalBytes: total,
         message: undefined
       })
     } catch (error) {
@@ -1605,17 +1735,61 @@ printf "%s\\n" ${shellQuote(outputEndMarker)}
   }
 
   private trackSudoPromptFromTerminal(text: string) {
-    const normalized = text.replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, '')
-    if (/\[sudo\][^\r\n]*password for .*:|sudo[^\r\n]*密码[:：]?/i.test(normalized)) {
+    const window = (this as any)._sudoWindow || ''
+    const newWindow = (window + text).slice(-200)
+    ;(this as any)._sudoWindow = newWindow
+    const normalized = newWindow.replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, '')
+    
+    // Only test the newly appended part + a little overlap, OR just check if the pattern appears 
+    // at the very end of the string to avoid triggering continuously.
+    // For password prompt, we want it to match when it appears at the end of the current buffer.
+    if (!this.awaitingSudoPasswordInput && /(\[sudo\]|password|密码|passphrase)[^\r\n]*[:：]\s*$/i.test(normalized)) {
       this.awaitingSudoPasswordInput = true
       this.pendingSudoPasswordInput = ''
+      
+      // Attempt to recover blind-typed password from recent keystrokes
+      const recentKeys = (this as any)._recentKeystrokes || ''
+      // recentKeys might look like "sudo -i\rmypassword\r" or "sudo -i\rmypassword"
+      // If it contains a \r after the command, the text between the last \r and the second to last \r might be the password.
+      const parts = recentKeys.split(/[\r\n]/)
+      if (parts.length >= 2) {
+        // If the user already hit Enter for the password, it's the second to last part.
+        // If they haven't hit Enter yet, it's the last part.
+        // Let's just prepopulate pendingSudoPasswordInput with the last part.
+        const lastPart = parts[parts.length - 1]
+        const secondToLast = parts[parts.length - 2]
+        
+        if (lastPart === '') {
+          // They already hit Enter! The password is the second to last part.
+          if (secondToLast && !secondToLast.includes('sudo ')) {
+            this.sudoPassword = secondToLast
+            this.awaitingSudoPasswordInput = false
+            this.onStateChange(this.getSummary(), this.transcript.toString(), this.connected)
+          }
+        } else {
+          // They are currently typing the password (or finished but haven't hit enter)
+          if (!lastPart.includes('sudo ')) {
+            this.pendingSudoPasswordInput = lastPart
+          }
+        }
+      }
     }
-    if (/incorrect password|authentication failure|sorry, try again|密码错误|认证失败|对不起，请重试/i.test(normalized)) {
+    
+    // For failure messages, check if it's freshly added by ensuring it appears at the very end.
+    if (/(incorrect password|authentication failure|sorry, try again|密码错误|认证失败|对不起，请重试)\s*$/i.test(normalized)) {
       this.sudoPassword = undefined
     }
   }
 
   private captureSudoPasswordInput(data: string) {
+    // Keep a buffer of recent keystrokes to support blind typing recovery
+    let recentKeys = (this as any)._recentKeystrokes || ''
+    recentKeys += data
+    if (recentKeys.length > 200) {
+      recentKeys = recentKeys.slice(-200)
+    }
+    ;(this as any)._recentKeystrokes = recentKeys
+
     if (!this.awaitingSudoPasswordInput) {
       return
     }
@@ -1631,7 +1805,7 @@ printf "%s\\n" ${shellQuote(outputEndMarker)}
       if (char === '\r' || char === '\n') {
         if (this.pendingSudoPasswordInput) {
           this.sudoPassword = this.pendingSudoPasswordInput
-          this.onStateChange(this.getSummary(), this.transcript, this.connected)
+          this.onStateChange(this.getSummary(), this.transcript.toString(), this.connected)
         }
         this.awaitingSudoPasswordInput = false
         this.pendingSudoPasswordInput = ''
@@ -1776,9 +1950,9 @@ printf "%s\\n" ${shellQuote(outputEndMarker)}
   }
 
   private appendSystemMessage(message: string) {
-    this.transcript = trimTranscript(`${this.transcript}${message}`, LiveSshSessionController.TRANSCRIPT_LIMIT)
+    this.transcript.append(message)
     this.onData(message)
-    this.onStateChange(this.getSummary(), this.transcript, this.connected)
+    this.onStateChange(this.getSummary(), this.transcript.toString(), this.connected)
   }
 
   private resetPrivilegedFileAccess() {
@@ -1790,12 +1964,68 @@ printf "%s\\n" ${shellQuote(outputEndMarker)}
 
 }
 
-function trimTranscript(transcript: string, limit: number) {
-  if (transcript.length <= limit) {
-    return transcript
+class BoundedTextBuffer {
+  private static readonly CHUNK_SIZE = 4096
+  private chunks: string[] = []
+  private head = 0
+  private length = 0
+
+  constructor(
+    private readonly limit: number,
+    initialValue = ''
+  ) {
+    this.append(initialValue)
   }
 
-  return transcript.slice(transcript.length - limit)
+  append(value: string) {
+    if (!value) {
+      return
+    }
+
+    if (value.length >= this.limit) {
+      this.chunks = []
+      this.head = 0
+      this.length = 0
+      value = value.slice(value.length - this.limit)
+    }
+
+    for (let index = 0; index < value.length; index += BoundedTextBuffer.CHUNK_SIZE) {
+      const chunk = value.slice(index, index + BoundedTextBuffer.CHUNK_SIZE)
+      this.chunks.push(chunk)
+      this.length += chunk.length
+    }
+
+    this.trimStart()
+  }
+
+  toString() {
+    if (!this.length) {
+      return ''
+    }
+    return this.chunks.slice(this.head).join('')
+  }
+
+  private trimStart() {
+    let excess = this.length - this.limit
+    while (excess > 0 && this.head < this.chunks.length) {
+      const first = this.chunks[this.head]!
+      if (first.length <= excess) {
+        excess -= first.length
+        this.length -= first.length
+        this.head += 1
+        continue
+      }
+
+      this.chunks[this.head] = first.slice(excess)
+      this.length -= excess
+      excess = 0
+    }
+
+    if (this.head > 256 && this.head * 2 > this.chunks.length) {
+      this.chunks = this.chunks.slice(this.head)
+      this.head = 0
+    }
+  }
 }
 
 const DEFAULT_SSH_KEY_FILES = ['id_ed25519', 'id_ecdsa', 'id_rsa', 'id_dsa']

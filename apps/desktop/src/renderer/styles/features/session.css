@@ -518,26 +518,32 @@
   width: 100%;
 }
 
-.terminal-dock-input-shell input {
+.terminal-dock-input-shell textarea {
   width: 100%;
   min-width: 0;
   height: 24px;
-  padding: 0 4px;
+  padding: 4px;
   border: none;
+  resize: none;
+  overflow-x: auto;
+  overflow-y: auto;
   background: transparent;
   color: var(--text-main);
   font-family: "SF Mono", Menlo, Consolas, monospace;
-  font-size: 12px;
+  font-size: 11px;
+  line-height: 14px;
+  white-space: pre;
   transition: color 0.15s ease;
 }
 
-.terminal-dock-input-shell input:focus {
+.terminal-dock-input-shell textarea:focus {
   outline: none;
 }
 
 .terminal-dock-actions {
   display: flex;
   align-items: center;
+  align-self: end;
   gap: 6px;
 }
 
@@ -762,7 +768,9 @@
 .local-pane,
 .remote-pane {
   min-width: 0;
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .file-split-resizer {
@@ -785,12 +793,35 @@
 
 .pane-path-bar {
   display: grid;
-  grid-template-columns: max-content minmax(0, 1fr) max-content;
+  grid-template-columns: max-content minmax(0, 1fr) max-content max-content;
   align-items: center;
   gap: 10px;
   height: 24px;
   padding: 0 12px;
   border-bottom: 1px solid var(--border-light);
+}
+
+.follow-shell-cwd-toggle {
+  height: 20px;
+  padding: 0 8px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.follow-shell-cwd-toggle:hover:not(:disabled),
+.follow-shell-cwd-toggle.is-active {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+.follow-shell-cwd-toggle:disabled {
+  cursor: default;
+  opacity: 0.5;
 }
 
 .pane-path-bar strong {
@@ -843,9 +874,56 @@
 }
 
 .file-table-shell {
-  min-height: calc(100% - 29px);
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
   user-select: none;
   -webkit-user-select: none;
+}
+
+.remote-file-table-region {
+  min-height: 0;
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+}
+
+.remote-file-table-shell {
+  height: 100%;
+  position: relative;
+}
+
+.remote-directory-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--bg-card) 86%, transparent);
+  backdrop-filter: blur(1px);
+  cursor: progress;
+}
+
+.remote-directory-loading-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid color-mix(in srgb, var(--accent-primary) 24%, transparent);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  animation: remote-directory-loading-rotate 0.75s linear infinite;
+}
+
+@keyframes remote-directory-loading-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .remote-directory-loading-spinner {
+    animation: none;
+  }
 }
 
 .fs-file-table th,
@@ -860,6 +938,11 @@
 }
 
 .fs-file-table th {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background-color: var(--bg-main);
+  box-shadow: 0 1px 0 var(--border-light);
   font-weight: 600;
   font-size: 12px;
   text-transform: uppercase;

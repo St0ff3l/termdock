@@ -1,7 +1,6 @@
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { safeStorage } from 'electron'
 import type {
   CommandSendPreferences,
   CommandFolder,
@@ -35,7 +34,7 @@ const legacyDemoCommandTemplateIds = new Set([
 type ProfileSecretField = 'password' | 'privateKeyPath' | 'passphrase'
 
 type StoredProfileSecret = {
-  storage: 'safeStorage' | 'plain-text-fallback'
+  storage: 'plain-text-fallback'
   value: string
 }
 
@@ -588,13 +587,6 @@ function getProfileSecretValue(profile: ConnectionProfile, field: ProfileSecretF
 }
 
 function encodeProfileSecret(value: string): StoredProfileSecret {
-  if (safeStorage.isEncryptionAvailable()) {
-    return {
-      storage: 'safeStorage',
-      value: safeStorage.encryptString(value).toString('base64')
-    }
-  }
-
   return {
     storage: 'plain-text-fallback',
     value
@@ -605,17 +597,7 @@ function decodeProfileSecret(secret: StoredProfileSecret | undefined) {
   if (!secret) {
     return undefined
   }
-  if (secret.storage === 'plain-text-fallback') {
-    return secret.value
-  }
-  if (!safeStorage.isEncryptionAvailable()) {
-    return undefined
-  }
-  try {
-    return safeStorage.decryptString(Buffer.from(secret.value, 'base64'))
-  } catch {
-    return undefined
-  }
+  return secret.value
 }
 
 function stripProfileSecrets(profile: ConnectionProfile): ConnectionProfile {

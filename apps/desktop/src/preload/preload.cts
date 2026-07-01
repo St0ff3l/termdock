@@ -19,6 +19,7 @@ import type {
   SessionMetricsUpdate,
   SshInteractionRequest,
   SshInteractionResponse,
+  TransferTask,
   TransferTargetOptions,
   TermdockDesktopApi,
   TerminalDataPayload,
@@ -36,6 +37,9 @@ const api: TermdockDesktopApi = {
   writeClipboardText: (text: string): Promise<void> => ipcRenderer.invoke('app:writeClipboardText', text),
   getUiPreferences: () => ipcRenderer.invoke('app:getUiPreferences'),
   setUiPreferences: (input) => ipcRenderer.invoke('app:setUiPreferences', input),
+  getUiStateItem: (key: string): Promise<string | null> => ipcRenderer.invoke('app:getUiStateItem', key),
+  setUiStateItem: (key: string, value: string): Promise<void> => ipcRenderer.invoke('app:setUiStateItem', key, value),
+  removeUiStateItem: (key: string): Promise<void> => ipcRenderer.invoke('app:removeUiStateItem', key),
   openConnectionManagerWindow: (): Promise<void> =>
     ipcRenderer.invoke('app:openConnectionManagerWindow'),
   openCommandManagerWindow: (): Promise<void> =>
@@ -64,6 +68,11 @@ const api: TermdockDesktopApi = {
     const wrapped = (_event: unknown, isMaximized: boolean) => listener(isMaximized)
     ipcRenderer.on('app:window-maximized-change', wrapped)
     return () => ipcRenderer.off('app:window-maximized-change', wrapped)
+  },
+  onUiPreferencesChanged: (listener: (preferences: { theme: 'default-dark' | 'default-light'; locale: 'zhCN' | 'enUS' }) => void) => {
+    const wrapped = (_event: unknown, preferences: { theme: 'default-dark' | 'default-light'; locale: 'zhCN' | 'enUS' }) => listener(preferences)
+    ipcRenderer.on('app:ui-preferences-changed', wrapped)
+    return () => ipcRenderer.off('app:ui-preferences-changed', wrapped)
   },
   requestQuitApp: (): Promise<void> =>
     ipcRenderer.invoke('app:requestQuitApp'),
@@ -160,12 +169,16 @@ const api: TermdockDesktopApi = {
     ipcRenderer.invoke('transfer:downloadRemotePath', tabId, remotePath, targetType, localDirectory, options),
   setRemoteFileAccessMode: (tabId: string, mode: 'user' | 'root', options?: RemoteFileAccessOptions): Promise<WorkspaceSnapshot> =>
     ipcRenderer.invoke('remoteFiles:setFileAccessMode', tabId, mode, options),
-  writeTerminal: (tabId: string, data: string): Promise<void> =>
-    ipcRenderer.invoke('terminal:write', tabId, data),
-  resizeTerminal: (tabId: string, cols: number, rows: number, width: number, height: number): Promise<void> =>
-    ipcRenderer.invoke('terminal:resize', tabId, cols, rows, width, height),
+  writeTerminal: async (tabId: string, data: string): Promise<void> => {
+    ipcRenderer.send('terminal:write', tabId, data)
+  },
+  resizeTerminal: async (tabId: string, cols: number, rows: number, width: number, height: number): Promise<void> => {
+    ipcRenderer.send('terminal:resize', tabId, cols, rows, width, height)
+  },
   openRemotePath: (tabId: string, targetPath: string): Promise<WorkspaceSnapshot> =>
     ipcRenderer.invoke('remoteFiles:openPath', tabId, targetPath),
+  setFollowShellCwd: (tabId: string, enabled: boolean): Promise<WorkspaceSnapshot> =>
+    ipcRenderer.invoke('remoteFiles:setFollowShellCwd', tabId, enabled),
   readRemoteFile: (tabId: string, targetPath: string, encoding?: string): Promise<string> =>
     ipcRenderer.invoke('remoteFiles:readFile', tabId, targetPath, encoding),
   writeRemoteFile: (tabId: string, targetPath: string, content: string, encoding?: string): Promise<WorkspaceSnapshot> =>
@@ -195,6 +208,11 @@ const api: TermdockDesktopApi = {
     const wrapped = (_event: unknown, payload: TerminalStatePayload) => listener(payload)
     ipcRenderer.on('terminal:state', wrapped)
     return () => ipcRenderer.off('terminal:state', wrapped)
+  },
+  onTransferUpdate: (listener: (transfer: TransferTask) => void) => {
+    const wrapped = (_event: unknown, transfer: TransferTask) => listener(transfer)
+    ipcRenderer.on('transfer:update', wrapped)
+    return () => ipcRenderer.off('transfer:update', wrapped)
   },
   onWorkspaceSnapshot: (listener: (snapshot: WorkspaceSnapshot) => void) => {
     const wrapped = (_event: unknown, snapshot: WorkspaceSnapshot) => listener(snapshot)

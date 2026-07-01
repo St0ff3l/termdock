@@ -3,14 +3,51 @@ name: Release
 on:
   push:
     tags:
-      - 'v*-beta*'
+      - 'v*'
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
+  validate-release-tag:
+    runs-on: ubuntu-latest
+    outputs:
+      release_branch: ${{ steps.validate.outputs.release_branch }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate tag source branch
+        id: validate
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            echo "Manual workflow dispatch: skip release branch tag validation."
+            echo "release_branch=manual-dispatch" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          git fetch --prune origin '+refs/heads/release/*:refs/remotes/origin/release/*'
+
+          tag_commit="$(git rev-list -n 1 "${GITHUB_REF_NAME}")"
+          release_branches="$(git branch -r --contains "${tag_commit}" | sed 's/^[*[:space:]]*//' | grep '^origin/release/' || true)"
+
+          if [ -z "${release_branches}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not point to a commit on any origin/release/* branch."
+            exit 1
+          fi
+
+          first_branch="$(printf '%s\n' "${release_branches}" | head -n 1)"
+          echo "Validated release tag on branch: ${first_branch}"
+          echo "release_branch=${first_branch}" >> "${GITHUB_OUTPUT}"
+
   build-mac:
+    needs: validate-release-tag
     runs-on: macos-14
     strategy:
       matrix:
@@ -19,16 +56,22 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Setup Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Build packages (core → shared → storage)
+        run: |
+          npm run build -w @termdock/core
+          npm run build -w @termdock/shared
+          npm run build -w @termdock/storage
 
       - name: Typecheck
         run: npm run typecheck
@@ -42,14 +85,16 @@ jobs:
           npx electron-builder --mac --${{ matrix.arch }}
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v4
         with:
           name: TermDock-macOS-${{ matrix.arch }}
           path: |
             apps/desktop/release/*.dmg
             apps/desktop/release/*.zip
+          if-no-files-found: error
 
   build-win:
+    needs: validate-release-tag
     runs-on: windows-latest
     strategy:
       matrix:
@@ -58,16 +103,22 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Setup Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Build packages (core → shared → storage)
+        run: |
+          npm run build -w @termdock/core
+          npm run build -w @termdock/shared
+          npm run build -w @termdock/storage
 
       - name: Typecheck
         run: npm run typecheck
@@ -81,28 +132,56 @@ jobs:
           npx electron-builder --win --${{ matrix.arch }}
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v4
         with:
           name: TermDock-Windows-${{ matrix.arch }}
           path: |
             apps/desktop/release/*.exe
+          if-no-files-found: error
 
   release:
-    needs: [build-mac, build-win]
+    needs: [validate-release-tag, build-mac, build-win]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Download all artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v4
+
+      - name: Clean up stale draft releases
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          REPO="${{ github.repository }}"
+          gh release list -R "${REPO}" --limit 100 --json tagName,isDraft \
+            | jq -r '.[] | select(.isDraft) | .tagName' \
+            | while read -r tag; do
+              echo "Deleting draft release: ${tag}"
+              gh release delete "${tag}" -R "${REPO}" --yes --cleanup-tag 2>/dev/null || true
+            done
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
-          prerelease: true
-          generate_release_notes: true
-          files: |
-            **/*.dmg
-            **/*.zip
-            **/*.exe
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          REPO="${{ github.repository }}"
+          TAG="${GITHUB_REF_NAME}"
+
+          # Delete any existing release for this tag (draft or otherwise)
+          if gh release view "${TAG}" -R "${REPO}" &>/dev/null; then
+            echo "Removing existing release for tag ${TAG}..."
+            gh release delete "${TAG}" -R "${REPO}" --yes --cleanup-tag 2>/dev/null || true
+            sleep 2  # Give GitHub API time to sync
+          fi
+
+          echo "Creating release for ${TAG}..."
+          gh release create "${TAG}" -R "${REPO}" \
+            --prerelease \
+            --generate-notes \
+            **/*.dmg **/*.zip **/*.exe

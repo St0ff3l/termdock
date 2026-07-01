@@ -103,6 +103,10 @@ const zhCN = {
   file: '文件',
   localComputer: '我的电脑',
   remoteHost: '远程主机',
+  followShellCwd: '跟随终端',
+  followShellCwdUnavailable: '等待终端上报当前目录',
+  shellCwd: '终端目录',
+  loadingRemoteDirectory: '正在加载远程目录…',
   fileUserView: '普通视角',
   fileRootView: 'root 视角',
   fileRootViewHint: '用 sudo 读取、修改远程文件',
@@ -357,8 +361,8 @@ const zhCN = {
   terminalDockHistoryInsertHint: '按左右方向键选择字段，Enter 插入',
   terminalDockClearList: '清空列表',
   terminalDockHistorySearchPlaceholder: '搜索历史命令...',
-  terminalDockPlaceholderMac: '命令输入（双击 Cmd 切换，Option 打开历史，Esc 关闭）',
-  terminalDockPlaceholderWin: '命令输入（双击 Ctrl 切换，Alt 打开历史，Esc 关闭）',
+  terminalDockPlaceholderMac: '命令输入（Enter 发送，Shift+Enter 换行，双击 Cmd 切换）',
+  terminalDockPlaceholderWin: '命令输入（Enter 发送，Shift+Enter 换行，双击 Ctrl 切换）',
   terminalDockDisconnect: '断开连接',
   terminalDockReconnect: '重新连接',
   terminalDockShowFilePanel: '显示文件面板',
@@ -511,6 +515,10 @@ const enUS: typeof zhCN = {
   openConnection: 'Open Connection',
   localComputer: 'Local',
   remoteHost: 'Remote',
+  followShellCwd: 'Follow terminal',
+  followShellCwdUnavailable: 'Waiting for the terminal to report its current directory',
+  shellCwd: 'Terminal directory',
+  loadingRemoteDirectory: 'Loading remote directory…',
   fileUserView: 'User View',
   fileRootView: 'Root View',
   fileRootViewHint: 'Use sudo to read and edit remote files',
@@ -762,8 +770,8 @@ const enUS: typeof zhCN = {
   terminalDockHistoryInsertHint: 'Use left/right to select a token, press Enter to insert',
   terminalDockClearList: 'Clear list',
   terminalDockHistorySearchPlaceholder: 'Search command history...',
-  terminalDockPlaceholderMac: 'Command input (double Cmd to toggle, Option opens history, Esc closes)',
-  terminalDockPlaceholderWin: 'Command input (double Ctrl to toggle, Alt opens history, Esc closes)',
+  terminalDockPlaceholderMac: 'Command input (Enter sends, Shift+Enter adds a line, double Cmd toggles)',
+  terminalDockPlaceholderWin: 'Command input (Enter sends, Shift+Enter adds a line, double Ctrl toggles)',
   terminalDockDisconnect: 'Disconnect',
   terminalDockReconnect: 'Reconnect',
   terminalDockShowFilePanel: 'Show file panel',
@@ -835,9 +843,12 @@ function resolveInitialLocale(): AppLocale {
   }
 
   try {
-    const nextLocale = window.localStorage.getItem('termdock.locale')
-    if (nextLocale === 'enUS' || nextLocale === 'zhCN') {
-      return nextLocale
+    const documentLang = window.document?.documentElement?.lang?.toLowerCase()
+    if (documentLang === 'zh-cn' || documentLang?.startsWith('zh')) {
+      return 'zhCN'
+    }
+    if (documentLang?.startsWith('en')) {
+      return 'enUS'
     }
 
     const preferredLocales = window.navigator.languages?.length

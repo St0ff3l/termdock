@@ -34,7 +34,9 @@ export function HomeWorkspace({
   onSetLocale,
   onOpenLogsDirectory,
   isSidebarCollapsed,
-  tabBarProps
+  tabBarProps,
+  isResizingSidebar,
+  onResizeStart
 }: {
   profiles: ConnectionProfile[]
   folders?: ConnectionFolder[]
@@ -62,6 +64,8 @@ export function HomeWorkspace({
   onOpenLogsDirectory(): void
   isSidebarCollapsed: boolean
   tabBarProps: any
+  isResizingSidebar: boolean
+  onResizeStart(): void
 }) {
   const [activeTab, setActiveTab] = useState<'overview' | 'quick-links' | 'command-manager' | 'connection-manager' | 'settings'>('overview')
   const [navDirection, setNavDirection] = useState<'down' | 'up'>('down')
@@ -182,6 +186,12 @@ export function HomeWorkspace({
             <span>GitHub</span>
           </button>
         </div>
+        <div
+          aria-label={t.resizeSidebar}
+          className={`sidebar-resizer ${isResizingSidebar ? 'is-active' : ''}`}
+          onMouseDown={onResizeStart}
+          role="separator"
+        />
       </aside>
 
       {/* Main Content Area */}

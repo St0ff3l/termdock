@@ -66,8 +66,10 @@ export function WorkspaceStage({
   onRequestNewFolder,
   onRequestQuickDelete,
   onRequestRename,
+  onToggleFollowShellCwd,
   onToggleRemoteFileAccessMode,
   remoteFileAccessMode,
+  isRemoteDirectoryLoading,
   onRefresh,
   onUploadFiles,
   onCreateConnection,
@@ -89,7 +91,9 @@ export function WorkspaceStage({
   onOpenLogsDirectory,
   isSidebarCollapsed,
   isWorkspaceFocusMode,
-  tabBarProps
+  tabBarProps,
+  isResizingSidebar,
+  onResizeStart
 }: {
   activeLocalTab: ActiveLocalTab
   activeHomeTabId: string | null
@@ -136,8 +140,10 @@ export function WorkspaceStage({
   onRequestNewFolder(pane: 'local' | 'remote', directoryPath: string): void
   onRequestQuickDelete(pane: 'local' | 'remote', items: Array<LocalFileItem | RemoteFileItem>): void
   onRequestRename(pane: 'local' | 'remote', item: LocalFileItem | RemoteFileItem): void
+  onToggleFollowShellCwd(): void
   onToggleRemoteFileAccessMode(): void
   remoteFileAccessMode: 'user' | 'root'
+  isRemoteDirectoryLoading: boolean
   onRefresh(): void
   onUploadFiles(items: LocalFileItem[]): void
   onCreateConnection(): void
@@ -160,6 +166,8 @@ export function WorkspaceStage({
   isSidebarCollapsed: boolean
   isWorkspaceFocusMode: boolean
   tabBarProps: any
+  isResizingSidebar: boolean
+  onResizeStart(): void
 }) {
   if (activeLocalTab?.kind === 'system') {
     return <SystemInfoWorkspace activeProfile={activeProfile} activeSession={activeSession} />
@@ -168,6 +176,7 @@ export function WorkspaceStage({
   if (activeTab && activeSession && !activeLocalTab) {
     return (
       <SessionWorkspace
+        key={activeTab.id}
         activeSession={activeSession}
         activeTab={activeTab}
         sendTargets={sendTargets}
@@ -205,8 +214,10 @@ export function WorkspaceStage({
         onRequestNewFolder={onRequestNewFolder}
         onRequestQuickDelete={onRequestQuickDelete}
         onRequestRename={onRequestRename}
+        onToggleFollowShellCwd={onToggleFollowShellCwd}
         onToggleRemoteFileAccessMode={onToggleRemoteFileAccessMode}
         remoteFileAccessMode={remoteFileAccessMode}
+        isRemoteDirectoryLoading={isRemoteDirectoryLoading}
         onRefresh={onRefresh}
         onUploadFiles={onUploadFiles}
         isWorkspaceFocusMode={isWorkspaceFocusMode}
@@ -243,6 +254,8 @@ export function WorkspaceStage({
       isSidebarCollapsed={isSidebarCollapsed}
       profiles={profiles}
       tabBarProps={tabBarProps}
+      isResizingSidebar={isResizingSidebar}
+      onResizeStart={onResizeStart}
     />
   )
 }

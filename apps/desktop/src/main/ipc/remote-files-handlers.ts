@@ -9,6 +9,10 @@ export function registerRemoteFilesHandlers(services: IpcServices) {
     workspaceService.openRemotePath(tabId, targetPath)
   )
 
+  ipcMain.handle('remoteFiles:setFollowShellCwd', (_, tabId: string, enabled: boolean) =>
+    workspaceService.setFollowShellCwd(tabId, enabled)
+  )
+
   ipcMain.handle('remoteFiles:setFileAccessMode', (_, tabId: string, mode: 'user' | 'root', options?: RemoteFileAccessOptions) =>
     workspaceService.setRemoteFileAccessMode(tabId, mode, options)
   )

@@ -166,8 +166,10 @@ export function FileManager({
   onRequestNewFolder,
   onRequestQuickDelete,
   onRequestRename,
+  onToggleFollowShellCwd,
   onToggleRemoteFileAccessMode,
-  remoteFileAccessMode
+  remoteFileAccessMode,
+  isRemoteDirectoryLoading
 }: {
   activeSession: SessionSnapshot
   activeTab: WorkspaceTab | null
@@ -203,12 +205,15 @@ export function FileManager({
   onRequestNewFolder(pane: 'local' | 'remote', directoryPath: string): void
   onRequestQuickDelete(pane: 'local' | 'remote', items: Array<LocalFileItem | RemoteFileItem>): void
   onRequestRename(pane: 'local' | 'remote', item: LocalFileItem | RemoteFileItem): void
+  onToggleFollowShellCwd(): void
   onToggleRemoteFileAccessMode(): void
   remoteFileAccessMode: 'user' | 'root'
+  isRemoteDirectoryLoading: boolean
 }) {
   const defaultRemoteSort = { field: 'name', direction: 'asc' } satisfies RemoteFileSortState
   const isRemoteConnected = activeSession.connected === true
   const isSshSession = activeTab?.sessionType === 'ssh'
+  const showRemoteDirectoryLoading = isRemoteDirectoryLoading || activeSession.remoteFilesLoading === true
   const [activeView, setActiveView] = useState<'file' | 'command'>('file')
   const [localPaneWidth, setLocalPaneWidth] = useState(214)
   const [localPathInput, setLocalPathInput] = useState(localPath)
@@ -235,6 +240,8 @@ export function FileManager({
   const suppressNextClearClick = useRef(false)
   const localDragSelection = useRef<{ basePaths: string[]; startPath: string | null } | null>(null)
   const remoteDragSelection = useRef<{ basePaths: string[]; startPath: string | null } | null>(null)
+  const localScrollRef = useRef<HTMLDivElement | null>(null)
+  const remoteScrollRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     setLocalPathInput((prev) => prev === localPath ? prev : localPath)
@@ -625,7 +632,8 @@ export function FileManager({
         >
           <PanePathBar label={t.localComputer} value={localPathInput} onChange={setLocalPathInput} onSubmit={submitLocalPath} />
           <div
-            className="file-table-shell"
+            className="file-table-shell local-file-table-shell"
+            ref={localScrollRef}
             onContextMenu={(event) => {
               if (event.target !== event.currentTarget) return
               event.preventDefault()
@@ -654,6 +662,7 @@ export function FileManager({
             }}
           >
             <LocalFileTable
+              scrollRef={localScrollRef}
               cutPaths={localCutPaths}
               rows={localItems}
               selectedPaths={selectedLocalPaths}
@@ -716,7 +725,7 @@ export function FileManager({
           role="separator"
         />
         <div
-          className="remote-pane"
+          className="pane remote-pane"
           onMouseDownCapture={() => {
             setKeyboardPane('remote')
             focusContainer()
@@ -740,77 +749,51 @@ export function FileManager({
             hint={isRemoteConnected ? t.dragUpload : t.remoteDisconnectedDescription}
             label={t.remoteHost}
             value={remotePathInput}
+            action={isSshSession ? (
+              <button
+                aria-pressed={activeSession.followShellCwd !== false}
+                className={`follow-shell-cwd-toggle ${activeSession.followShellCwd !== false ? 'is-active' : ''}`}
+                disabled={!isRemoteConnected}
+                onClick={onToggleFollowShellCwd}
+                title={activeSession.shellCwd
+                  ? `${t.shellCwd}: ${activeSession.shellCwd}`
+                  : t.followShellCwdUnavailable}
+                type="button"
+              >
+                {t.followShellCwd}
+              </button>
+            ) : null}
             onChange={setRemotePathInput}
             onSubmit={submitRemotePath}
           />
           <div
-            className="file-table-shell"
-            onContextMenu={(event) => {
-              if (!isRemoteConnected) return
-              if (event.target !== event.currentTarget) return
-              event.preventDefault()
-              event.stopPropagation()
-              setSelectedRemotePaths([])
-              setRemoteAnchorPath(null)
-              setContextMenu({ pane: 'remote', x: event.clientX, y: event.clientY, path: null })
-            }}
-            onMouseDown={(event) => {
-              if (!isRemoteConnected) return
-              if (event.target !== event.currentTarget || event.button !== 0) return
-              isSelectingRemote.current = true
-              didDragSelect.current = false
-              remoteDragSelection.current = {
-                basePaths: event.metaKey || event.ctrlKey ? selectedRemotePaths : [],
-                startPath: null
-              }
-            }}
-            onClick={(event) => {
-              if (event.target !== event.currentTarget) return
-              if (suppressNextClearClick.current) {
-                suppressNextClearClick.current = false
-                return
-              }
-              setSelectedRemotePaths([])
-              setRemoteAnchorPath(null)
-            }}
+            aria-busy={showRemoteDirectoryLoading}
+            className="remote-file-table-region"
           >
-            <FileTable
-              cutPaths={remoteCutPaths}
-              emptyText={isRemoteConnected ? t.emptyFiles : t.remoteDisconnectedDescription}
-              rows={sortedRemoteRows}
-              sortState={remoteSort}
-              selectedPaths={selectedRemotePaths}
-              onToggleSort={(field) => {
-                setRemoteSort((current) => (
-                  current.field === field
-                    ? { field, direction: current.direction === 'asc' ? 'desc' : 'asc' }
-                    : { field, direction: 'asc' }
-                ))
-              }}
-              onDragItem={(event, item) => {
+            <div
+              ref={remoteScrollRef}
+              className="file-table-shell remote-file-table-shell"
+              onContextMenu={(event) => {
                 if (!isRemoteConnected) return
-                event.dataTransfer.effectAllowed = 'copy'
-                const payload = selectedRemotePaths.includes(item.path) ? selectedRemotePaths : [item.path]
-                const previewItems = sortedRemoteRows.filter((row) => payload.includes(row.path))
-                event.dataTransfer.setData(remoteFileDragType, JSON.stringify(payload))
-                setFileDragPreview(event, previewItems.map((row) => row.name))
-              }}
-              onOpenItem={(item) => {
-                if (isRemoteConnected) {
-                  onOpenRemoteItem(item)
-                }
-              }}
-              onContextItem={(event, item) => {
-                if (!isRemoteConnected) return
+                if (event.target !== event.currentTarget) return
                 event.preventDefault()
                 event.stopPropagation()
-                if (!selectedRemotePaths.includes(item.path)) {
-                  setSelectedRemotePaths([item.path])
-                  setRemoteAnchorPath(item.path)
-                }
-                setContextMenu({ pane: 'remote', x: event.clientX, y: event.clientY, path: item.path })
+                setSelectedRemotePaths([])
+                setRemoteAnchorPath(null)
+                setContextMenu({ pane: 'remote', x: event.clientX, y: event.clientY, path: null })
               }}
-              onClearSelection={() => {
+              onMouseDown={(event) => {
+                if (!isRemoteConnected) return
+                if (event.target !== event.currentTarget || event.button !== 0) return
+                isSelectingRemote.current = true
+                didDragSelect.current = false
+                remoteDragSelection.current = {
+                  basePaths: event.metaKey || event.ctrlKey ? selectedRemotePaths : [],
+                  startPath: null
+                }
+              }}
+              onClick={(event) => {
+                if (event.target !== event.currentTarget) return
                 if (suppressNextClearClick.current) {
                   suppressNextClearClick.current = false
                   return
@@ -818,35 +801,92 @@ export function FileManager({
                 setSelectedRemotePaths([])
                 setRemoteAnchorPath(null)
               }}
-              onSelectItem={(event, item) => {
-                if (isRemoteConnected) {
-                  selectRemoteItem(event, item)
-                }
-              }}
-              onSelectionDragStart={(event, item) => {
-                if (!isRemoteConnected) return
-                setKeyboardPane('remote')
-                isSelectingRemote.current = true
-                didDragSelect.current = false
-                const startPath = event.shiftKey && remoteAnchorPath ? remoteAnchorPath : item.path
-                const basePaths = event.metaKey || event.ctrlKey ? selectedRemotePaths : []
-                remoteDragSelection.current = { basePaths, startPath }
-                suppressNextSelectionClick.current = true
-                setSelectedRemotePaths(nextSelection({
-                  anchorPath: remoteAnchorPath,
-                  currentSelection: selectedRemotePaths,
-                  event,
-                  itemPath: item.path,
-                  rows: sortedRemoteRows
-                }))
-                setRemoteAnchorPath(startPath)
-              }}
-              onSelectionDragEnter={(item) => {
-                if (isRemoteConnected) {
-                  extendRemoteDragSelection(item)
-                }
-              }}
-            />
+            >
+              <FileTable
+                scrollRef={remoteScrollRef}
+                cutPaths={remoteCutPaths}
+                emptyText={isRemoteConnected ? t.emptyFiles : t.remoteDisconnectedDescription}
+                rows={sortedRemoteRows}
+                sortState={remoteSort}
+                selectedPaths={selectedRemotePaths}
+                onToggleSort={(field) => {
+                  setRemoteSort((current) => (
+                    current.field === field
+                      ? { field, direction: current.direction === 'asc' ? 'desc' : 'asc' }
+                      : { field, direction: 'asc' }
+                  ))
+                }}
+                onDragItem={(event, item) => {
+                  if (!isRemoteConnected) return
+                  event.dataTransfer.effectAllowed = 'copy'
+                  const payload = selectedRemotePaths.includes(item.path) ? selectedRemotePaths : [item.path]
+                  const previewItems = sortedRemoteRows.filter((row) => payload.includes(row.path))
+                  event.dataTransfer.setData(remoteFileDragType, JSON.stringify(payload))
+                  setFileDragPreview(event, previewItems.map((row) => row.name))
+                }}
+                onOpenItem={(item) => {
+                  if (isRemoteConnected) {
+                    onOpenRemoteItem(item)
+                  }
+                }}
+                onContextItem={(event, item) => {
+                  if (!isRemoteConnected) return
+                  event.preventDefault()
+                  event.stopPropagation()
+                  if (!selectedRemotePaths.includes(item.path)) {
+                    setSelectedRemotePaths([item.path])
+                    setRemoteAnchorPath(item.path)
+                  }
+                  setContextMenu({ pane: 'remote', x: event.clientX, y: event.clientY, path: item.path })
+                }}
+                onClearSelection={() => {
+                  if (suppressNextClearClick.current) {
+                    suppressNextClearClick.current = false
+                    return
+                  }
+                  setSelectedRemotePaths([])
+                  setRemoteAnchorPath(null)
+                }}
+                onSelectItem={(event, item) => {
+                  if (isRemoteConnected) {
+                    selectRemoteItem(event, item)
+                  }
+                }}
+                onSelectionDragStart={(event, item) => {
+                  if (!isRemoteConnected) return
+                  setKeyboardPane('remote')
+                  isSelectingRemote.current = true
+                  didDragSelect.current = false
+                  const startPath = event.shiftKey && remoteAnchorPath ? remoteAnchorPath : item.path
+                  const basePaths = event.metaKey || event.ctrlKey ? selectedRemotePaths : []
+                  remoteDragSelection.current = { basePaths, startPath }
+                  suppressNextSelectionClick.current = true
+                  setSelectedRemotePaths(nextSelection({
+                    anchorPath: remoteAnchorPath,
+                    currentSelection: selectedRemotePaths,
+                    event,
+                    itemPath: item.path,
+                    rows: sortedRemoteRows
+                  }))
+                  setRemoteAnchorPath(startPath)
+                }}
+                onSelectionDragEnter={(item) => {
+                  if (isRemoteConnected) {
+                    extendRemoteDragSelection(item)
+                  }
+                }}
+              />
+            </div>
+            {showRemoteDirectoryLoading ? (
+              <div
+                aria-label={t.loadingRemoteDirectory}
+                aria-live="polite"
+                className="remote-directory-loading"
+                role="status"
+              >
+                <span aria-hidden="true" className="remote-directory-loading-spinner" />
+              </div>
+            ) : null}
           </div>
         </div>
       </div>

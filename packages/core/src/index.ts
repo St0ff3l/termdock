@@ -94,6 +94,8 @@ export interface TransferTask {
   status: 'queued' | 'running' | 'done' | 'failed' | 'canceled'
   message?: string
   speed?: string
+  transferredBytes?: number
+  totalBytes?: number
 }
 
 export interface TransferProgress {
@@ -241,12 +243,39 @@ export interface SystemMetrics {
   topProcesses: SidebarProcessItem[]
 }
 
+export function mergeSystemMetricsHistory(
+  previousMetrics: SystemMetrics | undefined,
+  nextMetrics: SystemMetrics,
+  historyLimit = 600
+): SystemMetrics {
+  const nextPoint = nextMetrics.networkSamples.at(-1) ?? { rx: 0, tx: 0 }
+  const previousSamples = previousMetrics?.networkSamples ?? []
+  const previousByInterface = previousMetrics?.networkSamplesByInterface ?? {}
+  const nextByInterface = nextMetrics.networkSamplesByInterface ?? {}
+  const mergedByInterface = Object.fromEntries(
+    Object.entries(nextByInterface).map(([name, samples]) => {
+      const nextInterfacePoint = samples.at(-1) ?? { rx: 0, tx: 0 }
+      const previousInterfaceSamples = previousByInterface[name] ?? []
+      return [name, [...previousInterfaceSamples, nextInterfacePoint].slice(-historyLimit)]
+    })
+  )
+
+  return {
+    ...nextMetrics,
+    networkSamples: [...previousSamples, nextPoint].slice(-historyLimit),
+    networkSamplesByInterface: mergedByInterface
+  }
+}
+
 export interface SessionSnapshot {
   profileId: string
   accessHost?: string
   summary: string
   terminalTranscript?: string
   remotePath: string
+  shellCwd?: string
+  followShellCwd?: boolean
+  remoteFilesLoading?: boolean
   remoteFiles: RemoteFileItem[]
   fileAccessMode?: 'user' | 'root'
   sudoUser?: string
@@ -269,6 +298,7 @@ export interface WorkspaceSnapshot {
 export interface SessionMetricsUpdate {
   tabId: string
   systemMetrics?: SystemMetrics
+  mode?: 'replace' | 'append'
 }
 
 export interface ConnectionLibrarySnapshot {
@@ -403,6 +433,9 @@ export interface TermdockDesktopApi {
   writeClipboardText(text: string): Promise<void>
   getUiPreferences(): Promise<{ theme: 'default-dark' | 'default-light'; locale: 'zhCN' | 'enUS' }>
   setUiPreferences(input: { theme?: 'default-dark' | 'default-light'; locale?: 'zhCN' | 'enUS' }): Promise<{ theme: 'default-dark' | 'default-light'; locale: 'zhCN' | 'enUS' }>
+  getUiStateItem(key: string): Promise<string | null>
+  setUiStateItem(key: string, value: string): Promise<void>
+  removeUiStateItem(key: string): Promise<void>
   openConnectionManagerWindow(): Promise<void>
   openCommandManagerWindow(): Promise<void>
   openConnectionFormWindow(mode: ConnectionFormMode, profileId?: string): Promise<void>
@@ -416,6 +449,7 @@ export interface TermdockDesktopApi {
   closeCurrentWindow(): Promise<void>
   showWindowMenu(menuType: 'app' | 'file' | 'view' | 'window', x: number, y: number): Promise<void>
   onWindowMaximizedChange(listener: (isMaximized: boolean) => void): () => void
+  onUiPreferencesChanged(listener: (preferences: { theme: 'default-dark' | 'default-light'; locale: 'zhCN' | 'enUS' }) => void): () => void
   requestQuitApp(): Promise<void>
   getSnapshot(): Promise<WorkspaceSnapshot>
   getConnectionLibrary(): Promise<ConnectionLibrarySnapshot>
@@ -467,6 +501,7 @@ export interface TermdockDesktopApi {
   writeTerminal(tabId: string, data: string): Promise<void>
   resizeTerminal(tabId: string, cols: number, rows: number, width: number, height: number): Promise<void>
   openRemotePath(tabId: string, targetPath: string): Promise<WorkspaceSnapshot>
+  setFollowShellCwd(tabId: string, enabled: boolean): Promise<WorkspaceSnapshot>
   readRemoteFile(tabId: string, targetPath: string, encoding?: string): Promise<string>
   writeRemoteFile(tabId: string, targetPath: string, content: string, encoding?: string): Promise<WorkspaceSnapshot>
   createRemoteDirectory(tabId: string, parentPath: string, name: string): Promise<WorkspaceSnapshot>
@@ -479,6 +514,7 @@ export interface TermdockDesktopApi {
   changeRemotePermissions(tabId: string, targetPath: string, options: PermissionChangeOptions): Promise<WorkspaceSnapshot>
   onTerminalData(listener: (payload: TerminalDataPayload) => void): () => void
   onTerminalState(listener: (payload: TerminalStatePayload) => void): () => void
+  onTransferUpdate(listener: (transfer: TransferTask) => void): () => void
   onWorkspaceSnapshot(listener: (snapshot: WorkspaceSnapshot) => void): () => void
   onSessionMetrics(listener: (payload: SessionMetricsUpdate) => void): () => void
   onSshInteraction(listener: (request: SshInteractionRequest) => void): () => void
@@ -498,6 +534,7 @@ export interface SessionController {
 export interface ShellSessionController extends SessionController {
   readonly type: 'ssh'
   getTerminalTranscript(): string
+  getShellCwd(): string | undefined
   write(data: string): Promise<void>
   resize(cols: number, rows: number, width: number, height: number): Promise<void>
 }

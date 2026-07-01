@@ -29,6 +29,8 @@ import { WorkspaceSessionRuntime, type LiveSessionController } from './workspace
 import { WorkspaceTabsState } from './workspace/workspace-tabs.js'
 import { WorkspaceTransfersState } from './workspace/workspace-transfers.js'
 
+const TRANSFER_UPDATE_INTERVAL_MS = 200
+
 export class WorkspaceService {
   private static readonly DISCONNECTED_TRANSFER_MESSAGES = {
     zhCN: '连接已断开，传输已终止',
@@ -40,6 +42,7 @@ export class WorkspaceService {
   private readonly transferCancels = new Map<string, () => Promise<void> | void>()
   private readonly transferCanceling = new Set<string>()
   private readonly transferTabs = new Map<string, string>()
+  private readonly transferUpdateTimers = new Map<string, ReturnType<typeof setTimeout>>()
   private readonly privilegedAccess = new Map<string, RemoteFileAccessOptions>()
   private readonly sessionRuntime = new WorkspaceSessionRuntime({
     getSnapshot: () => this.getSnapshot(),
@@ -61,15 +64,26 @@ export class WorkspaceService {
   }
 
   async shutdown() {
+    for (const timer of this.transferUpdateTimers.values()) {
+      clearTimeout(timer)
+    }
+    this.transferUpdateTimers.clear()
     await this.sessionRuntime.shutdown()
   }
 
   async getSnapshot(): Promise<WorkspaceSnapshot> {
+    const [profiles, folders, commandFolders, commandTemplates] = await Promise.all([
+      this.profileRepository.list(),
+      this.profileRepository.listFolders?.() ?? Promise.resolve([]),
+      this.profileRepository.listCommandFolders?.() ?? Promise.resolve([]),
+      this.profileRepository.listCommandTemplates?.() ?? Promise.resolve([])
+    ])
+
     return {
-      profiles: await this.profileRepository.list(),
-      folders: await this.profileRepository.listFolders?.() ?? [],
-      commandFolders: await this.profileRepository.listCommandFolders?.() ?? [],
-      commandTemplates: await this.profileRepository.listCommandTemplates?.() ?? [],
+      profiles,
+      folders,
+      commandFolders,
+      commandTemplates,
       tabs: this.tabs.list(),
       activeTabId: this.tabs.getActiveTabId(),
       transfers: this.transfers.list(),
@@ -78,9 +92,13 @@ export class WorkspaceService {
   }
 
   async getConnectionLibrary(): Promise<ConnectionLibrarySnapshot> {
+    const [profiles, folders] = await Promise.all([
+      this.profileRepository.list(),
+      this.profileRepository.listFolders()
+    ])
     return {
-      profiles: await this.profileRepository.list(),
-      folders: await this.profileRepository.listFolders()
+      profiles,
+      folders
     }
   }
 
@@ -222,6 +240,8 @@ export class WorkspaceService {
       terminalTranscript:
         controller.type === 'ssh' ? controller.getTerminalTranscript() : undefined,
       remotePath: controller.getRemotePath(),
+      shellCwd: controller.type === 'ssh' ? controller.getShellCwd() : undefined,
+      followShellCwd: profile.type === 'ssh',
       remoteFiles: [],
       fileAccessMode: controller.getFileAccessMode(),
       sudoUser: profile.type === 'ssh' ? 'root' : undefined,
@@ -265,6 +285,8 @@ export class WorkspaceService {
       summary: current?.accessHost ? `Disconnected from ${current.accessHost}` : 'Disconnected',
       terminalTranscript: disconnectedTranscript,
       remotePath: current?.remotePath ?? profile.remotePath,
+      shellCwd: current?.shellCwd,
+      followShellCwd: current?.followShellCwd ?? (profile.type === 'ssh'),
       remoteFiles: [],
       fileAccessMode: current?.fileAccessMode ?? 'user',
       sudoUser: current?.sudoUser ?? (profile.type === 'ssh' ? 'root' : undefined),
@@ -281,6 +303,8 @@ export class WorkspaceService {
       terminalTranscript:
         controller.type === 'ssh' ? controller.getTerminalTranscript() : undefined,
       remotePath: current?.remotePath ?? profile.remotePath,
+      shellCwd: current?.shellCwd,
+      followShellCwd: current?.followShellCwd ?? (profile.type === 'ssh'),
       remoteFiles: [],
       fileAccessMode: current?.fileAccessMode ?? controller.getFileAccessMode(),
       sudoUser: current?.sudoUser ?? (profile.type === 'ssh' ? 'root' : undefined),
@@ -324,10 +348,11 @@ export class WorkspaceService {
     await this.sessionRuntime.disconnect(tabId)
     await this.finalizeTransfersForTab(tabId, this.getDisconnectedTransferMessage())
     this.privilegedAccess.delete(tabId)
-    const disconnectedTranscript = appendDisconnectedTranscript(current.terminalTranscript)
+    const latest = this.sessionRuntime.get(tabId) ?? current
+    const disconnectedTranscript = appendDisconnectedTranscript(latest.terminalTranscript)
     this.sessionRuntime.set(tabId, {
-      ...current,
-      summary: current.accessHost ? `Disconnected from ${current.accessHost}` : 'Disconnected',
+      ...latest,
+      summary: latest.accessHost ? `Disconnected from ${latest.accessHost}` : 'Disconnected',
       terminalTranscript: disconnectedTranscript,
       remoteFiles: [],
       fileAccessMode: 'user',
@@ -399,6 +424,7 @@ export class WorkspaceService {
 
     this.transfers.removeMany(removableIds)
     removableIds.forEach((transferId) => {
+      this.clearTransferUpdateTimer(transferId)
       this.transferTabs.delete(transferId)
       this.transferCancels.delete(transferId)
       this.transferCanceling.delete(transferId)
@@ -433,8 +459,10 @@ export class WorkspaceService {
           progress: progress.percent,
           status: 'running',
           speed: transferTracker(progress),
-          message: progress.message ?? targetRemotePath
-        }, sender)
+          message: progress.message ?? targetRemotePath,
+          transferredBytes: progress.transferredBytes,
+          totalBytes: progress.totalBytes
+        }, sender, 'throttled')
       }, options?.targetName)
       if (transferState.canceled) {
         return this.getSnapshot()
@@ -500,8 +528,10 @@ export class WorkspaceService {
           progress: progress.percent,
           status: 'running',
           speed: transferTracker(progress),
-          message: progress.message ?? localPath
-        }, sender)
+          message: progress.message ?? localPath,
+          transferredBytes: progress.transferredBytes,
+          totalBytes: progress.totalBytes
+        }, sender, 'throttled')
       })
       if (transferState.canceled) {
         return this.getSnapshot()
@@ -593,8 +623,10 @@ export class WorkspaceService {
               progress: overallPercent,
               status: 'running',
               speed: undefined,
-              message: localFilePath
-            }, sender)
+              message: localFilePath,
+              transferredBytes: progress.transferredBytes,
+              totalBytes: progress.totalBytes
+            }, sender, 'throttled')
           })
 
           completedFiles += 1
@@ -603,7 +635,7 @@ export class WorkspaceService {
             status: 'running',
             speed: undefined,
             message: localFilePath
-          }, sender)
+          }, sender, 'throttled')
         }
 
         if (transferState.canceled) {
@@ -718,6 +750,11 @@ export class WorkspaceService {
     return this.getSnapshot()
   }
 
+  async setFollowShellCwd(tabId: string, enabled: boolean): Promise<WorkspaceSnapshot> {
+    await this.sessionRuntime.setFollowShellCwd(tabId, enabled)
+    return this.getSnapshot()
+  }
+
   async setRemoteFileAccessMode(tabId: string, mode: 'user' | 'root', options?: RemoteFileAccessOptions): Promise<WorkspaceSnapshot> {
     const current = this.sessionRuntime.get(tabId)
     const resolvedOptions = mode === 'root' ? this.resolvePrivilegedAccess(tabId, current, options) : options
@@ -790,7 +827,6 @@ export class WorkspaceService {
     for (const file of files) {
       this.ensureTransferActive(transferState)
       const remotePath = path.posix.join(remoteRoot, ...file.relativePath.split(path.sep))
-      await controller.ensureRemoteDirectory(path.posix.dirname(remotePath))
       await controller.uploadFile(file.fullPath, remotePath, (fileProgress) => {
         const fileBytes = Math.max(file.size, 1)
         const completedBytes = uploadedBytes + Math.min(fileBytes, fileProgress.transferredBytes ?? Math.round((fileProgress.percent / 100) * fileBytes))
@@ -925,7 +961,7 @@ export class WorkspaceService {
   private addTransfer(direction: 'upload' | 'download', name: string, tabId: string, sender: WebContents) {
     const transferId = this.transfers.add(direction, name)
     this.transferTabs.set(transferId, tabId)
-    void this.emitTransferSnapshot(transferId, sender)
+    this.emitTransferUpdate(transferId, sender)
     return transferId
   }
 
@@ -938,7 +974,7 @@ export class WorkspaceService {
     return WorkspaceService.DISCONNECTED_TRANSFER_MESSAGES[locale]
   }
 
-  private async finalizeTransfersForTab(tabId: string, message: string) {
+  private finalizeTransfersForTab(tabId: string, message: string) {
     const transferIds = [...this.transferTabs.entries()]
       .filter(([, mappedTabId]) => mappedTabId === tabId)
       .map(([transferId]) => transferId)
@@ -947,7 +983,6 @@ export class WorkspaceService {
       return
     }
 
-    let changed = false
     for (const transferId of transferIds) {
       const transfer = this.transfers.get(transferId)
       if (!transfer || (transfer.status !== 'running' && transfer.status !== 'queued')) {
@@ -957,18 +992,19 @@ export class WorkspaceService {
       this.transferTabs.delete(transferId)
       this.transferCancels.delete(transferId)
       this.transferCanceling.delete(transferId)
-      changed = this.transfers.update(transferId, {
+      this.clearTransferUpdateTimer(transferId)
+      const didUpdate = this.transfers.update(transferId, {
         status: 'canceled',
         speed: undefined,
         message
-      }) || changed
+      })
+      if (didUpdate) {
+        const nextTransfer = this.transfers.get(transferId)
+        if (nextTransfer) {
+          this.sessionRuntime.emitToTab(tabId, 'transfer:update', nextTransfer)
+        }
+      }
     }
-
-    if (!changed) {
-      return
-    }
-
-    await this.sessionRuntime.emitSnapshotForTab(tabId)
   }
 
   private ensureTransferActive(transferState: { canceled: boolean }) {
@@ -977,10 +1013,11 @@ export class WorkspaceService {
     }
   }
 
-  private async updateTransfer(
+  private updateTransfer(
     transferId: string,
-    patch: Partial<Pick<TransferTask, 'progress' | 'status' | 'message' | 'speed'>>,
-    sender: WebContents
+    patch: Partial<Pick<TransferTask, 'progress' | 'status' | 'message' | 'speed' | 'transferredBytes' | 'totalBytes'>>,
+    sender: WebContents,
+    emitMode: 'immediate' | 'throttled' = 'immediate'
   ) {
     const changed = this.transfers.update(transferId, patch)
     if (!changed) {
@@ -991,17 +1028,40 @@ export class WorkspaceService {
       this.transferTabs.delete(transferId)
     }
 
-    await this.emitTransferSnapshot(transferId, sender)
-  }
-
-  private async emitTransferSnapshot(transferId: string, sender: WebContents) {
-    const tabId = this.transferTabs.get(transferId)
-    if (tabId) {
-      await this.sessionRuntime.emitSnapshotForTab(tabId)
+    if (emitMode === 'throttled') {
+      this.scheduleTransferUpdate(transferId, sender)
       return
     }
 
-    await this.sessionRuntime.emitSnapshot(sender)
+    this.clearTransferUpdateTimer(transferId)
+    this.emitTransferUpdate(transferId, sender)
+  }
+
+  private scheduleTransferUpdate(transferId: string, sender: WebContents) {
+    if (this.transferUpdateTimers.has(transferId)) {
+      return
+    }
+
+    const timer = setTimeout(() => {
+      this.transferUpdateTimers.delete(transferId)
+      this.emitTransferUpdate(transferId, sender)
+    }, TRANSFER_UPDATE_INTERVAL_MS)
+    this.transferUpdateTimers.set(transferId, timer)
+  }
+
+  private clearTransferUpdateTimer(transferId: string) {
+    const timer = this.transferUpdateTimers.get(transferId)
+    if (timer) {
+      clearTimeout(timer)
+      this.transferUpdateTimers.delete(transferId)
+    }
+  }
+
+  private emitTransferUpdate(transferId: string, sender: WebContents) {
+    const transfer = this.transfers.get(transferId)
+    if (transfer) {
+      this.sessionRuntime.emitToSender(sender, 'transfer:update', transfer)
+    }
   }
 }
 

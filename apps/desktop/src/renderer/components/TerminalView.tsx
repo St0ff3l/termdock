@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
@@ -108,7 +108,7 @@ function looksLikeShellPrompt(line: string) {
   ].some((pattern) => pattern.test(line))
 }
 
-export function TerminalView({
+export const TerminalView = memo(function TerminalView({
   tabId,
   bootText,
   connected = false,
@@ -204,6 +204,12 @@ export function TerminalView({
       terminal.clearSelection()
     }
     if (!findOpen) {
+      searchAddonRef.current?.clearDecorations()
+    }
+  }
+
+  const clearSearchDecorations = () => {
+    if (!findOpenRef.current) {
       searchAddonRef.current?.clearDecorations()
     }
   }
@@ -552,7 +558,6 @@ export function TerminalView({
         return false
       }
 
-      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0
       const matchesCopy = isMac
         ? event.metaKey && !event.shiftKey && event.key.toLowerCase() === 'c'
         : event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'c'
@@ -563,13 +568,36 @@ export function TerminalView({
         ? event.metaKey && !event.shiftKey && event.key.toLowerCase() === 'f'
         : event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === 'f'
 
+      if (matchesCopy) {
+        event.preventDefault()
+        event.stopPropagation()
+        runCopy()
+        return false
+      }
+
+      if (matchesPaste) {
+        event.preventDefault()
+        event.stopPropagation()
+        void runPaste()
+        return false
+      }
+
+      if (matchesFind) {
+        event.preventDefault()
+        event.stopPropagation()
+        if (findOpenRef.current) {
+          closeFind()
+        } else {
+          openFind()
+        }
+        return false
+      }
+
       if (
         event.key === 'Control' ||
         event.key === 'Meta' ||
         event.key === 'Alt' ||
-        matchesCopy ||
-        matchesPaste ||
-        matchesFind
+        (event.key === 'Dead' && (event.metaKey || event.ctrlKey || event.altKey))
       ) {
         return false
       }
@@ -691,7 +719,7 @@ export function TerminalView({
           return
         }
         appendRenderedTranscript(chunk)
-        clearEphemeralHighlight()
+        clearSearchDecorations()
         scheduleTerminalWrite(formatTerminalChunk(terminal, chunk))
         if (pendingPromptResizeRef.current) {
           scheduleSettledHorizontalResize()
@@ -776,44 +804,57 @@ export function TerminalView({
       setContextMenu({ x: event.clientX, y: event.clientY })
     }
 
+    const onDocumentSelectionChange = () => {
+      const selection = window.getSelection()
+      const anchorNode = selection?.anchorNode
+      const terminalHost = hostRef.current
+      if (
+        selection
+        && !selection.isCollapsed
+        && anchorNode
+        && terminalHost
+        && !terminalHost.contains(anchorNode)
+      ) {
+        terminal.clearSelection()
+      }
+    }
+
     const onKeyDown = (event: KeyboardEvent) => {
-      if (document.activeElement !== terminal.textarea) {
-        return
-      }
-
+      const key = event.key.toLowerCase()
       const matchesCopy = isMac
-        ? event.metaKey && !event.shiftKey && event.key.toLowerCase() === 'c'
-        : event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'c'
-      const matchesPaste = isMac
-        ? event.metaKey && !event.shiftKey && event.key.toLowerCase() === 'v'
-        : event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'v'
-      const matchesFind = isMac
-        ? event.metaKey && !event.shiftKey && event.key.toLowerCase() === 'f'
-        : event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === 'f'
+        ? event.metaKey && !event.shiftKey && key === 'c'
+        : event.ctrlKey && event.shiftKey && key === 'c'
 
-      if (matchesCopy) {
-        event.preventDefault()
-        runCopy()
-        return
-      }
+      if (matchesCopy && terminal.hasSelection()) {
+        const target = event.target
+        const editableTarget = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement
+          ? target
+          : null
+        const editableSelection = editableTarget
+          ? editableTarget.selectionStart !== editableTarget.selectionEnd
+          : false
+        const documentSelection = window.getSelection()
+        const hasDocumentSelection = Boolean(
+          documentSelection
+          && !documentSelection.isCollapsed
+          && documentSelection.toString()
+        )
 
-      if (matchesPaste) {
-        event.preventDefault()
-        void runPaste()
-        return
-      }
-
-      if (matchesFind) {
-        event.preventDefault()
-        if (findOpenRef.current) {
-          closeFind()
-        } else {
-          openFind()
+        if (!editableSelection && !hasDocumentSelection) {
+          event.preventDefault()
+          event.stopPropagation()
+          runCopy()
         }
         return
       }
 
-      if (!isMac && event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === 'l') {
+      if (
+        document.activeElement === terminal.textarea
+        && !isMac
+        && event.ctrlKey
+        && !event.shiftKey
+        && key === 'l'
+      ) {
         event.preventDefault()
         runClear()
       }
@@ -837,8 +878,9 @@ export function TerminalView({
     }
 
     hostRef.current.addEventListener('contextmenu', onContextMenu)
-    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keydown', onKeyDown, true)
     window.addEventListener('focus', onWindowFocus)
+    document.addEventListener('selectionchange', onDocumentSelectionChange)
     document.addEventListener('visibilitychange', onVisibilityChange)
     window.addEventListener('termdock:focus-terminal', handleFocusTerminal)
     window.addEventListener('termdock:terminal-copy', handleTerminalCopy)
@@ -889,8 +931,9 @@ export function TerminalView({
       osc52Disposable.dispose()
       resizeObserver.disconnect()
       hostRef.current?.removeEventListener('contextmenu', onContextMenu)
-      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keydown', onKeyDown, true)
       window.removeEventListener('focus', onWindowFocus)
+      document.removeEventListener('selectionchange', onDocumentSelectionChange)
       document.removeEventListener('visibilitychange', onVisibilityChange)
       searchAddonRef.current = null
       terminalRef.current = null
@@ -1057,4 +1100,4 @@ export function TerminalView({
       ) : null}
     </div>
   )
-}
+})

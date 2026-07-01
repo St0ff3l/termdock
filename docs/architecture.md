@@ -329,7 +329,28 @@ interface FtpSession {
 }
 ```
 
-### 7.4 Workspace Tab
+### 7.4 SSH shell cwd 跟随
+
+SSH 终端与远程文件区通过真实 shell cwd 联动，不解析用户输入的 `cd` 文本：
+
+```txt
+shell integration
+  -> OSC 7 cwd
+    -> SSH controller cwd changed
+      -> workspace runtime follow policy
+        -> SessionSnapshot
+          -> renderer
+```
+
+`SessionSnapshot` 中三个字段语义保持独立：
+
+- `shellCwd`：远端交互式 shell 当前工作目录。
+- `remotePath`：远程文件面板当前展示目录。
+- `followShellCwd`：该 tab 是否允许 cwd 变化驱动文件面板。
+
+shell 注入按 bash、zsh、fish、POSIX 风格策略选择；探测或注入失败时只降级目录跟随，不影响 SSH、SFTP 和终端输入输出。
+
+### 7.5 Workspace Tab
 
 ```ts
 interface WorkspaceTab {
@@ -402,6 +423,20 @@ interface WorkspaceTab {
   - 查询任务
   - 取消任务
   - 重试任务
+
+### 9.1 高频事件边界
+
+完整 `WorkspaceSnapshot` 只用于标签、会话、文件列表等低频结构状态，不承载高频流式更新：
+
+- 传输层逐数据块累计真实字节数，main 最多每 200ms 发送一次轻量 `transfer:update` 任务事件；完成、失败和取消立即发送。
+- Renderer 的传输订阅与列表状态收敛在独立 `TransferCenter`，进度变化不更新顶层 workspace state。
+- 终端输入使用 renderer 到 main 的单向 IPC，避免交互等待请求响应队列。
+- 终端 resize 同样使用单向 IPC；终端输出在 main 按 16ms 合并，再交给 renderer 逐帧写入 xterm。
+- SSH transcript 由 controller 的有界分块缓冲统一维护，runtime 不重复拼接第二份历史。
+- 系统指标首次绑定时发送完整历史，稳定轮询只发送最新样本，由 renderer 追加到固定长度历史。
+- 同一 Renderer 的并发完整快照采用单飞和尾随合并，确保最终状态可达，同时避免重复磁盘读取与大对象序列化。
+
+文件编辑器的 Monaco 资源通过动态 import 独立分块，只在文件编辑器窗口需要时加载，主工作区不静态携带编辑器与语言服务代码。
 
 ## 10. UI 结构
 

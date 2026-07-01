@@ -25,6 +25,10 @@ export class WorkspaceTabsState {
   }
 
   open(tabId: string, profile: ConnectionProfile) {
+    if (this.has(tabId)) {
+      throw new Error(`Tab already exists: ${tabId}`)
+    }
+
     const tab: WorkspaceTab = {
       id: tabId,
       profileId: profile.id,
