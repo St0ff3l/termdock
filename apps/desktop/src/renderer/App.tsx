@@ -1236,7 +1236,7 @@ export function App() {
 
     const normalizedHost = normalizeConnectionHost(form.host)
 
-    if (!form.name || !normalizedHost || !form.group || !form.remotePath || !Number(form.port)) {
+    if (!form.name || !normalizedHost || !form.group || !form.remotePath) {
       setFormError(t.fillRequired)
       return
     }
@@ -1258,7 +1258,9 @@ export function App() {
 
     try {
       setIsBusy(true)
-      const payload = { ...form, host: normalizedHost, port: Number(form.port) }
+      const defaultPort = form.type === 'ftp' ? 21 : 22
+      const finalPort = Number(form.port) || defaultPort
+      const payload = { ...form, host: normalizedHost, port: finalPort }
       const snapshot = editingProfileId
         ? await desktopApi.updateProfile(editingProfileId, payload)
         : await desktopApi.createProfile(payload)
