@@ -103,23 +103,18 @@ export function HomeWorkspace({
 
   return (
     <section className={`home-workspace ${isSidebarCollapsed ? 'is-sidebar-collapsed' : ''}`}>
+      <div className="home-tabs-bar">
+        <TabBar {...tabBarProps} />
+      </div>
+
       {/* SideNavBar Component */}
       <aside className={`home-sidebar ${isSidebarCollapsed ? 'is-collapsed' : ''}`}>
-        <div className="sidebar-drag-handle" />
-        {/* macOS style Window Controls */}
-        <div className="window-controls-decorator">
-          <div className="dot dot-close"></div>
-          <div className="dot dot-minimize"></div>
-          <div className="dot dot-maximize"></div>
-        </div>
-
-        {/* Brand Header */}
-        {!isWindows && (
+        {!isWindows ? (
           <div className="sidebar-brand">
             <h2 className="brand-title">TermDock</h2>
             <span className="brand-version">v{desktopApi?.appVersion ?? '—'}</span>
           </div>
-        )}
+        ) : null}
 
         {/* Navigation Section */}
         <nav className="sidebar-nav">
@@ -196,9 +191,6 @@ export function HomeWorkspace({
 
       {/* Main Content Area */}
       <main className="home-main-content">
-        <div className="home-tabs-bar">
-          <TabBar {...tabBarProps} />
-        </div>
         <div className="home-content-body scrollbar-scroll">
           {activeTab === 'overview' && (
             <div key="overview" className="page-transition" data-nav-direction={navDirection}>

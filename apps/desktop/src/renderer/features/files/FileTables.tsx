@@ -273,7 +273,6 @@ export function LocalFileTable({
               <FileNameCell
                 iconName={iconName}
                 item={row}
-                showMeta={row.name !== '..'}
                 draggable={row.name !== '..'}
                 onDragStart={(event) => onDragItem(event, row)}
               />
@@ -291,19 +290,15 @@ function FileNameCell({
   draggable,
   iconName,
   item,
-  showMeta = false,
   onDragStart
 }: {
   draggable: boolean
   iconName: ReturnType<typeof getDisplayFileIconName>
   item: LocalFileItem | RemoteFileItem
-  showMeta?: boolean
   onDragStart(event: DragEvent<HTMLElement>): void
 }) {
-  const meta = item.type === 'file' ? item.size : getDisplayFileTypeLabel(item)
-
   return (
-    <span className={`file-name-cell ${showMeta ? 'has-meta' : ''}`} title={`${item.name}${showMeta ? ` · ${meta}` : ''}`}>
+    <span className="file-name-cell" title={item.name}>
       <span
         className={`file-icon ${draggable ? 'is-draggable' : ''}`}
         draggable={draggable}
@@ -315,7 +310,6 @@ function FileNameCell({
       </span>
       <span className="file-row-text">
         <span className="file-row-main">{item.name}</span>
-        {showMeta ? <span className="file-row-meta">{meta}</span> : null}
       </span>
     </span>
   )

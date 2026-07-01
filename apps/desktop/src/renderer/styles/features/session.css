@@ -997,7 +997,7 @@
 }
 
 .fs-file-table.compact td {
-  height: 36px;
+  height: 24px;
 }
 
 .fs-file-table.compact th {
@@ -1043,29 +1043,17 @@
 }
 
 .file-row-text {
-  display: inline-flex;
-  flex-direction: column;
+  display: inline-block;
   min-width: 0;
   max-width: 100%;
   line-height: 1.15;
 }
 
-.file-row-main,
-.file-row-meta {
+.file-row-main {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.file-row-meta {
-  margin-top: 2px;
-  color: var(--file-row-meta, var(--text-muted));
-  font-size: 11px;
-}
-
-.file-name-cell:not(.has-meta) .file-row-text {
-  display: inline-block;
 }
 
 .file-icon.is-draggable {

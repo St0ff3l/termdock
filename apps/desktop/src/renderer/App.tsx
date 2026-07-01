@@ -1081,7 +1081,7 @@ export function App() {
   const showSidebar = activeTab !== null && activeSession !== null && !isHomeWorkspaceVisible
   const resolvedSidebarWidth = isSystemSidebarCollapsed ? 44 : sidebarWidth
   const brandWidth = isHomeTabActive
-    ? resolvedSidebarWidth
+    ? isSystemSidebarCollapsed ? 214 : resolvedSidebarWidth
     : showSidebar && !isSystemSidebarCollapsed
       ? sidebarWidth
       : 214
@@ -3145,7 +3145,7 @@ export function App() {
   return (
     <>
       <div
-        className={`fs-shell ${isWindowsDesktop ? 'has-window-menubar' : ''} ${isHomeWorkspaceVisible ? 'is-home-active' : ''} ${isSystemSidebarCollapsed ? 'is-sidebar-collapsed' : ''}`}
+        className={`fs-shell ${isWindowsDesktop ? 'has-window-menubar' : ''} ${isHomeWorkspaceVisible ? 'is-home-active' : ''} ${isSystemSidebarCollapsed ? 'is-sidebar-collapsed' : ''} ${isResizingSidebar ? 'is-resizing-sidebar' : ''}`}
         style={{
           '--sidebar-width': `${resolvedSidebarWidth}px`,
           '--brand-width': `${brandWidth}px`

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
 import Editor, { loader, type Monaco, type OnMount } from '@monaco-editor/react'
 import OpenCC from 'opencc-js'
 import * as monacoEditor from 'monaco-editor'
@@ -125,8 +125,6 @@ export function FileEditorModal({
   const characterCount = content.length
   const currentEncoding = findEncodingOption(encoding)
   const currentLanguage = languages.find((option) => option.id === language)?.label ?? language
-  const fileTree = useMemo(() => buildFileTree(file.path, file.name), [file.path, file.name])
-
   const handleMount: OnMount = (editor, monaco) => {
     editorRef.current = editor
     monacoRef.current = monaco
@@ -246,7 +244,13 @@ export function FileEditorModal({
           {isDirty ? <b>{t.fileEditorUnsaved}</b> : null}
         </div>
         <div className="file-editor-header-actions">
-          <button className={`file-editor-save-button ${isDirty ? 'is-dirty' : ''}`} disabled={!isDirty || isBusy || isSaving} onClick={() => onSave(content, encoding)} type="button">
+          <button
+            aria-busy={isSaving}
+            className={`file-editor-save-button ${isDirty ? 'is-dirty' : ''} ${isSaving ? 'is-saving' : ''}`}
+            disabled={!isDirty || isBusy || isSaving}
+            onClick={() => onSave(content, encoding)}
+            type="button"
+          >
             {isSaving ? <span aria-hidden="true" className="button-spinner" /> : null}
             <span>{isSaving ? t.saving : t.save}</span>
           </button>
@@ -257,37 +261,6 @@ export function FileEditorModal({
       </div>
 
       <div className="file-editor-workspace">
-        <aside className="file-editor-explorer">
-          <div className="file-editor-explorer-head">
-            <span>{t.file}</span>
-            <strong>{file.source === 'remote' ? t.remoteHost : t.localComputer}</strong>
-          </div>
-          <div className="file-editor-tree scrollbar-scroll" aria-label={t.file}>
-            {fileTree.directories.map((node) => (
-              <div
-                className="file-editor-tree-row is-directory"
-                key={`${node.depth}-${node.label}`}
-                style={{ '--tree-depth': node.depth } as CSSProperties}
-                title={node.path}
-              >
-                <AppIcon name="folder" size={14} />
-                <span>{node.label}</span>
-              </div>
-            ))}
-            <button
-              className="file-editor-tree-row is-file is-active"
-              style={{ '--tree-depth': fileTree.file.depth } as CSSProperties}
-              title={file.path}
-              type="button"
-              onClick={() => editorRef.current?.focus()}
-            >
-              <AppIcon name={language === 'json' || file.name.endsWith('.json') ? 'code' : 'file'} size={14} />
-              <span>{fileTree.file.label}</span>
-              {isDirty ? <i aria-label={t.fileEditorUnsaved} /> : null}
-            </button>
-          </div>
-        </aside>
-
         <section className="file-editor-main">
           <div className="file-editor-toolbar">
             <div className="file-editor-menubar">
@@ -410,31 +383,6 @@ export function FileEditorModal({
   }
 
   return <div className="modal-backdrop">{contentNode}</div>
-}
-
-function buildFileTree(path: string, fallbackName: string) {
-  const normalizedPath = path.replace(/\\/g, '/')
-  const isAbsolute = normalizedPath.startsWith('/')
-  const parts = normalizedPath.split('/').filter(Boolean)
-  const fileLabel = parts.at(-1) ?? fallbackName
-  const directoryParts = parts.slice(0, -1)
-  const directories = [
-    ...(isAbsolute ? [{ label: '/', path: '/', depth: 0 }] : []),
-    ...directoryParts.map((label, index) => ({
-      label,
-      path: `${isAbsolute ? '/' : ''}${directoryParts.slice(0, index + 1).join('/')}`,
-      depth: index + (isAbsolute ? 1 : 0)
-    }))
-  ]
-
-  return {
-    directories,
-    file: {
-      label: fileLabel,
-      path: normalizedPath,
-      depth: directories.length
-    }
-  }
 }
 
 function EditorMenuButton({

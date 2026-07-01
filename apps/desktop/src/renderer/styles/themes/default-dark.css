@@ -64,7 +64,6 @@
   --surface-inset-border: rgba(255, 255, 255, 0.04);
   --surface-table-head: rgba(255, 255, 255, 0.045);
   --surface-nested: rgba(255, 255, 255, 0.035);
-  --file-row-meta: #8f949d;
   --floating-drawer-expanded-bg: rgba(28, 28, 30, 0.75);
   --floating-drawer-expanded-border: rgba(255, 255, 255, 0.08);
   --floating-drawer-shadow: 0 4px 12px rgba(0, 0, 0, 0.25), 0 1px 3px rgba(0, 0, 0, 0.15);
