@@ -775,6 +775,15 @@
   overflow: hidden;
 }
 
+.remote-pane-content {
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .file-split-resizer {
   min-width: 6px;
   cursor: col-resize;
@@ -885,7 +894,6 @@
 
 .remote-file-table-region {
   min-height: 0;
-  position: relative;
   flex: 1;
   overflow: hidden;
 }
