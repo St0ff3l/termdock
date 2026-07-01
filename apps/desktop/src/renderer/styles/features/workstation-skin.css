@@ -33,6 +33,14 @@ textarea:focus-visible,
   transition: width 0.24s linear, min-width 0.24s linear;
 }
 
+.fs-shell.is-resizing-sidebar,
+.fs-shell.is-resizing-sidebar .fs-sidebar,
+.fs-shell.is-resizing-sidebar .home-sidebar,
+.fs-shell.is-resizing-sidebar .fs-tabbar,
+.fs-shell.is-resizing-sidebar .fs-tabs {
+  transition: none;
+}
+
 .fs-shell.has-window-menubar .fs-sidebar {
   grid-row: 3 / 5;
 }
@@ -185,7 +193,7 @@ textarea:focus-visible,
 .connection-summary {
   display: flex;
   flex-direction: column;
-  gap: 30px;
+  gap: 10px;
   margin: -12px -12px 10px;
   padding: 14px 16px;
   min-width: 0;
@@ -282,15 +290,18 @@ textarea:focus-visible,
   transition: height 0.3s ease;
 }
 
-.collapsed-resource-fill.status-green {
+.collapsed-resource-fill.status-green,
+.collapsed-resource-fill.tone-success {
   background: var(--metric-status-green);
 }
 
-.collapsed-resource-fill.status-yellow {
+.collapsed-resource-fill.status-yellow,
+.collapsed-resource-fill.tone-warning {
   background: var(--metric-status-yellow);
 }
 
-.collapsed-resource-fill.status-red {
+.collapsed-resource-fill.status-red,
+.collapsed-resource-fill.tone-danger {
   background: var(--metric-status-red);
 }
 

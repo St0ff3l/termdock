@@ -49,6 +49,11 @@ export function TabBar({
   return (
       <header className="fs-tabbar">
         <div className="titlebar-brand">
+          <div className="window-controls-decorator" aria-hidden="true">
+            <span className="dot dot-close" />
+            <span className="dot dot-minimize" />
+            <span className="dot dot-maximize" />
+          </div>
           <strong>{t.appTitle}</strong>
         </div>
         <div className="titlebar-tabarea">

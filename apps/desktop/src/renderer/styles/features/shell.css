@@ -117,18 +117,6 @@
   border-right: 1px solid var(--border-light);
 }
 
-.fs-sidebar::before {
-  content: "";
-  position: absolute;
-  top: -1px;
-  right: 0;
-  left: 0;
-  z-index: 20;
-  height: 1px;
-  background: var(--border-light);
-  pointer-events: none;
-}
-
 .fs-sidebar.is-collapsed {
   grid-template-rows: 1fr;
 }
