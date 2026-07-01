@@ -400,7 +400,7 @@
   z-index: 50;
   background: var(--bg-main);
   border: 1px solid var(--border-dark);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--popover-shadow);
   border-radius: 8px;
 }
 
@@ -501,7 +501,7 @@
   cursor: pointer;
   transition: all 0.2s ease;
   flex-shrink: 0;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--control-shadow);
 }
 
 .command-select-config-btn:hover {
@@ -524,7 +524,7 @@
   appearance: none;
   -webkit-appearance: none;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--control-shadow);
 }
 
 .command-target-select select:hover {
@@ -536,7 +536,7 @@
 .command-target-select select:active {
   outline: none;
   border-color: var(--copy-link);
-  box-shadow: 0 0 0 2px var(--accent-tint), 0 1px 2px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--control-focus-shadow);
 }
 
 .command-select-arrow {
@@ -581,7 +581,7 @@
   font-size: 11px;
   font-weight: 500;
   cursor: pointer;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--control-shadow);
   transition: all 0.2s ease;
   gap: 8px;
 }
@@ -594,7 +594,7 @@
 .custom-select-trigger:focus {
   outline: none;
   border-color: var(--copy-link);
-  box-shadow: 0 0 0 2px var(--accent-tint), 0 1px 2px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--control-focus-shadow);
 }
 
 .custom-select-dropdown {
@@ -605,7 +605,7 @@
   z-index: 100;
   background: var(--bg-main);
   border: 1px solid var(--border-dark);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--popover-shadow);
   border-radius: 8px;
   padding: 4px;
   display: flex;
@@ -663,7 +663,7 @@
   border: 1px solid var(--border-light);
   border-radius: 8px;
   background: var(--surface-inset);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--control-inset-shadow);
   overflow: hidden;
 }
 
@@ -889,7 +889,7 @@
   vertical-align: middle;
   cursor: pointer;
   transition: border-color 0.2s ease, background 0.2s ease;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--control-shadow);
 }
 
 .session-send-target-item input[type='checkbox']:hover,

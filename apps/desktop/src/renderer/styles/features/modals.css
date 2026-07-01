@@ -5,7 +5,7 @@
   display: grid;
   place-items: center;
   padding: 24px;
-  background: rgba(0, 0, 0, 0.7);
+  background: var(--modal-backdrop-bg);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   -webkit-app-region: no-drag;
@@ -18,7 +18,7 @@
   background: var(--bg-card);
   border: 1px solid var(--border-light);
   border-radius: 16px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--modal-card-shadow);
   -webkit-app-region: no-drag;
 }
 

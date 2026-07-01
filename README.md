@@ -35,7 +35,7 @@
 
 | Desktop | Renderer | Language | Terminal | Editor | Protocols | Tooling |
 | --- | --- | --- | --- | --- | --- | --- |
-| <img src="https://img.shields.io/badge/Electron-38-47848F?style=flat-square&logo=electron&logoColor=white" alt="Electron" /> | <img src="https://img.shields.io/badge/React-19-149ECA?style=flat-square&logo=react&logoColor=white" alt="React" /> <img src="https://img.shields.io/badge/Vite-7-646CFF?style=flat-square&logo=vite&logoColor=white" alt="Vite" /> | <img src="https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" /> | <img src="https://img.shields.io/badge/xterm.js-111827?style=flat-square" alt="xterm.js" /> | <img src="https://img.shields.io/badge/Monaco%20Editor-007ACC?style=flat-square&logo=visualstudiocode&logoColor=white" alt="Monaco Editor" /> | <img src="https://img.shields.io/badge/ssh2-0F766E?style=flat-square" alt="ssh2" /> <img src="https://img.shields.io/badge/basic--ftp-2563EB?style=flat-square" alt="basic-ftp" /> | <img src="https://img.shields.io/badge/npm%20workspaces-CB3837?style=flat-square&logo=npm&logoColor=white" alt="npm workspaces" /> |
+| <img src="https://img.shields.io/badge/Electron-42-47848F?style=flat-square&logo=electron&logoColor=white" alt="Electron" /> | <img src="https://img.shields.io/badge/React-19-149ECA?style=flat-square&logo=react&logoColor=white" alt="React" /> <img src="https://img.shields.io/badge/Vite-8-646CFF?style=flat-square&logo=vite&logoColor=white" alt="Vite" /> | <img src="https://img.shields.io/badge/TypeScript-6-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" /> | <img src="https://img.shields.io/badge/xterm.js-111827?style=flat-square" alt="xterm.js" /> | <img src="https://img.shields.io/badge/Monaco%20Editor-007ACC?style=flat-square&logo=visualstudiocode&logoColor=white" alt="Monaco Editor" /> | <img src="https://img.shields.io/badge/ssh2-0F766E?style=flat-square" alt="ssh2" /> <img src="https://img.shields.io/badge/basic--ftp-2563EB?style=flat-square" alt="basic-ftp" /> | <img src="https://img.shields.io/badge/npm%20workspaces-CB3837?style=flat-square&logo=npm&logoColor=white" alt="npm workspaces" /> |
 
 ```txt
 main process   ████████████████████  Electron services, IPC, protocol lifecycle
@@ -63,15 +63,16 @@ theme system   ████████████████░░░░  tok
 | --- | --- | --- |
 | SSH profile 管理 | 已完成 | 新增、编辑、删除、文件夹分组、JSON 文件持久化 |
 | FTP profile 管理 | 已完成 | 独立于 SSH 的连接模型 |
-| SSH shell | 已完成 | xterm.js 渲染、输入输出、自适应 resize、搜索、剪贴板互通 |
-| 文件编辑器 | 已完成 | Monaco Editor 提供语法高亮、编辑、查找替换、远程文件直编 |
+| SSH shell | 已完成 | xterm.js 渲染、输入输出、自适应 resize、搜索、剪贴板互通、雾透悬浮命令输入条 |
+| 文件编辑器 | 已完成 | Monaco Editor 提供双栏文件树/编辑区、语法高亮、查找替换、编码与语言切换 |
 | SFTP 文件管理 | 已完成 | 远程目录浏览、读/写/新建/删除/重命名/权限修改 |
 | FTP 文件管理 | 已完成 | FTP 会话与远程文件能力 |
 | Transfer center | 已完成 | 上传下载任务队列、进度、速度、取消、文件/文件夹递归 |
-| Workspace tabs | 已完成 | 多标签并行连接、断开/重连、session 状态持久化 |
+| Workspace tabs | 已完成 | 多标签并行连接、断开/重连、session 状态持久化、标签切换动效 |
 | Theme system | 已完成 | tokens → CSS vars → skin，深色/浅色主题一键切换 |
-| 远程连接状态 | 已完成 | 连接状态提示、系统资源监控面板 |
+| 远程连接状态 | 已完成 | 连接状态提示、系统资源监控面板、侧栏收起态资源摘要 |
 | 命令模板 | 已完成 | 快捷命令模板、文件夹分组、参数占位符、一键发送 |
+| 桌面壳与布局 | 已完成 | macOS 标题栏避让、侧栏收起、文件面板抽屉、工作区焦点模式、macOS template 托盘图标 |
 | 窗口管理 | 已完成 | 主窗口、连接管理器、命令管理器、文件编辑器独立窗口 |
 
 ## 外部开源项目
@@ -155,7 +156,7 @@ termdock/
 1. 稳住 `SSH / SFTP / FTP` MVP 主链路。
 2. 拆分 `ipc.ts`、`workspace-service.ts`、`session-controllers.ts`、`App.tsx`。
 3. 把领域类型继续收敛到 `packages/core`。
-4. 完善 transfer center、错误提示、主题和桌面体验。
+4. 完善 transfer center、错误提示、主题、终端输入、文件抽屉和桌面壳体验。
 5. 准备 macOS / Windows 可分发版本。
 
 完整计划见 [docs/roadmap.md](./docs/roadmap.md)。
@@ -222,6 +223,9 @@ TermDock is a modern desktop remote workspace for developers and operations team
 - File editing powered by Monaco Editor.
 - FTP sessions with a clean file-only workflow.
 - Workspace tabs for parallel remote work.
+- A refined desktop shell with collapsible sidebars, a file drawer, workspace focus mode, and animated tab transitions.
+- A floating frosted command bar above the terminal output.
+- A two-pane Monaco editor with a file tree and editor area.
 - Unified transfer center for uploads, downloads, progress, and errors.
 - A layered Electron architecture: `main -> preload -> renderer`.
 - MIT licensed and open for collaboration.

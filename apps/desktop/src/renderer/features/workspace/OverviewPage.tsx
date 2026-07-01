@@ -196,19 +196,6 @@ export function OverviewPage({
               <p className="action-desc">{t.overviewDocsDescription}</p>
             </div>
           </button>
-          <button
-            className="action-card"
-            onClick={onOpenDocs}
-            type="button"
-          >
-            <div className="action-icon">
-              <span className="material-symbols-outlined">star</span>
-            </div>
-            <div className="action-content">
-              <h3 className="action-title">GitHub</h3>
-              <p className="action-desc">{t.overviewGithubDescription}</p>
-            </div>
-          </button>
         </div>
       </section>
     </div>

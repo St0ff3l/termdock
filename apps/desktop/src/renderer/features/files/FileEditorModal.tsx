@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
 import Editor, { loader, type Monaco, type OnMount } from '@monaco-editor/react'
 import OpenCC from 'opencc-js'
 import * as monacoEditor from 'monaco-editor'
@@ -16,6 +16,36 @@ loader.config({ monaco: monacoEditor })
 
 type EditorInstance = Parameters<OnMount>[0]
 type EditorMenu = 'file' | 'edit' | 'search' | 'preferences' | 'encoding' | 'language'
+const MONACO_DARK_THEME = 'termdock-default-dark'
+
+function readCssVariable(name: string, fallbackName?: string) {
+  const styles = window.getComputedStyle(document.documentElement)
+  const value = styles.getPropertyValue(name).trim()
+  if (value) {
+    return value
+  }
+  return fallbackName ? styles.getPropertyValue(fallbackName).trim() : ''
+}
+
+function defineTermDockMonacoTheme(monaco: Monaco) {
+  monaco.editor.defineTheme(MONACO_DARK_THEME, {
+    base: 'vs-dark',
+    inherit: true,
+    rules: [],
+    colors: {
+      'editor.background': readCssVariable('--monaco-editor-bg', '--terminal-bg'),
+      'editor.foreground': readCssVariable('--monaco-editor-foreground', '--terminal-text'),
+      'editorLineNumber.foreground': readCssVariable('--monaco-line-number', '--text-soft'),
+      'editorLineNumber.activeForeground': readCssVariable('--monaco-line-number-active', '--text-muted'),
+      'editorCursor.foreground': readCssVariable('--monaco-cursor', '--accent-primary'),
+      'editor.selectionBackground': readCssVariable('--monaco-selection', '--selection-bg'),
+      'editor.inactiveSelectionBackground': readCssVariable('--monaco-inactive-selection', '--selection-bg'),
+      'editor.lineHighlightBackground': readCssVariable('--monaco-line-highlight', '--surface-inset'),
+      'editorIndentGuide.background1': readCssVariable('--monaco-indent-guide', '--border-light'),
+      'editorIndentGuide.activeBackground1': readCssVariable('--monaco-indent-guide-active', '--border-dark')
+    }
+  })
+}
 
 export function FileEditorModal({
   errorMessage,
@@ -95,31 +125,15 @@ export function FileEditorModal({
   const characterCount = content.length
   const currentEncoding = findEncodingOption(encoding)
   const currentLanguage = languages.find((option) => option.id === language)?.label ?? language
+  const fileTree = useMemo(() => buildFileTree(file.path, file.name), [file.path, file.name])
 
   const handleMount: OnMount = (editor, monaco) => {
     editorRef.current = editor
     monacoRef.current = monaco
     setLanguages(sortEditorLanguages(monaco.languages.getLanguages()))
 
-    monaco.editor.defineTheme('termdock-default-dark', {
-      base: 'vs-dark',
-      inherit: true,
-      rules: [],
-      colors: {
-        'editor.background': '#111316',
-        'editor.foreground': '#d6dde7',
-        'editorLineNumber.foreground': '#5f6875',
-        'editorLineNumber.activeForeground': '#9faab8',
-        'editorCursor.foreground': '#7cc7ff',
-        'editor.selectionBackground': '#21466b',
-        'editor.inactiveSelectionBackground': '#1a354d',
-        'editor.lineHighlightBackground': '#161b22',
-        'editorIndentGuide.background1': '#1f2630',
-        'editorIndentGuide.activeBackground1': '#344150'
-      }
-    })
-
-    monaco.editor.setTheme(themeMode === 'default-dark' ? 'termdock-default-dark' : 'vs')
+    defineTermDockMonacoTheme(monaco)
+    monaco.editor.setTheme(themeMode === 'default-dark' ? MONACO_DARK_THEME : 'vs')
     setLanguage(editor.getModel()?.getLanguageId() ?? 'plaintext')
 
     const position = editor.getPosition()
@@ -150,7 +164,8 @@ export function FileEditorModal({
     if (!monacoRef.current) {
       return
     }
-    monacoRef.current.editor.setTheme(themeMode === 'default-dark' ? 'termdock-default-dark' : 'vs')
+    defineTermDockMonacoTheme(monacoRef.current)
+    monacoRef.current.editor.setTheme(themeMode === 'default-dark' ? MONACO_DARK_THEME : 'vs')
   }, [themeMode])
 
   useEffect(() => {
@@ -241,114 +256,151 @@ export function FileEditorModal({
         </div>
       </div>
 
-      <div className="file-editor-menubar">
-        <EditorMenuButton current={openMenu} label={t.fileEditorFile} menu="file" onToggle={setOpenMenu}>
-          <MenuAction disabled={!isDirty || isBusy || isSaving} label={isSaving ? t.saving : t.save} onClick={() => onSave(content, encoding)} />
-          <MenuAction label={t.fileEditorReloadEncoding} onClick={() => setOpenMenu('encoding')} />
-        </EditorMenuButton>
-        <EditorMenuButton current={openMenu} label={t.edit} menu="edit" onToggle={setOpenMenu}>
-          <MenuAction label={t.fileEditorUndo} onClick={() => void runEditorAction('undo')} />
-          <MenuAction label={t.fileEditorRedo} onClick={() => void runEditorAction('redo')} />
-          <MenuSeparator />
-          <MenuAction label={t.fileEditorSelectAll} onClick={() => void runEditorAction('editor.action.selectAll')} />
-          <MenuSeparator />
-          <MenuAction label={t.fileEditorToTraditional} onClick={() => convertContent(toTraditional)} />
-          <MenuAction label={t.fileEditorToSimplified} onClick={() => convertContent(toSimplified)} />
-        </EditorMenuButton>
-        <EditorMenuButton current={openMenu} label={t.fileEditorSearch} menu="search" onToggle={setOpenMenu}>
-          <MenuAction label={t.fileEditorFind} onClick={() => void runEditorAction('actions.find')} />
-          <MenuAction label={t.fileEditorReplace} onClick={() => void runEditorAction('editor.action.startFindReplaceAction')} />
-          <MenuAction label={t.fileEditorGoToLine} onClick={() => void runEditorAction('editor.action.gotoLine')} />
-        </EditorMenuButton>
-        <EditorMenuButton current={openMenu} label={t.fileEditorPreferences} menu="preferences" onToggle={setOpenMenu}>
-          <MenuToggle label={t.fileEditorWordWrap} checked={wordWrap} onClick={() => setWordWrap((value) => !value)} />
-          <MenuToggle label={t.fileEditorShowLineNumbers} checked={showLineNumbers} onClick={() => setShowLineNumbers((value) => !value)} />
-          <MenuToggle label={t.fileEditorShowMinimap} checked={showMinimap} onClick={() => setShowMinimap((value) => !value)} />
-        </EditorMenuButton>
-      </div>
+      <div className="file-editor-workspace">
+        <aside className="file-editor-explorer">
+          <div className="file-editor-explorer-head">
+            <span>{t.file}</span>
+            <strong>{file.source === 'remote' ? t.remoteHost : t.localComputer}</strong>
+          </div>
+          <div className="file-editor-tree scrollbar-scroll" aria-label={t.file}>
+            {fileTree.directories.map((node) => (
+              <div
+                className="file-editor-tree-row is-directory"
+                key={`${node.depth}-${node.label}`}
+                style={{ '--tree-depth': node.depth } as CSSProperties}
+                title={node.path}
+              >
+                <AppIcon name="folder" size={14} />
+                <span>{node.label}</span>
+              </div>
+            ))}
+            <button
+              className="file-editor-tree-row is-file is-active"
+              style={{ '--tree-depth': fileTree.file.depth } as CSSProperties}
+              title={file.path}
+              type="button"
+              onClick={() => editorRef.current?.focus()}
+            >
+              <AppIcon name={language === 'json' || file.name.endsWith('.json') ? 'code' : 'file'} size={14} />
+              <span>{fileTree.file.label}</span>
+              {isDirty ? <i aria-label={t.fileEditorUnsaved} /> : null}
+            </button>
+          </div>
+        </aside>
 
-      <div className="file-editor-path" title={file.path}>{file.path}</div>
+        <section className="file-editor-main">
+          <div className="file-editor-toolbar">
+            <div className="file-editor-menubar">
+              <EditorMenuButton current={openMenu} label={t.fileEditorFile} menu="file" onToggle={setOpenMenu}>
+                <MenuAction disabled={!isDirty || isBusy || isSaving} label={isSaving ? t.saving : t.save} onClick={() => onSave(content, encoding)} />
+                <MenuAction label={t.fileEditorReloadEncoding} onClick={() => setOpenMenu('encoding')} />
+              </EditorMenuButton>
+              <EditorMenuButton current={openMenu} label={t.edit} menu="edit" onToggle={setOpenMenu}>
+                <MenuAction label={t.fileEditorUndo} onClick={() => void runEditorAction('undo')} />
+                <MenuAction label={t.fileEditorRedo} onClick={() => void runEditorAction('redo')} />
+                <MenuSeparator />
+                <MenuAction label={t.fileEditorSelectAll} onClick={() => void runEditorAction('editor.action.selectAll')} />
+                <MenuSeparator />
+                <MenuAction label={t.fileEditorToTraditional} onClick={() => convertContent(toTraditional)} />
+                <MenuAction label={t.fileEditorToSimplified} onClick={() => convertContent(toSimplified)} />
+              </EditorMenuButton>
+              <EditorMenuButton current={openMenu} label={t.fileEditorSearch} menu="search" onToggle={setOpenMenu}>
+                <MenuAction label={t.fileEditorFind} onClick={() => void runEditorAction('actions.find')} />
+                <MenuAction label={t.fileEditorReplace} onClick={() => void runEditorAction('editor.action.startFindReplaceAction')} />
+                <MenuAction label={t.fileEditorGoToLine} onClick={() => void runEditorAction('editor.action.gotoLine')} />
+              </EditorMenuButton>
+              <EditorMenuButton current={openMenu} label={t.fileEditorPreferences} menu="preferences" onToggle={setOpenMenu}>
+                <MenuToggle label={t.fileEditorWordWrap} checked={wordWrap} onClick={() => setWordWrap((value) => !value)} />
+                <MenuToggle label={t.fileEditorShowLineNumbers} checked={showLineNumbers} onClick={() => setShowLineNumbers((value) => !value)} />
+                <MenuToggle label={t.fileEditorShowMinimap} checked={showMinimap} onClick={() => setShowMinimap((value) => !value)} />
+              </EditorMenuButton>
+            </div>
 
-      <div className="file-editor-body">
-        <div className="file-editor-surface">
-          <Editor
-            height="100%"
-            onChange={(value) => setContent(value ?? '')}
-            onMount={handleMount}
-            options={{
-              automaticLayout: true,
-              find: {
-                addExtraSpaceOnTop: true,
-                seedSearchStringFromSelection: 'always'
-              },
-              fixedOverflowWidgets: true,
-              fontFamily: '"SF Mono", Menlo, Consolas, monospace',
-              fontLigatures: true,
-              fontSize: 13,
-              lineHeight: 20,
-              minimap: { enabled: showMinimap },
-              padding: { top: 14, bottom: 8 },
-              renderLineHighlight: 'line',
-              roundedSelection: true,
-              scrollBeyondLastLine: false,
-              smoothScrolling: true,
-              wordWrap: wordWrap ? 'on' : 'off',
-              lineNumbers: showLineNumbers ? 'on' : 'off'
-            }}
-            path={file.path}
-            theme={themeMode === 'default-dark' ? 'termdock-default-dark' : 'vs'}
-            value={content}
-          />
-        </div>
-      </div>
+            <div className="file-editor-path" title={file.path}>{file.path}</div>
+          </div>
 
-      {errorMessage ? <div className="modal-error">{errorMessage}</div> : null}
+          {errorMessage ? <div className="modal-error">{errorMessage}</div> : null}
 
-      <div className="file-editor-statusbar">
-        <span>{t.fileEditorStatusReady}</span>
-        <span>{t.fileEditorLines}: {lineCount}</span>
-        <span>{t.fileEditorCharacters}: {characterCount}</span>
-        <span>{t.fileEditorCursor}: {cursorLine}:{cursorColumn}</span>
-        <div className="file-editor-status-actions">
-          <StatusMenu
-            current={openMenu}
-            label={currentEncoding.label}
-            menu="encoding"
-            onToggle={setOpenMenu}
-          >
-            {EDITOR_ENCODINGS.map((option) => (
-              <button
-                className={option.value === encoding ? 'is-active' : ''}
-                key={option.value}
-                onClick={() => {
-                  setEncoding(option.value)
-                  onReloadWithEncoding(option.value)
-                  setOpenMenu(null)
+          <div className="file-editor-body">
+            <div className="file-editor-surface">
+              <Editor
+                height="100%"
+                onChange={(value) => setContent(value ?? '')}
+                onMount={handleMount}
+                options={{
+                  automaticLayout: true,
+                  find: {
+                    addExtraSpaceOnTop: true,
+                    seedSearchStringFromSelection: 'always'
+                  },
+                  fixedOverflowWidgets: true,
+                  fontFamily: '"SF Mono", Menlo, Consolas, monospace',
+                  fontLigatures: true,
+                  fontSize: 13,
+                  lineHeight: 20,
+                  minimap: { enabled: showMinimap },
+                  padding: { top: 14, bottom: 8 },
+                  renderLineHighlight: 'line',
+                  roundedSelection: true,
+                  scrollBeyondLastLine: false,
+                  smoothScrolling: true,
+                  wordWrap: wordWrap ? 'on' : 'off',
+                  lineNumbers: showLineNumbers ? 'on' : 'off'
                 }}
-                type="button"
+                path={file.path}
+                theme={themeMode === 'default-dark' ? MONACO_DARK_THEME : 'vs'}
+                value={content}
+              />
+            </div>
+          </div>
+
+          <div className="file-editor-statusbar">
+            <span>{t.fileEditorStatusReady}</span>
+            <span>{t.fileEditorLines}: {lineCount}</span>
+            <span>{t.fileEditorCharacters}: {characterCount}</span>
+            <span>{t.fileEditorCursor}: {cursorLine}:{cursorColumn}</span>
+            <div className="file-editor-status-actions">
+              <StatusMenu
+                current={openMenu}
+                label={currentEncoding.label}
+                menu="encoding"
+                onToggle={setOpenMenu}
               >
-                {option.label}
-              </button>
-            ))}
-          </StatusMenu>
-          <StatusMenu
-            current={openMenu}
-            label={currentLanguage}
-            menu="language"
-            onToggle={setOpenMenu}
-          >
-            {languages.map((option) => (
-              <button
-                className={option.id === language ? 'is-active' : ''}
-                key={option.id}
-                onClick={() => updateLanguage(option.id)}
-                type="button"
+                {EDITOR_ENCODINGS.map((option) => (
+                  <button
+                    className={option.value === encoding ? 'is-active' : ''}
+                    key={option.value}
+                    onClick={() => {
+                      setEncoding(option.value)
+                      onReloadWithEncoding(option.value)
+                      setOpenMenu(null)
+                    }}
+                    type="button"
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </StatusMenu>
+              <StatusMenu
+                current={openMenu}
+                label={currentLanguage}
+                menu="language"
+                onToggle={setOpenMenu}
               >
-                {option.label}
-              </button>
-            ))}
-          </StatusMenu>
-        </div>
+                {languages.map((option) => (
+                  <button
+                    className={option.id === language ? 'is-active' : ''}
+                    key={option.id}
+                    onClick={() => updateLanguage(option.id)}
+                    type="button"
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </StatusMenu>
+            </div>
+          </div>
+        </section>
       </div>
     </div>
   )
@@ -358,6 +410,31 @@ export function FileEditorModal({
   }
 
   return <div className="modal-backdrop">{contentNode}</div>
+}
+
+function buildFileTree(path: string, fallbackName: string) {
+  const normalizedPath = path.replace(/\\/g, '/')
+  const isAbsolute = normalizedPath.startsWith('/')
+  const parts = normalizedPath.split('/').filter(Boolean)
+  const fileLabel = parts.at(-1) ?? fallbackName
+  const directoryParts = parts.slice(0, -1)
+  const directories = [
+    ...(isAbsolute ? [{ label: '/', path: '/', depth: 0 }] : []),
+    ...directoryParts.map((label, index) => ({
+      label,
+      path: `${isAbsolute ? '/' : ''}${directoryParts.slice(0, index + 1).join('/')}`,
+      depth: index + (isAbsolute ? 1 : 0)
+    }))
+  ]
+
+  return {
+    directories,
+    file: {
+      label: fileLabel,
+      path: normalizedPath,
+      depth: directories.length
+    }
+  }
 }
 
 function EditorMenuButton({

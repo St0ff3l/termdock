@@ -117,7 +117,7 @@ export function SystemSidebar({
             ))}
           </section>
         </>
-      ) : null}
+      ) : <CollapsedResourceMeters metrics={metrics} />}
     </div>
   )
 }
@@ -212,6 +212,47 @@ function MemoryMeter({ metrics }: { metrics?: SystemMetrics }) {
       </div>
     </div>
   )
+}
+
+function CollapsedResourceMeters({ metrics }: { metrics?: SystemMetrics }) {
+  const items = [
+    { key: 'cpu', label: t.cpu, value: metrics?.cpuPercent ?? 0, detail: metrics ? `${metrics.cpuPercent}%` : '-' },
+    { key: 'memory', label: t.memory, value: metrics?.memoryPercent ?? 0, detail: metrics?.memoryUsage ?? '-' },
+    { key: 'swap', label: t.swap, value: metrics?.swapPercent ?? 0, detail: metrics?.swapUsage ?? '-' }
+  ]
+
+  return (
+    <div className="collapsed-resource-meters" aria-label={`${t.cpu} ${t.memory} ${t.swap}`}>
+      {items.map((item) => {
+        const value = clampPercent(item.value)
+        const tone = getMetricTone(value)
+        const title = `${item.label}: ${item.detail}${item.key === 'cpu' ? '' : ` · ${value}%`}`
+        return (
+          <div
+            className={`collapsed-resource-meter collapsed-resource-${item.key}`}
+            key={item.key}
+            aria-label={title}
+            title={title}
+          >
+            <span className="collapsed-resource-track">
+              <i className={`collapsed-resource-fill ${tone}`} style={{ height: `${value}%` }} />
+            </span>
+                <span className="collapsed-resource-info" aria-hidden="true">
+                  <span className="collapsed-resource-label">{item.label}</span>
+                  <span className="collapsed-resource-value">{value}%</span>
+                </span>
+              </div>
+            )
+      })}
+    </div>
+  )
+}
+
+function clampPercent(value: number) {
+  if (!Number.isFinite(value)) {
+    return 0
+  }
+  return Math.max(0, Math.min(100, Math.round(value)))
 }
 
 function parseUsageTotal(usage?: string) {

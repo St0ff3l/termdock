@@ -10,8 +10,12 @@ import type {
 } from '@termdock/core'
 import { TerminalView } from '../../components/TerminalView'
 import type { SendScope, SessionSendTarget } from '../common/session-send-targets'
+import { AppIcon } from '../common/AppIcon'
 import { FileManager } from '../files/FileManager'
 import { TerminalDock } from '../terminal/TerminalDock'
+import { t } from '../../i18n'
+
+const DEFAULT_FILE_PANEL_HEIGHT = 218
 
 export function SessionWorkspace({
   activeTab,
@@ -56,7 +60,8 @@ export function SessionWorkspace({
   onUploadFiles,
   onChooseUploadFiles,
   onDownloadFiles,
-  onDropUpload
+  onDropUpload,
+  isWorkspaceFocusMode
 }: {
   activeTab: WorkspaceTab
   activeSession: SessionSnapshot
@@ -101,25 +106,30 @@ export function SessionWorkspace({
   onChooseUploadFiles(): void
   onDownloadFiles(items: RemoteFileItem[], targetDirectory?: string): void
   onDropUpload(event: DragEvent<HTMLDivElement>): void
+  isWorkspaceFocusMode: boolean
 }) {
   const isFileOnly = activeTab.layout === 'file-only'
-  const [filePanelHeight, setFilePanelHeight] = useState(218)
+  const [filePanelHeight, setFilePanelHeight] = useState(DEFAULT_FILE_PANEL_HEIGHT)
+  const [isFilePanelCollapsed, setIsFilePanelCollapsed] = useState(false)
   const workspaceRef = useRef<HTMLElement | null>(null)
   const isResizingFilePanel = useRef(false)
   const hasUserResizedFilePanel = useRef(false)
   const isSnappedToDiskHead = useRef(false)
   const dragStateRef = useRef<{ bottom: number; height: number; snapHeight: number | null } | null>(null)
   const layoutFrameRef = useRef<number | null>(null)
+  const lastExpandedFilePanelHeight = useRef(DEFAULT_FILE_PANEL_HEIGHT)
+  const appliedWorkspaceFocusMode = useRef<boolean | null>(null)
+  const isFilePanelEffectivelyCollapsed = isFilePanelCollapsed && !isFileOnly
+  const effectiveFilePanelHeight = isFilePanelEffectivelyCollapsed ? 0 : filePanelHeight
 
   const clampFilePanelHeight = (workspaceHeight: number, nextHeight: number) => {
-    if (nextHeight === 0) return 0
     const minHeight = 25 // Allow it to shrink to just the tabs row height
     const maxHeight = Math.max(minHeight, workspaceHeight - 160)
     return Math.min(maxHeight, Math.max(minHeight, nextHeight))
   }
 
   const syncFilePanelHeight = (mode: 'align' | 'clamp') => {
-    if (isFileOnly || !workspaceRef.current || isResizingFilePanel.current) {
+    if (isFileOnly || isFilePanelCollapsed || !workspaceRef.current || isResizingFilePanel.current) {
       return
     }
 
@@ -145,6 +155,35 @@ export function SessionWorkspace({
       return prev === clampedHeight ? prev : clampedHeight
     })
   }
+
+  useEffect(() => {
+    if (!isFilePanelCollapsed && filePanelHeight > 0) {
+      lastExpandedFilePanelHeight.current = filePanelHeight
+    }
+  }, [filePanelHeight, isFilePanelCollapsed])
+
+  useEffect(() => {
+    if (isFileOnly) {
+      return
+    }
+    if (appliedWorkspaceFocusMode.current === isWorkspaceFocusMode) {
+      return
+    }
+    appliedWorkspaceFocusMode.current = isWorkspaceFocusMode
+
+    if (isWorkspaceFocusMode) {
+      if (!isFilePanelCollapsed && filePanelHeight > 0) {
+        lastExpandedFilePanelHeight.current = filePanelHeight
+      }
+      isResizingFilePanel.current = false
+      dragStateRef.current = null
+      setIsFilePanelCollapsed(true)
+      return
+    }
+
+    setFilePanelHeight((prev) => prev > 0 ? prev : lastExpandedFilePanelHeight.current || DEFAULT_FILE_PANEL_HEIGHT)
+    setIsFilePanelCollapsed(false)
+  }, [isFileOnly, isWorkspaceFocusMode])
 
   useEffect(() => {
     if (isFileOnly) {
@@ -210,7 +249,7 @@ export function SessionWorkspace({
   }, [activeTab.id])
 
   useEffect(() => {
-    if (isFileOnly) {
+    if (isFileOnly || isFilePanelCollapsed) {
       return
     }
 
@@ -221,10 +260,10 @@ export function SessionWorkspace({
     })
 
     return () => window.cancelAnimationFrame(frame)
-  }, [isFileOnly, activeTab.id])
+  }, [isFileOnly, isFilePanelCollapsed, activeTab.id])
 
   useEffect(() => {
-    if (isFileOnly || !workspaceRef.current) {
+    if (isFileOnly || isFilePanelCollapsed || !workspaceRef.current) {
       return
     }
 
@@ -255,13 +294,28 @@ export function SessionWorkspace({
       resizeObserver.disconnect()
       window.removeEventListener('resize', syncAfterLayout)
     }
-  }, [isFileOnly, activeTab.id])
+  }, [isFileOnly, isFilePanelCollapsed, activeTab.id])
+
+  const handleToggleFilePanelCollapsed = () => {
+    if (isFilePanelCollapsed) {
+      setFilePanelHeight((prev) => prev > 0 ? prev : lastExpandedFilePanelHeight.current || DEFAULT_FILE_PANEL_HEIGHT)
+      setIsFilePanelCollapsed(false)
+      return
+    }
+
+    if (filePanelHeight > 0) {
+      lastExpandedFilePanelHeight.current = filePanelHeight
+    }
+    isResizingFilePanel.current = false
+    dragStateRef.current = null
+    setIsFilePanelCollapsed(true)
+  }
 
   return (
     <section
-      className={`session-workspace ${isFileOnly ? 'file-only' : ''}`}
+      className={`session-workspace ${isFileOnly ? 'file-only' : ''} ${isFilePanelEffectivelyCollapsed ? 'file-panel-collapsed' : ''}`}
       ref={workspaceRef}
-      style={{ '--file-panel-height': `${filePanelHeight}px` } as CSSProperties}
+      style={{ '--file-panel-height': `${effectiveFilePanelHeight}px` } as CSSProperties}
     >
       {!isFileOnly ? (
         <div className="terminal-area has-terminal-dock">
@@ -276,8 +330,6 @@ export function SessionWorkspace({
             selectedTabIds={terminalDockSelectedTabIds}
             sendScope={terminalDockSendScope}
             sendTargets={sendTargets}
-            filePanelHeight={filePanelHeight}
-            setFilePanelHeight={setFilePanelHeight}
             onSelectedTabIdsChange={onTerminalDockSelectedTabIdsChange}
             onSendCommand={onSendTerminalCommand}
             onSendScopeChange={onTerminalDockSendScopeChange}
@@ -285,6 +337,18 @@ export function SessionWorkspace({
         </div>
       ) : null}
       {!isFileOnly ? (
+        <button
+          aria-label={isFilePanelCollapsed ? t.terminalDockShowFilePanel : t.terminalDockHideFilePanel}
+          aria-pressed={isFilePanelCollapsed}
+          className={`file-panel-drawer-toggle ${isFilePanelCollapsed ? 'is-collapsed' : ''}`}
+          title={isFilePanelCollapsed ? t.terminalDockShowFilePanel : t.terminalDockHideFilePanel}
+          type="button"
+          onClick={handleToggleFilePanelCollapsed}
+        >
+          <AppIcon name={isFilePanelCollapsed ? 'chevron-up' : 'chevron-down'} size={15} />
+        </button>
+      ) : null}
+      {!isFileOnly && !isFilePanelCollapsed ? (
         <div
           className="session-split-resizer"
           onMouseDown={() => {

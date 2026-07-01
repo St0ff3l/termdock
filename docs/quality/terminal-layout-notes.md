@@ -38,6 +38,16 @@ terminal spacing issue = xterm mount box and fit box are the same node
 - 这个余量专门留给 nano / vim 这类全屏 TUI 的底部状态行和菜单行，避免它们和文件 dock 的边界抢高度。
 - `xterm` 内部的 `.xterm-screen` / `.xterm-helpers` 不再被额外强制拉成 `height: 100%`，让 xterm 自己按渲染尺寸管理内部画布。
 
+### 3.1 当前悬浮命令输入条模型
+
+2026-06 的工作区样式调整后，终端底部不再通过 `.terminal-host` 预留一块固定命令输入区域。当前模型是：
+
+- `TerminalView` / xterm 仍然占满 shell 可用区域，输出可以延伸到文件面板上边界。
+- `TerminalDock` 作为绝对定位控件悬浮在 shell 区域底部，使用半透明背景和 backdrop blur 做雾透效果。
+- 文件面板抽屉按钮与 `TerminalDock` 同一水平线，收起和展开状态下都保持平行。
+- 不要为了避开 `TerminalDock` 再给 terminal host 加固定 bottom padding；这会重新造成 xterm fit 尺寸和视觉容器尺寸不一致。
+- 如果需要看被输入条覆盖的输出，优先通过终端滚动查看，而不是改变 PTY 行数或额外插入空行。
+
 2026-06 的 nano / 进度条回归又确认了一条边界：终端列数不能出现“前端 xterm 一个 cols、后端 PTY 另一个 cols”的分裂状态。当前做法是按主窗口最小宽度、左侧栏宽度和终端 padding 算出稳定列数，并让本地 `terminal.resize(cols, rows)` 与后端 `pty.resize(cols, rows)` 使用同一个 `cols`。详细排查结论见 [terminal-regression-checklist.md](/Users/stoffel/CodeFile/termdock/docs/quality/terminal-regression-checklist.md)。
 
 当前实现位置：
@@ -73,13 +83,15 @@ terminal spacing issue = xterm mount box and fit box are the same node
 1. 先确认 `xterm` 挂载节点是不是直接等于带 padding 的容器。
 2. 再确认 `fitAddon.fit()` 使用的是不是内层纯内容区尺寸。
 3. 如果全屏 TUI 的底部状态行仍然挤掉，先看是否需要保留 1 行安全余量，而不是继续改 padding。
-4. 最后才调 `.terminal-host` 的 padding 数值。
+4. 如果问题来自悬浮命令输入条，先检查 `TerminalDock` 的绝对定位、层级和透明背景，不要直接给 terminal host 加 bottom padding。
+5. 最后才调 `.terminal-host` 的 padding 数值。
 
 ## 6. 不推荐的修法
 
 下面这些办法容易造成“看起来改了，但实际没解决根因”：
 
 - 只增加 `.terminal-host` 的 bottom padding。
+- 为悬浮命令输入条额外保留固定终端高度。
 - 只调整 `.session-workspace` 或文件面板高度。
 - 只在 terminal transcript 里插入额外空行。
 

@@ -71,7 +71,7 @@
   font-size: 12px;
   font-weight: 500;
   color: var(--text-muted);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--file-editor-button-bg);
   cursor: not-allowed;
   white-space: nowrap;
   flex-shrink: 0;
@@ -82,13 +82,13 @@
 .file-editor-modal .modal-header .file-editor-save-button.is-dirty {
   background: var(--button-primary-bg);
   border-color: transparent;
-  color: #ffffff;
+  color: var(--button-primary-text);
   cursor: pointer;
 }
 
 .file-editor-modal .modal-header .file-editor-save-button.is-dirty:hover:not(:disabled) {
   background: var(--button-primary-hover);
-  box-shadow: 0 2px 10px rgba(22, 135, 232, 0.35);
+  box-shadow: var(--file-editor-primary-shadow);
   transform: translateY(-1px);
   border-color: transparent;
 }
@@ -99,7 +99,7 @@
 }
 
 .file-editor-modal .modal-header .file-editor-save-button:hover:disabled {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--file-editor-button-bg);
   border-color: var(--border-light);
   color: var(--text-muted);
 }
@@ -138,6 +138,9 @@
 .file-editor-window select,
 .file-editor-window textarea,
 .file-editor-window .file-editor-menubar,
+.file-editor-window .file-editor-workspace,
+.file-editor-window .file-editor-explorer,
+.file-editor-window .file-editor-toolbar,
 .file-editor-window .file-editor-body,
 .file-editor-window .file-editor-statusbar,
 .file-editor-window .modal-error {
@@ -197,7 +200,7 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
-  padding: 8px 16px;
+  padding: 0;
   border-top: 1px solid transparent;
   border-bottom: 1px solid transparent;
 }
@@ -275,7 +278,7 @@
 
 .file-editor-path {
   min-width: 0;
-  padding: 0 16px 10px;
+  padding: 0;
   overflow: hidden;
   font-family: "SF Mono", Menlo, Consolas, monospace;
   font-size: 12px;
@@ -283,14 +286,136 @@
   white-space: nowrap;
 }
 
+.file-editor-workspace {
+  display: grid;
+  grid-template-columns: 238px minmax(0, 1fr);
+  flex: 1 1 auto;
+  min-height: 0;
+  border-top: 1px solid var(--border-light);
+}
+
+.file-editor-explorer {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-right: 1px solid var(--border-light);
+  background: var(--surface-inset);
+}
+
+.file-editor-explorer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 42px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border-light);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.file-editor-explorer-head span,
+.file-editor-explorer-head strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-editor-explorer-head strong {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.file-editor-tree {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 6px;
+}
+
+.file-editor-tree-row {
+  --tree-depth: 0;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 30px;
+  padding: 0 8px 0 calc(8px + var(--tree-depth) * 13px);
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+  box-sizing: border-box;
+}
+
+.file-editor-tree-row svg {
+  color: var(--text-soft);
+}
+
+.file-editor-tree-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-editor-tree-row.is-file {
+  cursor: pointer;
+}
+
+.file-editor-tree-row.is-file:hover,
+.file-editor-tree-row.is-active {
+  background: var(--surface-hover);
+  color: var(--text-main);
+}
+
+.file-editor-tree-row.is-active svg {
+  color: var(--accent-primary);
+}
+
+.file-editor-tree-row i {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--accent-primary);
+}
+
+.file-editor-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.file-editor-toolbar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-height: 42px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border-light);
+}
+
 .file-editor-body {
   display: flex;
   flex: 1 1 auto;
   min-height: 0;
-  margin: 0 16px;
+  margin: 0;
   overflow: hidden;
-  border: 1px solid transparent;
-  border-radius: 14px;
+  border: 0;
+  border-radius: 0;
 }
 
 .file-editor-surface {
@@ -306,7 +431,8 @@
   flex-wrap: wrap;
   gap: 14px;
   min-height: 38px;
-  padding: 0 16px;
+  padding: 0 12px;
+  border-top: 1px solid var(--border-light);
   font-size: 12px;
 }
 
@@ -349,15 +475,18 @@
     box-sizing: border-box;
   }
 
-  .file-editor-menubar,
-  .file-editor-path,
+  .file-editor-workspace {
+    grid-template-columns: 204px minmax(0, 1fr);
+  }
+
+  .file-editor-toolbar,
   .file-editor-statusbar {
     padding-left: 14px;
     padding-right: 14px;
   }
 
   .file-editor-body {
-    margin: 0 14px;
+    margin: 0;
   }
 
   .file-editor-status-actions {
@@ -426,16 +555,25 @@
     flex: 0 0 auto;
   }
 
-  .file-editor-menubar,
-  .file-editor-path,
+  .file-editor-workspace {
+    grid-template-columns: 156px minmax(0, 1fr);
+  }
+
+  .file-editor-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 6px;
+  }
+
+  .file-editor-toolbar,
   .file-editor-statusbar {
     padding-left: 10px;
     padding-right: 10px;
   }
 
   .file-editor-body {
-    margin: 0 10px;
-    border-radius: 10px;
+    margin: 0;
+    border-radius: 0;
   }
 
   .file-editor-statusbar {

@@ -45,8 +45,6 @@ export function TerminalDock({
   sendScope,
   selectedTabIds,
   sendTargets,
-  filePanelHeight,
-  setFilePanelHeight,
   onSendCommand,
   onSendScopeChange,
   onSelectedTabIdsChange
@@ -56,8 +54,6 @@ export function TerminalDock({
   sendScope: SendScope
   selectedTabIds: string[]
   sendTargets: SessionSendTarget[]
-  filePanelHeight?: number
-  setFilePanelHeight?: (height: number | ((prev: number) => number)) => void
   onSendCommand(command: string): Promise<void>
   onSendScopeChange(scope: SendScope, rememberSelection: boolean): void
   onSelectedTabIdsChange(tabIds: string[], rememberSelection: boolean): void
@@ -68,7 +64,6 @@ export function TerminalDock({
   const [preferences, setPreferences] = useState<DockPreferences>(DEFAULT_PREFERENCES)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
   const rootRef = useRef<HTMLElement | null>(null)
-  const [lastFilePanelHeight, setLastFilePanelHeight] = useState(218)
 
   const persistHistory = async (entries: TerminalCommandHistoryEntry[]) => {
     if (!window.termdock?.setTerminalCommandHistory) {
@@ -124,18 +119,6 @@ export function TerminalDock({
       await window.termdock.disconnectTab(activeTab.id)
     } else {
       await window.termdock.reconnectTab(activeTab.id)
-    }
-  }
-
-  const handleToggleFilePanel = () => {
-    if (!setFilePanelHeight) return
-    if (filePanelHeight === 0) {
-      setFilePanelHeight(lastFilePanelHeight)
-    } else {
-      if (filePanelHeight) {
-        setLastFilePanelHeight(filePanelHeight)
-      }
-      setFilePanelHeight(0)
     }
   }
 
@@ -629,16 +612,6 @@ export function TerminalDock({
           >
             <AppIcon name="search" />
           </button>
-          {setFilePanelHeight ? (
-            <button
-              className="terminal-dock-icon-btn"
-              type="button"
-              title={filePanelHeight === 0 ? t.terminalDockShowFilePanel : t.terminalDockHideFilePanel}
-              onClick={handleToggleFilePanel}
-            >
-              <AppIcon name={filePanelHeight === 0 ? 'chevron-up' : 'chevron-down'} />
-            </button>
-          ) : null}
         </div>
       </div>
     </section>

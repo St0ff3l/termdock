@@ -14,6 +14,7 @@ export type TabContextTarget =
 export function TabBar({
   activeHomeTabId,
   activeSessionTabId,
+  isWorkspaceFocusMode,
   onAddHomeTab,
   onActivateHome,
   onActivateSession,
@@ -24,10 +25,12 @@ export function TabBar({
   onDragStart,
   onOpenTabContext,
   onOpenSettings,
+  onToggleWorkspaceFocus,
   orderedTabs
 }: {
   activeHomeTabId: string | null
   activeSessionTabId: string | null
+  isWorkspaceFocusMode: boolean
   onAddHomeTab(): void
   onActivateHome(id: string): void
   onActivateSession(id: string): void
@@ -38,13 +41,17 @@ export function TabBar({
   onDragStart(tabKey: string): void
   onOpenTabContext(event: React.MouseEvent<HTMLDivElement>, target: TabContextTarget): void
   onOpenSettings(): void
+  onToggleWorkspaceFocus(): void
   orderedTabs: OrderedTabEntry[]
 }) {
+  const focusModeLabel = isWorkspaceFocusMode ? t.exitWorkspaceFocusMode : t.enterWorkspaceFocusMode
+
   return (
-    <header className="fs-tabbar">
-      <div className="titlebar-brand">
-      </div>
-      <div className="titlebar-tabarea">
+      <header className="fs-tabbar">
+        <div className="titlebar-brand">
+          <strong>{t.appTitle}</strong>
+        </div>
+        <div className="titlebar-tabarea">
         <div
           className="fs-tabs"
           onWheel={handleHorizontalWheelScroll}
@@ -121,6 +128,16 @@ export function TabBar({
           <button className="add-tab" type="button" onClick={onAddHomeTab}>+</button>
         </div>
         <div className="window-tools">
+          <button
+            aria-label={focusModeLabel}
+            aria-pressed={isWorkspaceFocusMode}
+            className={`workspace-focus-toggle ${isWorkspaceFocusMode ? 'is-active' : ''}`}
+            title={focusModeLabel}
+            type="button"
+            onClick={onToggleWorkspaceFocus}
+          >
+            <span className="material-symbols-outlined">{isWorkspaceFocusMode ? 'close_fullscreen' : 'open_in_full'}</span>
+          </button>
           <button
             aria-label={t.settings}
             title={t.settings}
