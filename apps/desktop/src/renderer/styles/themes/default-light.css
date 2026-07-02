@@ -155,7 +155,12 @@
   --terminal-bg: #ffffff;
   --terminal-text: #111827;
   --terminal-cmd-bg: rgba(15, 23, 42, 0.08);
-  --terminal-search-highlight: #f3f4f6;
+  --terminal-search-match-bg: #4b5563;
+  --terminal-search-match-ruler: #9ca3af;
+  --terminal-search-active-bg: #ffffff;
+  --terminal-search-active-text: #111111;
+  --terminal-search-active-border: #111827;
+  --terminal-search-active-ruler: #111827;
   --terminal-cmd-text: #111827;
   --terminal-frame-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.78),
@@ -178,6 +183,44 @@
 :root[data-theme='default-light'] .terminal-host .xterm-viewport,
 :root[data-theme='default-light'] .terminal-host .xterm-screen {
   background: var(--terminal-bg);
+}
+
+:root[data-theme='default-light'] .terminal-find {
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  background: color-mix(in srgb, var(--bg-card) 96%, transparent);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14);
+}
+
+:root[data-theme='default-light'] .terminal-find input {
+  border: 1px solid var(--border);
+  background: var(--bg-main);
+  color: var(--text-main);
+}
+
+:root[data-theme='default-light'] .terminal-find .terminal-find-actions {
+  --terminal-find-action-divider: color-mix(in srgb, var(--border) 82%, transparent);
+  background: color-mix(in srgb, var(--bg-main) 78%, var(--border));
+}
+
+:root[data-theme='default-light'] .terminal-find .terminal-find-actions>button {
+  background: transparent;
+  color: var(--text-muted);
+}
+
+:root[data-theme='default-light'] .terminal-find .terminal-find-actions>button:hover {
+  background: var(--bg-hover);
+  color: var(--text-main);
+}
+
+:root[data-theme='default-light'] .terminal-find .terminal-find-actions>button.is-active {
+  background: color-mix(in srgb, var(--primary) 13%, var(--bg-card));
+  color: var(--primary);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 22%, transparent) inset;
+}
+
+:root[data-theme='default-light'] .terminal-find .terminal-find-actions>.terminal-find-submit {
+  background: color-mix(in srgb, var(--bg-hover) 78%, transparent);
+  color: var(--text-main);
 }
 
 :root[data-theme='default-light'] .fs-sidebar,

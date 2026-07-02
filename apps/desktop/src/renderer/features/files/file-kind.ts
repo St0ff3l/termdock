@@ -21,7 +21,7 @@ const imageExtensions = new Set([
 ])
 
 const documentExtensions = new Set([
-  'doc', 'docm', 'docx', 'md', 'mdx', 'odt', 'pages', 'pdf', 'rtf', 'txt'
+  'azw', 'azw3', 'doc', 'docm', 'docx', 'epub', 'md', 'mdx', 'mobi', 'odt', 'pages', 'pdf', 'rtf', 'txt'
 ])
 
 const spreadsheetExtensions = new Set([
@@ -33,16 +33,38 @@ const presentationExtensions = new Set([
 ])
 
 const codeExtensions = new Set([
-  'bash', 'c', 'cc', 'cfg', 'conf', 'cpp', 'cs', 'css', 'go', 'h', 'hpp', 'htm', 'html', 'ini',
+  'c', 'cc', 'cpp', 'cs', 'css', 'go', 'h', 'hpp', 'htm', 'html',
   'java', 'js', 'json', 'jsx', 'kt', 'less', 'log', 'lua', 'mjs', 'php', 'pl', 'py', 'rb', 'rs',
-  'sass', 'scss', 'sh', 'sql', 'swift', 'toml', 'ts', 'tsx', 'vue', 'xml', 'yaml', 'yml', 'zsh'
+  'sass', 'scss', 'sql', 'swift', 'ts', 'tsx', 'vue', 'xml'
+])
+
+const configExtensions = new Set([
+  'cfg', 'conf', 'editorconfig', 'env', 'gitattributes', 'gitignore', 'ini', 'lock', 'npmrc',
+  'properties', 'toml', 'yaml', 'yml'
+])
+
+const databaseExtensions = new Set([
+  'accdb', 'db', 'db3', 'mdb', 'sqlite', 'sqlite3'
+])
+
+const fontExtensions = new Set([
+  'eot', 'otf', 'ttc', 'ttf', 'woff', 'woff2'
+])
+
+const packageExtensions = new Set([
+  'apk', 'app', 'deb', 'dmg', 'msi', 'pkg'
+])
+
+const scriptExtensions = new Set([
+  'bash', 'bat', 'cmd', 'command', 'fish', 'ps1', 'sh', 'zsh'
 ])
 
 const executableExtensions = new Set([
-  'app', 'apk', 'bat', 'bin', 'cmd', 'com', 'deb', 'dmg', 'exe', 'msi', 'pkg', 'ps1', 'run', 'scr'
+  'bin', 'com', 'exe', 'run', 'scr', 'wasm'
 ])
 
 const compoundExtensions = ['tar.gz', 'tar.xz', 'tar.bz2', 'tar.zst']
+const codeFileNames = new Set(['cmakelists.txt', 'dockerfile', 'jenkinsfile', 'makefile', 'rakefile'])
 
 function getNormalizedExtension(fileName: string) {
   const lowerName = fileName.trim().toLowerCase()
@@ -60,7 +82,11 @@ function getNormalizedExtension(fileName: string) {
   return segments.length > 1 ? segments.at(-1) ?? '' : ''
 }
 
-function getFileKindCategory(extension: string) {
+function getFileKindCategory(fileName: string, extension: string) {
+  const lowerName = fileName.trim().toLowerCase()
+  if (codeFileNames.has(lowerName)) {
+    return 'code'
+  }
   if (!extension) {
     return 'generic'
   }
@@ -82,14 +108,26 @@ function getFileKindCategory(extension: string) {
   if (presentationExtensions.has(extension)) {
     return 'slides'
   }
+  if (configExtensions.has(extension)) {
+    return 'config'
+  }
+  if (databaseExtensions.has(extension)) {
+    return 'database'
+  }
+  if (fontExtensions.has(extension)) {
+    return 'font'
+  }
+  if (packageExtensions.has(extension)) {
+    return 'package'
+  }
   if (documentExtensions.has(extension)) {
     return extension === 'pdf' ? 'pdf' : 'document'
   }
+  if (scriptExtensions.has(extension) || executableExtensions.has(extension)) {
+    return 'executable'
+  }
   if (codeExtensions.has(extension)) {
     return 'code'
-  }
-  if (executableExtensions.has(extension)) {
-    return 'executable'
   }
   return 'generic'
 }
@@ -110,7 +148,7 @@ export function getDisplayFileTypeSortKey(row: FileRow) {
 
   const label = getDisplayFileTypeLabel(row)
   const extension = getNormalizedExtension(row.name)
-  const category = getFileKindCategory(extension)
+  const category = getFileKindCategory(row.name, extension)
   return `1:${category}:${label}`
 }
 
@@ -120,7 +158,7 @@ export function getDisplayFileIconName(row: FileRow): AppIconName {
   }
 
   const extension = getNormalizedExtension(row.name)
-  const category = getFileKindCategory(extension)
+  const category = getFileKindCategory(row.name, extension)
 
   switch (category) {
     case 'archive':
@@ -132,9 +170,19 @@ export function getDisplayFileIconName(row: FileRow): AppIconName {
     case 'image':
       return 'image'
     case 'document':
-    case 'sheet':
-    case 'slides':
       return 'document'
+    case 'sheet':
+      return 'spreadsheet'
+    case 'slides':
+      return 'presentation'
+    case 'config':
+      return 'config-file'
+    case 'database':
+      return 'database'
+    case 'font':
+      return 'font-file'
+    case 'package':
+      return 'package'
     case 'pdf':
       return 'pdf'
     case 'code':
@@ -142,7 +190,7 @@ export function getDisplayFileIconName(row: FileRow): AppIconName {
     case 'disk':
       return 'disk'
     case 'executable':
-      return 'flash'
+      return 'terminal-file'
     default:
       return 'file'
   }

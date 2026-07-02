@@ -485,7 +485,7 @@ export function TerminalDock({
                       void handleHistoryAction(entry.command, 2)
                     }}
                   >
-                    <span className="close-icon">✖</span>
+                    <AppIcon name="trash" />
                   </button>
                 </div>
               </div>
@@ -544,6 +544,9 @@ export function TerminalDock({
 
   const isMac = window.fileterm?.platform === 'darwin'
   const placeholderText = isMac ? t.terminalDockPlaceholderMac : t.terminalDockPlaceholderWin
+  const connectionStateClass = activeTab.status === 'connecting'
+    ? 'is-connecting'
+    : connected ? 'is-connected' : 'is-disconnected'
 
   return (
     <section ref={rootRef} className="terminal-dock">
@@ -581,7 +584,7 @@ export function TerminalDock({
             {`${t.options} · ${activeTargetSummary}`}
           </button>
           <button
-            className={`terminal-dock-icon-btn terminal-dock-connection ${connected ? 'is-connected' : 'is-disconnected'}`}
+            className={`terminal-dock-icon-btn terminal-dock-connection ${connectionStateClass}`}
             type="button"
             title={connected ? t.terminalDockDisconnect : t.terminalDockReconnect}
             onClick={handleToggleConnection}

@@ -1,5 +1,5 @@
 import type { SshHostVerificationRequest } from '@fileterm/core'
-import { AppIcon } from '../common/AppIcon'
+import { CloseButton } from '../common/CloseButton'
 import { t } from '../../i18n'
 
 export function SshHostVerificationModal({
@@ -18,9 +18,7 @@ export function SshHostVerificationModal({
       <div className="modal-card ssh-interaction-modal">
         <div className="modal-header">
           <span>{t.sshHostVerificationTitle}</span>
-          <button className="icon-button" onClick={onReject} type="button">
-            <AppIcon name="close" size={16} />
-          </button>
+          <CloseButton onClick={onReject} />
         </div>
 
         <div className="root-access-description">{t.sshHostVerificationDescription}</div>

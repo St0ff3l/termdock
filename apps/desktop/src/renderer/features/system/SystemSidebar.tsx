@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ConnectionProfile, NetworkSamplePoint, SessionSnapshot, SystemMetrics } from '@fileterm/core'
 import { copyText, hasSelectedText } from '../../app/app-utils'
 import { t } from '../../i18n'
+import { AppIcon } from '../common/AppIcon'
 
 function parseMemory(memStr: string): number {
   if (!memStr) return 0
@@ -510,11 +511,11 @@ function NetworkPanel({ metrics }: { metrics?: SystemMetrics }) {
       <div className="network-panel">
         <div className="network-rates">
           <span className="network-rate up">
-            <i>↑</i>
+            <i><AppIcon name="arrow-up" size={12} /></i>
             <strong>{currentRates?.tx ?? '0B'}</strong>
           </span>
           <span className="network-rate down">
-            <i>↓</i>
+            <i><AppIcon name="arrow-down" size={12} /></i>
             <strong>{currentRates?.rx ?? '0B'}</strong>
           </span>
         </div>

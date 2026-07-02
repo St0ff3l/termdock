@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type ReactNo
 import type { CommandFolder, CommandTemplate, CommandTemplateInput } from '@fileterm/core'
 import { t } from '../../i18n'
 import { extractCommandParams, sortByOrder } from './command-utils'
-import { AppIcon } from '../common/AppIcon'
+import { CloseButton } from '../common/CloseButton'
 
 export const emptyCommandForm: CommandTemplateInput = {
   name: '',
@@ -40,7 +40,7 @@ function CommandDialogShell({
           <span>{title}</span>
         </span>
         <div className="connection-manager-header-actions">
-          <button aria-label={t.closeTab} className="manager-close-button" onClick={onClose} title={t.closeTab} type="button">×</button>
+          <CloseButton onClick={onClose} />
         </div>
       </div>
       <div className="command-dialog-body scrollbar-scroll">
@@ -221,7 +221,7 @@ export function CommandEditorModal({
               <span>{title}</span>
             </span>
             <div className="connection-manager-header-actions">
-              <button aria-label={t.closeTab} className="manager-close-button" onClick={onClose} title={t.closeTab} type="button">×</button>
+              <CloseButton onClick={onClose} />
             </div>
           </div>
           <div className="command-form-standalone-body">

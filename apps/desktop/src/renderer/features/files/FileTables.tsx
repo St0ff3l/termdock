@@ -116,9 +116,9 @@ export function FileTable({
             }
 
             const isActive = sortState?.field === header.field
-            const directionGlyph = isActive
-              ? (sortState?.direction === 'asc' ? '↑' : '↓')
-              : ''
+            const directionIcon = isActive
+              ? <AppIcon name={sortState?.direction === 'asc' ? 'arrow-up' : 'arrow-down'} size={11} />
+              : null
 
             return (
               <th
@@ -129,7 +129,7 @@ export function FileTable({
               >
                 <span className={`file-table-heading ${isActive ? 'is-active' : ''}`}>
                   <span>{header.label}</span>
-                  {!compact ? <span className="file-table-sort-indicator">{directionGlyph}</span> : null}
+                  {!compact ? <span className="file-table-sort-indicator">{directionIcon}</span> : null}
                 </span>
               </th>
             )

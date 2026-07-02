@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react'
 import type { ConnectionFormMode, CreateProfileInput } from '@fileterm/core'
 import { normalizeConnectionHost } from '@fileterm/shared'
 import { t } from '../../i18n'
-import { AppIcon } from '../common/AppIcon'
+import { CloseButton } from '../common/CloseButton'
 
 export function ConnectionModal({
   errorMessage,
@@ -35,7 +35,7 @@ export function ConnectionModal({
           <span>{mode === 'edit' ? t.editConnection : t.newConnection}</span>
         </span>
         <div className="connection-manager-header-actions">
-          <button aria-label={t.closeTab} className="manager-close-button" onClick={onClose} title={t.closeTab} type="button">×</button>
+          <CloseButton onClick={onClose} />
         </div>
       </div>
       <div className="ssh-modal-body">

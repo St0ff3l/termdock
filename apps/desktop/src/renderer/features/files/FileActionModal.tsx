@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react'
-import { AppIcon } from '../common/AppIcon'
+import { CloseButton } from '../common/CloseButton'
 import { t } from '../../i18n'
 
 export function FileActionModal({
   confirmLabel,
-  danger,
   description,
   errorMessage,
   hint,
@@ -17,7 +16,6 @@ export function FileActionModal({
   title
 }: {
   confirmLabel: string
-  danger?: boolean
   description?: string
   errorMessage?: string | null
   hint?: string
@@ -40,9 +38,7 @@ export function FileActionModal({
       <div className="modal-card file-action-modal">
         <div className="modal-header">
           <span>{title}</span>
-          <button className="icon-button" disabled={isSubmitting} onClick={onClose} type="button">
-            <AppIcon name="close" size={16} />
-          </button>
+          <CloseButton disabled={isSubmitting} onClick={onClose} />
         </div>
         {description ? <div className="file-action-description">{description}</div> : null}
         {inputLabel ? (
@@ -67,7 +63,7 @@ export function FileActionModal({
         <div className="form-actions">
           <button className="flat-button" disabled={isSubmitting} onClick={onClose} type="button">{t.cancel}</button>
           <button
-            className={danger ? 'flat-button danger file-action-submit-button' : 'primary-button file-action-submit-button'}
+            className="primary-button file-action-submit-button"
             disabled={isSubmitting}
             onClick={() => onConfirm(value)}
             type="button"

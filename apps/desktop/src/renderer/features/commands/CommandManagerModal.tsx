@@ -4,6 +4,7 @@ import { ConfirmActionDialog } from '../common/ConfirmActionDialog'
 import { t } from '../../i18n'
 import { CommandEditorModal, emptyCommandForm, toCommandTemplateInput } from './CommandEditorModal'
 import { AppIcon } from '../common/AppIcon'
+import { CloseButton } from '../common/CloseButton'
 
 type CommandTreeNode =
   | (CommandFolder & { children: CommandTreeNode[] })
@@ -362,7 +363,7 @@ export function CommandManagerModal({
           <span className="manager-name-cell" style={{ paddingLeft: `${depth * 18}px` }}>
             {isFolder && (
               <span className="folder-icon manager-folder-toggle" style={{ transform: isExpanded ? 'rotate(90deg)' : 'none' }}>
-                ▶
+                <AppIcon name="chevron-right" size={12} />
               </span>
             )}
             {!isFolder && <span className="manager-node-icon"><AppIcon name="brand" size={14} /></span>}
@@ -445,7 +446,7 @@ export function CommandManagerModal({
         </label>
         {!inline && (
           <div className="connection-manager-header-actions">
-            <button aria-label={t.closeTab} className="manager-close-button" onClick={onClose} title={t.closeTab} type="button">×</button>
+            <CloseButton onClick={onClose} />
           </div>
         )}
       </div>
@@ -478,7 +479,7 @@ export function CommandManagerModal({
               {isCreatingFolder && resolvedActiveFolderId === 'all' && (
                 <div className="manager-row folder-row">
                   <span className="manager-name-cell">
-                    <span className="folder-icon manager-folder-toggle">▶</span>
+                    <span className="folder-icon manager-folder-toggle"><AppIcon name="chevron-right" size={12} /></span>
                     <input
                       type="text"
                       autoFocus

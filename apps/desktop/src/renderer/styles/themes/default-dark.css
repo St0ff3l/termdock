@@ -118,7 +118,12 @@
   --terminal-bg: #181818;
   --terminal-text: #e0e0e0;
   --terminal-cmd-bg: rgba(148, 163, 184, 0.16);
-  --terminal-search-highlight: #f3f4f6;
+  --terminal-search-match-bg: #4b5563;
+  --terminal-search-match-ruler: #9ca3af;
+  --terminal-search-active-bg: #ffffff;
+  --terminal-search-active-text: #111111;
+  --terminal-search-active-border: #ffffff;
+  --terminal-search-active-ruler: #ffffff;
   --terminal-cmd-text: #f1f5f9;
   --terminal-frame-shadow: inset 0 0 14px rgba(0, 0, 0, 0.3);
   --button-primary-bg: #1687e8;
@@ -1950,17 +1955,46 @@
   color: #edf2f8;
 }
 
+:root:not([data-theme]) .terminal-find .terminal-find-actions,
+:root[data-theme='default-dark'] .terminal-find .terminal-find-actions,
+:root[data-theme='default'] .terminal-find .terminal-find-actions {
+  --terminal-find-action-divider: rgba(255, 255, 255, 0.09);
+  background: rgba(20, 21, 24, 0.72);
+}
+
+:root:not([data-theme]) .terminal-find .terminal-find-actions>button,
+:root[data-theme='default-dark'] .terminal-find .terminal-find-actions>button,
+:root[data-theme='default'] .terminal-find .terminal-find-actions>button {
+  background: transparent;
+  color: #cdd2dc;
+}
+
 :root:not([data-theme]) .terminal-find button:hover,
 :root[data-theme='default-dark'] .terminal-find button:hover,
 :root[data-theme='default'] .terminal-find button:hover {
   background: #363942;
 }
 
+:root:not([data-theme]) .terminal-find .terminal-find-actions>button:hover,
+:root[data-theme='default-dark'] .terminal-find .terminal-find-actions>button:hover,
+:root[data-theme='default'] .terminal-find .terminal-find-actions>button:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+
 :root:not([data-theme]) .terminal-find button.is-active,
 :root[data-theme='default-dark'] .terminal-find button.is-active,
 :root[data-theme='default'] .terminal-find button.is-active {
-  background: #4b5563;
-  color: #ffffff;
+  background: color-mix(in srgb, var(--primary) 24%, #343840);
+  color: color-mix(in srgb, var(--primary) 34%, #ffffff);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 28%, transparent) inset;
+}
+
+:root:not([data-theme]) .terminal-find .terminal-find-submit,
+:root[data-theme='default-dark'] .terminal-find .terminal-find-submit,
+:root[data-theme='default'] .terminal-find .terminal-find-submit {
+  background: rgba(255, 255, 255, 0.07);
+  color: #f4f6fa;
 }
 
 :root:not([data-theme]) .terminal-find-status,

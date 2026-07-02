@@ -33,6 +33,7 @@ import { FileActionModal } from './features/files/FileActionModal'
 import { FilePermissionModal } from './features/files/FilePermissionModal'
 import { RootAccessModal } from './features/files/RootAccessModal'
 import { AppIcon } from './features/common/AppIcon'
+import { CloseButton } from './features/common/CloseButton'
 import { ConfirmActionDialog } from './features/common/ConfirmActionDialog'
 import type { SendScope, SessionSendTarget } from './features/common/session-send-targets'
 import { resolveSelectedTabIds } from './features/common/session-send-targets'
@@ -3116,7 +3117,7 @@ export function App() {
                 <strong>{fileEditorWindowName ?? ''}</strong>
               </div>
               <div className="file-editor-header-actions">
-                <button aria-label={t.closeTab} className="icon-button file-editor-close-button" onClick={closeCurrentWindow} type="button">×</button>
+                <CloseButton onClick={closeCurrentWindow} />
               </div>
             </div>
             {fileEditorError ? <div className="modal-error">{fileEditorError}</div> : <div className="file-editor-path">{t.updating}</div>}
@@ -3209,9 +3210,7 @@ export function App() {
                   <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1.5" y="1.5" width="7" height="7" fill="none" stroke="currentColor" strokeWidth="1" /></svg>
                 )}
               </button>
-              <button aria-label="Close" className="window-close-button" type="button" onClick={() => { void desktopApi?.closeCurrentWindow() }}>
-                <svg width="10" height="10" viewBox="0 0 10 10"><path d="M1.5,1.5 L8.5,8.5 M8.5,1.5 L1.5,8.5" stroke="currentColor" strokeWidth="1" /></svg>
-              </button>
+              <CloseButton aria-label="Close" onClick={() => { void desktopApi?.closeCurrentWindow() }} size="window" />
             </div>
           </div>
         ) : null}
@@ -3251,14 +3250,11 @@ export function App() {
           {error ? (
             <div className="status-message" role="alert">
               <span className="status-message-text">{error}</span>
-              <button
+              <CloseButton
                 aria-label={t.closeTab}
-                className="status-message-close"
                 onClick={() => setError(null)}
-                type="button"
-              >
-                ×
-              </button>
+                size="compact"
+              />
             </div>
           ) : null}
           <div className="workspace-stage">
@@ -3551,26 +3547,36 @@ export function App() {
         />
       ) : null}
 
-      {fileActionDialog ? (
-        <FileActionModal
-          confirmLabel={
-            fileActionDialog.kind === 'delete' ? t.delete : t.confirm
-          }
-          danger={fileActionDialog.kind === 'delete'}
+      {fileActionDialog?.kind === 'delete' ? (
+        <ConfirmActionDialog
+          confirmLabel={t.delete}
           description={
-            fileActionDialog.kind === 'delete'
-              ? fileActionDialog.targets.length > 1
-                ? `${t.deleteConfirmPrefix}${fileActionDialog.targets.length} ${t.itemsSuffix}${t.deleteConfirmSuffix}`
-                : `${t.deleteConfirmPrefix}${fileActionDialog.targets[0]?.name ?? ''}${t.deleteConfirmSuffix}`
-              : undefined
+            fileActionDialog.targets.length > 1
+              ? `${t.deleteConfirmPrefix}${fileActionDialog.targets.length} ${t.itemsSuffix}${t.deleteConfirmSuffix}`
+              : `${t.deleteConfirmPrefix}${fileActionDialog.targets[0]?.name ?? ''}${t.deleteConfirmSuffix}`
           }
+          errorMessage={fileActionError}
+          isSubmitting={isFileActionSubmitting}
+          onClose={() => {
+            setFileActionDialog(null)
+            setFileActionError(null)
+            setIsFileActionSubmitting(false)
+          }}
+          onConfirm={() => {
+            void handleSubmitFileAction('')
+          }}
+          title={t.delete}
+        />
+      ) : fileActionDialog ? (
+        <FileActionModal
+          confirmLabel={t.confirm}
           errorMessage={fileActionError}
           hint={fileActionDialog.kind === 'new-file' ? t.newFileExtensionHint : undefined}
           initialValue={
             fileActionDialog.kind === 'rename' ? fileActionDialog.target.name : ''
           }
           isSubmitting={isFileActionSubmitting}
-          inputLabel={fileActionDialog.kind === 'delete' ? undefined : t.fileName}
+          inputLabel={t.fileName}
           inputPlaceholder={
             fileActionDialog.kind === 'new-folder' ? t.folderName : t.fileName
           }
@@ -3587,9 +3593,7 @@ export function App() {
               ? t.newFolder
               : fileActionDialog.kind === 'new-file'
                 ? t.newFile
-                : fileActionDialog.kind === 'rename'
-                  ? t.rename
-                  : t.delete
+                : t.rename
           }
         />
       ) : null}
@@ -3739,9 +3743,7 @@ function StandaloneWindowTitlebar({ isWindows, title }: { isWindows: boolean; ti
             <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1.5" y="1.5" width="7" height="7" fill="none" stroke="currentColor" strokeWidth="1" /></svg>
           )}
         </button>
-        <button aria-label="Close" className="window-close-button" type="button" onClick={() => { void desktopApi?.closeCurrentWindow() }}>
-          <svg width="10" height="10" viewBox="0 0 10 10"><path d="M1.5,1.5 L8.5,8.5 M8.5,1.5 L1.5,8.5" stroke="currentColor" strokeWidth="1" /></svg>
-        </button>
+        <CloseButton aria-label="Close" onClick={() => { void desktopApi?.closeCurrentWindow() }} size="window" />
       </div>
     </div>
   )

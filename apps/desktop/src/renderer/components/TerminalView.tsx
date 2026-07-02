@@ -8,6 +8,8 @@ import '@xterm/xterm/css/xterm.css'
 import { copyText } from '../app/app-utils'
 import { t } from '../i18n'
 import { ContextMenu } from '../features/common/ContextMenu'
+import { CloseButton } from '../features/common/CloseButton'
+import { AppIcon } from '../features/common/AppIcon'
 
 function localizeTerminalText(value: string) {
   return value
@@ -69,13 +71,6 @@ const TERMINAL_FIT_GUARD_ROWS = 0
 const TERMINAL_RESIZE_PIXEL_EPSILON = 2
 const TERMINAL_RESIZE_SETTLE_MS = 140
 const TERMINAL_RESIZE_OUTPUT_QUIET_MS = 260
-const TERMINAL_SEARCH_DECORATIONS = {
-  matchBackground: '#4b5563',
-  matchOverviewRuler: '#9ca3af',
-  activeMatchBackground: '#f3f4f6',
-  activeMatchColorOverviewRuler: '#f3f4f6'
-}
-
 function trimTranscript(transcript: string) {
   if (transcript.length <= TERMINAL_TRANSCRIPT_LIMIT) {
     return transcript
@@ -174,11 +169,20 @@ export const TerminalView = memo(function TerminalView({
     brightGreen: readColor('--success', '#52f2a0'),
     blue: readColor('--accent-text', '#c8d0da'),
     brightBlue: readColor('--text-main', '#f1f5f9'),
-    selectionBackground: readColor(
-      '--terminal-cmd-bg',
-      'rgba(148, 163, 184, 0.24)'
-    ),
-    selectionForeground: readColor('--terminal-text', '#e0e0e0')
+    selectionBackground: findOpen && findQuery
+      ? readColor('--terminal-search-active-bg', '#ffffff')
+      : readColor('--terminal-cmd-bg', 'rgba(148, 163, 184, 0.24)'),
+    selectionForeground: findOpen && findQuery
+      ? readColor('--terminal-search-active-text', '#111111')
+      : readColor('--terminal-text', '#e0e0e0')
+  })
+
+  const buildSearchDecorations = () => ({
+    matchBackground: readColor('--terminal-search-match-bg', '#4b5563'),
+    matchOverviewRuler: readColor('--terminal-search-match-ruler', '#9ca3af'),
+    activeMatchBackground: readColor('--terminal-search-active-bg', '#ffffff'),
+    activeMatchBorder: readColor('--terminal-search-active-border', '#ffffff'),
+    activeMatchColorOverviewRuler: readColor('--terminal-search-active-ruler', '#ffffff')
   })
 
   const applyTerminalTheme = () => {
@@ -228,7 +232,7 @@ export const TerminalView = memo(function TerminalView({
     caseSensitive: findCaseSensitive,
     regex: findRegex,
     incremental,
-    decorations: TERMINAL_SEARCH_DECORATIONS
+    decorations: buildSearchDecorations()
   })
 
   const runCopy = () => {
@@ -1059,28 +1063,30 @@ export const TerminalView = memo(function TerminalView({
           <div className="terminal-find-count" aria-live="polite">
             {findQuery && findMatchCount > 0 ? `${Math.max(activeFindIndex + 1, 1)}/${findMatchCount}` : null}
           </div>
-          <button
-            type="button"
-            className={findCaseSensitive ? 'is-active' : undefined}
-            aria-pressed={findCaseSensitive}
-            title={t.findCaseSensitive}
-            onClick={() => setFindCaseSensitive((value) => !value)}
-          >
-            Aa
-          </button>
-          <button
-            type="button"
-            className={findRegex ? 'is-active' : undefined}
-            aria-pressed={findRegex}
-            title={t.findRegex}
-            onClick={() => setFindRegex((value) => !value)}
-          >
-            .*
-          </button>
-          <button type="button" title={t.findPrevious} onClick={() => searchTerminal(findQuery, -1)}>↑</button>
-          <button type="button" title={t.findNext} onClick={() => searchTerminal(findQuery, 1)}>↓</button>
-          <button type="button" onClick={() => searchTerminal(findQuery, 1)}>{t.find}</button>
-          <button type="button" onClick={closeFind}>×</button>
+          <div className="terminal-find-actions" role="group" aria-label={t.find}>
+            <button
+              type="button"
+              className={findCaseSensitive ? 'is-active' : undefined}
+              aria-pressed={findCaseSensitive}
+              title={t.findCaseSensitive}
+              onClick={() => setFindCaseSensitive((value) => !value)}
+            >
+              Aa
+            </button>
+            <button
+              type="button"
+              className={findRegex ? 'is-active' : undefined}
+              aria-pressed={findRegex}
+              title={t.findRegex}
+              onClick={() => setFindRegex((value) => !value)}
+            >
+              .*
+            </button>
+            <button type="button" title={t.findPrevious} onClick={() => searchTerminal(findQuery, -1)}><AppIcon name="arrow-up" size={13} /></button>
+            <button type="button" title={t.findNext} onClick={() => searchTerminal(findQuery, 1)}><AppIcon name="arrow-down" size={13} /></button>
+            <button className="terminal-find-submit" type="button" onClick={() => searchTerminal(findQuery, 1)}>{t.find}</button>
+          </div>
+          <CloseButton onClick={closeFind} size="compact" />
           {findMiss ? <span className="terminal-find-status">{t.findNotFound}</span> : null}
         </div>
       ) : null}

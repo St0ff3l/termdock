@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { t } from '../../i18n'
+import { CloseButton } from '../common/CloseButton'
 
 export function SettingsModal({
   theme,
@@ -61,7 +62,7 @@ export function SettingsModal({
         </span>
         {!inline && (
           <div className="connection-manager-header-actions">
-            <button aria-label={t.closeTab} className="manager-close-button" onClick={onClose} title={t.closeTab} type="button">×</button>
+            <CloseButton onClick={onClose} />
           </div>
         )}
       </div>

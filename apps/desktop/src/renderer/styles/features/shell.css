@@ -468,6 +468,8 @@
 }
 
 .network-rate i {
+  display: inline-flex;
+  align-items: center;
   font-style: normal;
   font-size: 9px;
   font-weight: 700;

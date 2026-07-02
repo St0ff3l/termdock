@@ -4,6 +4,7 @@ import OpenCC from 'opencc-js'
 import * as monacoEditor from 'monaco-editor'
 import type { FileContentSnapshot } from '@fileterm/core'
 import { t } from '../../i18n'
+import { CloseButton } from '../common/CloseButton'
 import { AppIcon } from '../common/AppIcon'
 import { EDITOR_ENCODINGS, findEncodingOption, sortEditorLanguages, type EditorLanguageOption } from './file-editor-config'
 
@@ -254,9 +255,7 @@ export function FileEditorModal({
             {isSaving ? <span aria-hidden="true" className="button-spinner" /> : null}
             <span>{isSaving ? t.saving : t.save}</span>
           </button>
-          <button aria-label={t.closeTab} className="icon-button file-editor-close-button" onClick={onClose} type="button">
-            <AppIcon name="close" size={16} />
-          </button>
+          <CloseButton onClick={onClose} />
         </div>
       </div>
 
@@ -441,8 +440,8 @@ function MenuAction({ disabled = false, label, onClick }: { disabled?: boolean; 
 
 function MenuToggle({ checked, label, onClick }: { checked: boolean; label: string; onClick(): void }) {
   return (
-    <button onClick={onClick} type="button">
-      <span>{checked ? '✓ ' : ''}</span>
+    <button className="file-editor-menu-toggle" onClick={onClick} type="button">
+      <span className="file-editor-menu-check">{checked ? <AppIcon name="check" size={12} /> : null}</span>
       {label}
     </button>
   )

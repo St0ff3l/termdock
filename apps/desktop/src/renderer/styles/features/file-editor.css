@@ -124,22 +124,6 @@
   box-sizing: border-box;
 }
 
-.file-editor-modal .modal-header .file-editor-close-button.icon-button {
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  transition: all 0.2s ease;
-}
-
-.file-editor-modal .modal-header .file-editor-close-button.icon-button:hover:not(:disabled) {
-  background: var(--danger-surface);
-  border: none;
-  color: var(--danger-text);
-}
-
 .file-editor-window,
 .file-editor-window .file-editor-modal.standalone {
   -webkit-app-region: drag;
@@ -283,6 +267,20 @@
 .file-editor-menu button:disabled {
   opacity: 0.56;
   cursor: not-allowed;
+}
+
+.file-editor-menu button.file-editor-menu-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.file-editor-menu-check {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 12px;
+  width: 12px;
+  height: 12px;
 }
 
 .file-editor-menu-separator {

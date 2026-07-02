@@ -3,6 +3,7 @@ import { useState, useMemo, useRef, useEffect, type DragEvent } from 'react'
 import { ConfirmActionDialog } from '../common/ConfirmActionDialog'
 import { t } from '../../i18n'
 import { AppIcon } from '../common/AppIcon'
+import { CloseButton } from '../common/CloseButton'
 
 type ConnectionTreeNode =
   | (ConnectionFolder & { children: ConnectionTreeNode[] })
@@ -350,7 +351,7 @@ export function ConnectionManagerModal({
           <span className="manager-name-cell" style={{ paddingLeft: `${depth * 18}px` }}>
             {isFolder && (
               <span className="folder-icon manager-folder-toggle" style={{ transform: isExpanded ? 'rotate(90deg)' : 'none' }}>
-                ▶
+                <AppIcon name="chevron-right" size={12} />
               </span>
             )}
             {!isFolder && <span className="manager-node-icon"><AppIcon name="server" size={14} /></span>}
@@ -434,7 +435,7 @@ export function ConnectionManagerModal({
         </label>
         {!inline && (
           <div className="connection-manager-header-actions">
-            <button aria-label={t.closeTab} className="manager-close-button" onClick={onClose} title={t.closeTab} type="button">×</button>
+            <CloseButton onClick={onClose} />
           </div>
         )}
       </div>
@@ -470,7 +471,7 @@ export function ConnectionManagerModal({
               {isCreatingFolder && resolvedActiveFolderId === 'all' && (
                 <div className="manager-row folder-row">
                   <span className="manager-name-cell">
-                    <span className="folder-icon manager-folder-toggle">▶</span>
+                    <span className="folder-icon manager-folder-toggle"><AppIcon name="chevron-right" size={12} /></span>
                     <input
                       type="text"
                       autoFocus

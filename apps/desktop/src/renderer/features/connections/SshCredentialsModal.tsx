@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { SshCredentialsPromptRequest } from '@fileterm/core'
-import { AppIcon } from '../common/AppIcon'
+import { CloseButton } from '../common/CloseButton'
 import { t } from '../../i18n'
 
 export function SshCredentialsModal({
@@ -27,9 +27,7 @@ export function SshCredentialsModal({
       <div className="modal-card ssh-interaction-modal">
         <div className="modal-header">
           <span>{t.sshAuthPromptTitle}</span>
-          <button className="icon-button" onClick={onCancel} type="button">
-            <AppIcon name="close" size={16} />
-          </button>
+          <CloseButton onClick={onCancel} />
         </div>
 
         <div className="root-access-description">{t.sshAuthPromptDescription}</div>

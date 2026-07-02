@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { PermissionChangeOptions } from '@fileterm/core'
 import { AppIcon } from '../common/AppIcon'
+import { CloseButton } from '../common/CloseButton'
 import { t } from '../../i18n'
 
 type PermissionState = { read: boolean; write: boolean; execute: boolean }
@@ -53,9 +54,7 @@ export function FilePermissionModal({
       <div className="modal-card file-permission-dialog">
         <div className="file-permission-dialog__header">
           <span className="file-permission-dialog__eyebrow">{t.permissionDialogTitle}</span>
-          <button className="icon-button file-permission-dialog__close" onClick={onClose} type="button">
-            <AppIcon name="close" size={16} />
-          </button>
+          <CloseButton className="file-permission-dialog__close" onClick={onClose} />
         </div>
 
         <div className="file-permission-dialog__scroll">

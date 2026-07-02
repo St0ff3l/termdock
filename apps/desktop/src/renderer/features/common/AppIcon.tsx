@@ -11,6 +11,13 @@ export type AppIconName =
   | 'audio'
   | 'image'
   | 'document'
+  | 'spreadsheet'
+  | 'presentation'
+  | 'config-file'
+  | 'database'
+  | 'font-file'
+  | 'package'
+  | 'terminal-file'
   | 'pdf'
   | 'code'
   | 'disk'
@@ -27,6 +34,10 @@ export type AppIconName =
   | 'paste'
   | 'chevron-up'
   | 'chevron-down'
+  | 'chevron-right'
+  | 'arrow-up'
+  | 'arrow-down'
+  | 'check'
   | 'play'
   | 'close'
 
@@ -134,6 +145,48 @@ export function AppIcon({
           <path {...commonProps} d="M6.4 7.6h3.9M6.4 9.2h3.9M6.4 10.8h2.7" />
         </>
       ) : null}
+      {name === 'spreadsheet' ? (
+        <>
+          <path {...commonProps} d="M5 2.5h4.5L13 6v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9.5a1 1 0 0 1 1-1Z" />
+          <path {...commonProps} d="M9.5 2.5V6H13M6.2 7.7h4.6v3.8H6.2zM8.5 7.7v3.8M6.2 9.6h4.6" />
+        </>
+      ) : null}
+      {name === 'presentation' ? (
+        <>
+          <path {...commonProps} d="M5 2.5h4.5L13 6v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9.5a1 1 0 0 1 1-1Z" />
+          <path {...commonProps} d="M9.5 2.5V6H13M6.2 7.4h4.6v3H6.2zM8.5 10.4v1.4M7.2 11.8h2.6" />
+        </>
+      ) : null}
+      {name === 'config-file' ? (
+        <>
+          <path {...commonProps} d="M5 2.5h4.5L13 6v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9.5a1 1 0 0 1 1-1Z" />
+          <path {...commonProps} d="M9.5 2.5V6H13M6.2 8h4.6M6.2 10.5h4.6M7.4 7.2v1.6M9.6 9.7v1.6" />
+        </>
+      ) : null}
+      {name === 'database' ? (
+        <>
+          <ellipse {...commonProps} cx="8" cy="4.2" rx="4.5" ry="2" />
+          <path {...commonProps} d="M3.5 4.2v3.8c0 1.1 2 2 4.5 2s4.5-.9 4.5-2V4.2M3.5 8v3.8c0 1.1 2 2 4.5 2s4.5-.9 4.5-2V8" />
+        </>
+      ) : null}
+      {name === 'font-file' ? (
+        <>
+          <path {...commonProps} d="M5 2.5h4.5L13 6v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9.5a1 1 0 0 1 1-1Z" />
+          <path {...commonProps} d="M9.5 2.5V6H13M6.2 11.5 8.3 7l2.1 4.5M6.9 10h2.8" />
+        </>
+      ) : null}
+      {name === 'package' ? (
+        <>
+          <path {...commonProps} d="m8 2.2 5 2.7v6.2l-5 2.7-5-2.7V4.9l5-2.7Z" />
+          <path {...commonProps} d="m3.3 5.1 4.7 2.6 4.7-2.6M8 7.7v6M5.5 3.6l4.8 2.6" />
+        </>
+      ) : null}
+      {name === 'terminal-file' ? (
+        <>
+          <path {...commonProps} d="M5 2.5h4.5L13 6v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9.5a1 1 0 0 1 1-1Z" />
+          <path {...commonProps} d="M9.5 2.5V6H13m-6.7 2 1.5 1.4-1.5 1.4M8.8 11h2" />
+        </>
+      ) : null}
       {name === 'pdf' ? (
         <>
           <path {...commonProps} d="M5 2.5h4.5L13 6v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9.5a1 1 0 0 1 1-1Z" />
@@ -230,6 +283,18 @@ export function AppIcon({
       ) : null}
       {name === 'chevron-down' ? (
         <path {...commonProps} d="m3.5 6 4.5 4.5 4.5-4.5" />
+      ) : null}
+      {name === 'chevron-right' ? (
+        <path {...commonProps} d="m6 3.5 4.5 4.5L6 12.5" />
+      ) : null}
+      {name === 'arrow-up' ? (
+        <path {...commonProps} d="M8 13V3m-4 4 4-4 4 4" />
+      ) : null}
+      {name === 'arrow-down' ? (
+        <path {...commonProps} d="M8 3v10m-4-4 4 4 4-4" />
+      ) : null}
+      {name === 'check' ? (
+        <path {...commonProps} d="m3.2 8.2 3.1 3.1 6.5-6.6" />
       ) : null}
       {name === 'play' ? (
         <path {...commonProps} d="M5.5 3.5v9l6.5-4.5z" />

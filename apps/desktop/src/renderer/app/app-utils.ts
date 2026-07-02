@@ -172,7 +172,12 @@ export function setFileDragPreview(event: DragEvent<HTMLElement>, names: string[
   preview.className = 'file-drag-preview'
   const visibleNames = names.slice(0, 2)
   preview.innerHTML = `
-    <span class="file-drag-preview-icon">□</span>
+    <span class="file-drag-preview-icon" aria-hidden="true">
+      <svg class="app-icon" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8">
+        <rect x="4.5" y="4.5" width="8" height="8" rx="1.5"></rect>
+        <path d="M11.5 2.5h-5a2 2 0 0 0-2 2v5"></path>
+      </svg>
+    </span>
     <span>${escapeHtml(visibleNames.join(names.length > 1 ? ', ' : ''))}${names.length > 2 ? ` ${t.moreItemsPrefix ? `${t.moreItemsPrefix} ` : ''}${names.length} ${t.itemsSuffix}` : ''}</span>
   `
   document.body.appendChild(preview)

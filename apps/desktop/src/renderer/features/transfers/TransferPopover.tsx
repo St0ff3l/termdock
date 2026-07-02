@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { TransferTask } from '@fileterm/core'
-import { AppIcon } from '../common/AppIcon'
+import { CloseButton } from '../common/CloseButton'
 import { formatTransferBytes, isActiveTransfer, isCompletedTransfer, transferStatusText } from '../../app/app-utils'
 import { t } from '../../i18n'
 
@@ -71,9 +71,7 @@ export function TransferPopover({
               {t.clearTransferHistory}
             </button>
           ) : null}
-          <button className="icon-button" onClick={onClose} type="button">
-            <AppIcon name="close" size={16} />
-          </button>
+          <CloseButton onClick={onClose} />
         </div>
       </div>
       <div className="transfer-filters">

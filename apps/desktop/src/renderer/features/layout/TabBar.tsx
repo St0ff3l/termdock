@@ -2,6 +2,8 @@ import type { WorkspaceTab } from '@fileterm/core'
 import { tabStatusClass } from '../../app/app-utils'
 import { t } from '../../i18n'
 import { handleHorizontalWheelScroll } from '../common/horizontal-scroll'
+import { CloseButton } from '../common/CloseButton'
+import { AppIcon } from '../common/AppIcon'
 
 export type OrderedTabEntry =
   | { key: string; kind: 'local'; id: string; title: string; tabKind: 'home' | 'system' }
@@ -92,7 +94,7 @@ export function TabBar({
               >
                 <span>{index + 1}</span>
                 <strong>{entry.title}</strong>
-                <button aria-label={`${t.closeTab} ${entry.title}`} className="tab-close" onClick={(event) => onCloseHomeTab(event, entry.id)} type="button">×</button>
+                <CloseButton aria-label={`${t.closeTab} ${entry.title}`} onClick={(event) => onCloseHomeTab(event, entry.id)} size="tab" />
               </div>
             ) : (
               <div
@@ -126,11 +128,11 @@ export function TabBar({
                 <span>{index + 1}</span>
                 <strong>{entry.tab.title}</strong>
                 <span className={`tab-dot ${tabStatusClass(entry.tab.status)}`} />
-                <button aria-label={`${t.closeTab} ${entry.tab.title}`} className="tab-close" onClick={(event) => onCloseSessionTab(event, entry.tab.id)} type="button">×</button>
+                <CloseButton aria-label={`${t.closeTab} ${entry.tab.title}`} onClick={(event) => onCloseSessionTab(event, entry.tab.id)} size="tab" />
               </div>
             )
           ))}
-          <button className="add-tab" type="button" onClick={onAddHomeTab}>+</button>
+          <button aria-label={t.newTab} className="add-tab" type="button" onClick={onAddHomeTab}><AppIcon name="plus" size={16} /></button>
         </div>
         <div className="window-tools">
           <button

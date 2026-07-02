@@ -7,6 +7,7 @@ export function ConfirmActionDialog({
   confirmLabel,
   confirmVariant = 'danger',
   description,
+  errorMessage,
   extraActions = null,
   isSubmitting = false,
   onClose,
@@ -17,6 +18,7 @@ export function ConfirmActionDialog({
   confirmLabel: string
   confirmVariant?: 'danger' | 'primary'
   description: ReactNode
+  errorMessage?: string | null
   extraActions?: ReactNode
   isSubmitting?: boolean
   onClose(): void
@@ -34,6 +36,7 @@ export function ConfirmActionDialog({
         <div className="confirm-action-dialog__header">
           <div className="confirm-action-dialog__title">{title}</div>
           <div className="confirm-action-dialog__description">{description}</div>
+          {errorMessage ? <div className="modal-error">{errorMessage}</div> : null}
         </div>
         <div className="form-actions confirm-action-dialog__footer">
           <button className={cancelButtonClassName} disabled={isSubmitting} onClick={onClose} type="button">{cancelLabel}</button>
