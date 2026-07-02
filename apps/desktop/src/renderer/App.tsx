@@ -592,6 +592,7 @@ export function App() {
 
   const localTabsRef = useRef(localTabs)
   const pendingHomeReplacementKeyRef = useRef<string | null>(null)
+  const pendingProfileOpenIdRef = useRef<string | null>(null)
   const hasSanitizedStoredPlaceholderRef = useRef(false)
   const desktopApi = window.fileterm
   const isWindowsDesktop = desktopApi?.platform === 'win32'
@@ -1548,7 +1549,7 @@ export function App() {
     })
   }
 
-  const handleOpenProfile = async (profileId: string) => {
+  const openProfileInCurrentWorkspace = async (profileId: string) => {
     if (!desktopApi) {
       return
     }
@@ -1577,6 +1578,30 @@ export function App() {
       setIsBusy(false)
     }
   }
+
+  const handleOpenProfile = async (profileId: string) => {
+    if (isMainWorkspaceWindow && (!hasLoadedInitialSnapshot || !hasHydratedMainTabUiState)) {
+      pendingProfileOpenIdRef.current = profileId
+      setIsBusy(true)
+      return
+    }
+
+    await openProfileInCurrentWorkspace(profileId)
+  }
+
+  useEffect(() => {
+    if (!isMainWorkspaceWindow || !hasLoadedInitialSnapshot || !hasHydratedMainTabUiState) {
+      return
+    }
+
+    const profileId = pendingProfileOpenIdRef.current
+    if (!profileId) {
+      return
+    }
+
+    pendingProfileOpenIdRef.current = null
+    void openProfileInCurrentWorkspace(profileId)
+  }, [hasHydratedMainTabUiState, hasLoadedInitialSnapshot, isMainWorkspaceWindow])
 
   const handleDeleteProfile = async (profileId: string) => {
     if (!desktopApi) {
